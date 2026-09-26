@@ -27,18 +27,14 @@
   <div class="browser">
     <header class="chrome">
       <div class="tabs-row">
-        <div class="tab active" id="mainTab">
-          <span class="tab-favicon"><svg><use href="#i-globe"/></svg></span>
-          <span class="tab-title" id="tabTitle">New Tab</span>
-          <button class="tab-close" title="Close tab" id="tabClose">×</button>
-        </div>
-        <button class="new-tab" title="New tab" id="newTab"><svg><use href="#i-plus"/></svg></button>
+        <div class="tabs-list" id="tabsList"></div>
+        <button class="new-tab" title="New tab (Ctrl/Cmd+T, Alt+T)" id="newTab"><svg><use href="#i-plus"/></svg></button>
       </div>
 
       <div class="toolbar-row">
-        <button class="icon-btn" id="backBtn" title="Back"><svg><use href="#i-back"/></svg></button>
-        <button class="icon-btn" id="forwardBtn" title="Forward"><svg><use href="#i-forward"/></svg></button>
-        <button class="icon-btn" id="reloadBtn" title="Reload"><svg><use href="#i-reload"/></svg></button>
+        <button class="icon-btn" id="backBtn" title="Back (Alt+←)"><svg><use href="#i-back"/></svg></button>
+        <button class="icon-btn" id="forwardBtn" title="Forward (Alt+→)"><svg><use href="#i-forward"/></svg></button>
+        <button class="icon-btn" id="reloadBtn" title="Reload (Ctrl/Cmd+R)"><svg><use href="#i-reload"/></svg></button>
         <button class="icon-btn" id="homeBtn" title="Home"><svg><use href="#i-home"/></svg></button>
 
         <div class="omnibox">
@@ -104,6 +100,7 @@
             <button class="tool-tab" data-panel="linkPanel">All links</button>
             <button class="tool-tab" data-panel="consolePanel">#console</button>
             <button class="tool-tab" data-panel="devPanel">/dev</button>
+            <button class="tool-tab" data-panel="settingsPanel">/settings</button>
           </div>
           <button class="back-to-page" id="backToPage">← Back to page</button>
         </div>
@@ -212,6 +209,57 @@
 
           </div>
         </div>
+
+        <div id="settingsPanel" class="tool-panel hidden settings-panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">SETTINGS</span><b>Customize Veyra Browse</b></div>
+            <div class="console-actions">
+              <button class="danger tiny" id="settingsResetBtn">Reset to defaults</button>
+            </div>
+          </div>
+          <div class="settings-body" id="settingsBody">
+            <section class="dev-card">
+              <h4>Browsing</h4>
+              <label class="setting-row">
+                <span>Default search engine</span>
+                <select id="setSearchEngine">
+                  <option value="google">Google</option>
+                  <option value="bing">Bing</option>
+                  <option value="duckduckgo">DuckDuckGo</option>
+                </select>
+              </label>
+              <label class="setting-row">
+                <span>Custom homepage for new tabs (blank = New Tab screen)</span>
+                <input id="setHomepage" placeholder="https://example.com">
+              </label>
+              <label class="setting-row checkbox">
+                <input type="checkbox" id="setConfirmClose">
+                <span>Confirm before closing a tab with an active crawl</span>
+              </label>
+            </section>
+            <section class="dev-card">
+              <h4>Crawler</h4>
+              <label class="setting-row checkbox">
+                <input type="checkbox" id="setAutoStop">
+                <span>Stop the previous crawl automatically when navigating to a new page (recommended — avoids old crawls piling up in the background)</span>
+              </label>
+            </section>
+            <section class="dev-card">
+              <h4>/dev panel</h4>
+              <label class="setting-row">
+                <span>Auto-refresh interval (ms)</span>
+                <input type="number" id="setDevInterval" min="500" step="250">
+              </label>
+            </section>
+            <section class="dev-card">
+              <h4>Data</h4>
+              <div class="settings-actions">
+                <button class="secondary tiny" id="settingsClearBookmarks">Clear bookmarks</button>
+                <button class="secondary tiny" id="settingsClearLogs">Clear console &amp; network logs</button>
+              </div>
+            </section>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -225,6 +273,7 @@
       <button id="menuLinks">View all links</button>
       <button id="menuConsole">Open #console</button>
       <button id="menuDev">Open /dev</button>
+      <button id="menuSettings">Open /settings</button>
       <div class="menu-divider"></div>
       <button id="menuHome">New Veyra tab</button>
     </div>

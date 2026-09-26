@@ -54,6 +54,18 @@ pre{flex:1;overflow:auto;margin:0;padding:14px;background:#080b0f;color:#dfe7f0;
 .console-log{flex:1;overflow:auto;background:#080b0f;font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}.log{display:grid;grid-template-columns:72px 58px 1fr;gap:7px;padding:5px 9px;border-bottom:1px solid #151a21;white-space:pre-wrap;word-break:break-word}.log .time{color:#5e6979}.log .level{font-weight:700}.log .msg{color:#d3dce7}.log.error .level{color:var(--red)}.log.warn .level{color:var(--yellow)}.log.info .level{color:var(--blue)}.log.debug .level{color:#8793a5}
 .statusbar{height:24px;background:#0b0e12;border-top:1px solid #202630;color:#687488;font-size:9px;display:flex;align-items:center;justify-content:space-between;padding:0 9px}
 .menu-panel{position:absolute;top:93px;right:8px;width:205px;background:#1b2028;border:1px solid #353c47;border-radius:10px;box-shadow:0 16px 42px #0008;padding:6px;z-index:50}.menu-panel button{width:100%;border:0;background:transparent;color:#dce3eb;text-align:left;padding:9px;border-radius:7px;font-size:11px}.menu-panel button:hover{background:#2a313b}.menu-divider{height:1px;background:#313844;margin:5px 0}
+.tabs-list{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.tabs-list .tab{flex:0 0 auto}
+.settings-panel{overflow:hidden;display:flex;flex-direction:column}
+.settings-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px dashed #1c222c;font-size:11px;color:#c7d0dc}
+.setting-row:last-child{border-bottom:0}
+.setting-row span{flex:1}
+.setting-row select,.setting-row input:not([type="checkbox"]){background:#0e1218;color:#dfe7ef;border:1px solid var(--line);border-radius:7px;font-size:11px;padding:6px 8px;min-width:190px}
+.setting-row.checkbox{justify-content:flex-start;gap:10px}
+.setting-row.checkbox span{flex:none}
+.setting-row.checkbox input{width:15px;height:15px;flex:none}
+.settings-actions{display:flex;gap:8px}
 .empty{padding:28px;text-align:center;color:#667287;font-size:11px}
 .dev-panel{display:flex;flex-direction:column;overflow:hidden}
 .dev-auto{display:flex;align-items:center;gap:5px;font-size:10px;color:#9aa6b6}
