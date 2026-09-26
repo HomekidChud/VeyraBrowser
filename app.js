@@ -82,8 +82,8 @@ async function pollJob(jobId){
   try{
     const r=await fetch(API+"/api/crawl/"+encodeURIComponent(jobId));const b=await r.json();
     if(!r.ok)throw new Error(b.error||"HTTP "+r.status);if(state.jobId!==jobId)return;
-    const c=b.counts||{};
-    $("crawlSummary").textContent=`Crawler: ${c.processed||0} processed · ${c.htmlPages||0} HTML · ${c.css||0} CSS · ${c.js||0} JS · ${c.links||0} links`;
+    const c=b.counts||{}; const gb=((c.bytesScanned||0)/1073741824).toFixed(2);
+    $("crawlSummary").textContent=`Crawler: ${c.processed||0} processed · ${c.htmlPages||0} HTML · ${c.css||0} CSS · ${c.js||0} JS · ${c.links||0} links · ${gb} GB scanned`;
     $("backendHealth").textContent="Backend: online";
     $("serverState").textContent=b.done?(b.status==="done"?"Crawler finished":"Crawler stopped"):`Crawling · ${c.links||0} links`;
     $("serverState").className="server-pill"+(b.done?"":" live");
@@ -183,4 +183,4 @@ window.addEventListener("unhandledrejection",e=>addLog("error","Unhandled promis
 document.addEventListener("click",e=>{if(!$("menuPanel").contains(e.target)&&e.target!==$("menuBtn"))closeMenu()});
 $("pageFrame").addEventListener("loadstart",()=>setLoading(true,60));
 health();
-addLog("info","Veyra Browse is ready.");
+addLog("info","Veyra Browse is ready. High-throughput background crawler enabled.");

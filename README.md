@@ -1,19 +1,12 @@
-# Veyra Browse — Professional Frontend
+# Veyra Browse — GitHub Pages frontend v6
 
-This is the GitHub Pages frontend for Veyra Browse.
+This is the public browser UI.
 
-It keeps the crawler entirely on the Render backend while the main UI behaves like
-a browser: tabs, toolbar, omnibox, navigation buttons, page view, loading state,
-bookmarks, and a compact tools area for source, links, and `#console`.
+GitHub Pages hosts this repo. The frontend calls the Render API at:
 
-Render API:
 `https://veyraserver-xscy.onrender.com`
 
-No backend code belongs in this repository.
+The crawler is NOT in the frontend. It runs entirely on the Render Web Service.
 
-## Deploy
-
-Put `index.html`, `style.css`, and `app.js` in the GitHub Pages repository and
-publish the repository with GitHub Pages.
-
-The frontend will call the Render backend automatically.
+The browser view loads pages through the Render proxy while the server crawls in
+the background. Source, links, and #console are available in the tools panel.
