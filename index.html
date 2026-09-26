@@ -63,7 +63,7 @@
           <div class="wordmark-sub">Browse the web. Search it. Inspect what powers it.</div>
           <div class="new-search">
             <svg><use href="#i-search"/></svg>
-            <input id="homeInput" placeholder="Search or enter a web address" autocomplete="off">
+            <input id="homeInput" list="searchSuggestions" placeholder="Search or enter a web address" autocomplete="off">
             <button id="homeBrowse">Search</button>
           </div>
           <div class="shortcuts">
@@ -72,22 +72,24 @@
             <button data-url="https://developer.mozilla.org"><span>MD</span><b>MDN</b></button>
             <button data-tool="calculator"><span><svg><use href="#i-calculator"/></svg></span><b>Calculator</b></button>
           </div>
-          <div class="newtab-note">Veyra Search uses a provider or Veyra's own crawl index. The browser proxy and crawler remain separate so the first page can appear quickly.</div>
+          <div class="newtab-note">Veyra Search runs on Veyra's own crawl index. Open sites to grow the index, or configure seed URLs on Render for background indexing. The browser proxy and crawler remain separate so the first page can appear quickly.</div>
         </div>
       </section>
 
       <section class="search-view hidden" id="searchView">
         <div class="search-shell">
           <div class="search-heading">
-            <div><div class="eyebrow">VEYRA SEARCH</div><h1>Search the web through Veyra</h1></div>
+            <div><div class="eyebrow">VEYRA SEARCH</div><h1>Search the web with Veyra</h1><p class="search-subtitle">Your query is matched against Veyra's own crawl index. The index grows as Veyra scans websites.</p></div>
             <div class="search-stat" id="searchStat">Ready</div>
           </div>
           <div class="search-bar">
             <svg><use href="#i-search"/></svg>
-            <input id="searchInput" autocomplete="off" spellcheck="false" placeholder="Search Veyra">
+            <input id="searchInput" list="searchSuggestions" autocomplete="off" spellcheck="false" placeholder="Search Veyra">
             <button id="searchButton">Search</button>
           </div>
+          <datalist id="searchSuggestions"></datalist>
           <div class="search-meta" id="searchMeta"></div>
+          <div class="search-indexbar" id="searchIndexBar"><span id="searchCoverage">Veyra Index: checking…</span><span class="search-operators">Try <code>site:example.com</code> <code>"exact phrase"</code> <code>-word</code> <code>intitle:word</code></span></div>
           <div class="search-results" id="searchResults"></div>
           <div class="search-actions"><button class="secondary" id="searchMore">Load more</button></div>
         </div>
@@ -155,7 +157,7 @@
         <div id="devPanel" class="tool-panel hidden dev-panel">
           <div class="panel-head"><div><span class="eyebrow">DEV</span><b>Live crawl, server debug &amp; network</b></div><div class="console-actions"><label class="dev-auto"><input type="checkbox" id="devAutoRefresh" checked> Auto-refresh</label><button class="secondary" id="devRefreshBtn">Refresh</button><button class="danger" id="devStopBtn">Stop crawl</button></div></div>
           <div class="dev-body">
-            <section class="dev-card"><div class="dev-card-head"><h4>Current job — live view</h4><div class="dev-card-actions"><button class="secondary tiny" id="devCopyJsonBtn">Copy JSON</button><button class="secondary tiny" id="devExportBtn">Export</button></div></div><div class="dev-grid" id="devJobGrid"><div class="empty">No active crawl.</div></div><div class="dev-bars"><div class="dev-bar"><span>Crawler robots</span><div class="bar"><i id="devBarRobots"></i></div><b id="devBarRobotsLabel">0 / 0</b></div><div class="dev-bar"><span>Resources processed</span><div class="bar"><i id="devBarResources"></i></div><b id="devBarResourcesLabel">0 / 0</b></div><div class="dev-bar"><span>Scan budget</span><div class="bar"><i id="devBarScan"></i></div><b id="devBarScanLabel">0 / 0</b></div><div class="dev-bar"><span>HTML workers</span><div class="bar"><i id="devBarHtml"></i></div><b id="devBarHtmlLabel">0 / 0</b></div><div class="dev-bar"><span>Asset workers</span><div class="bar"><i id="devBarAsset"></i></div><b id="devBarAssetLabel">0 / 0</b></div></div></section>
+            <section class="dev-card"><div class="dev-card-head"><h4>Current job — live view</h4><div class="dev-card-actions"><button class="secondary tiny" id="devCopyJsonBtn">Copy JSON</button><button class="secondary tiny" id="devExportBtn">Export</button></div></div><div class="dev-grid" id="devJobGrid"><div class="empty">No active crawl.</div></div><div class="dev-bars"><div class="dev-bar"><span>Resources processed</span><div class="bar"><i id="devBarResources"></i></div><b id="devBarResourcesLabel">0 / 0</b></div><div class="dev-bar"><span>Scan budget</span><div class="bar"><i id="devBarScan"></i></div><b id="devBarScanLabel">0 / 0</b></div><div class="dev-bar"><span>HTML workers</span><div class="bar"><i id="devBarHtml"></i></div><b id="devBarHtmlLabel">0 / 0</b></div><div class="dev-bar"><span>Asset workers</span><div class="bar"><i id="devBarAsset"></i></div><b id="devBarAssetLabel">0 / 0</b></div></div></section>
             <section class="dev-card"><h4>All jobs on server</h4><div class="table-wrap dev-scroll"><table><thead><tr><th>ID</th><th>Root</th><th>Status</th><th>Processed</th><th>Links</th><th></th></tr></thead><tbody id="devJobsBody"></tbody></table></div></section>
             <section class="dev-card"><h4>Server health</h4><div class="dev-grid" id="devSystemGrid"><div class="empty">Checking…</div></div></section>
             <section class="dev-card"><div class="dev-card-head"><h4>Network — frontend → backend</h4><div class="dev-card-actions"><select id="devNetFilter"><option value="all">All</option><option value="ok">2xx / 3xx</option><option value="err">4xx / 5xx / failed</option></select><button class="secondary tiny" id="devNetClear">Clear</button></div></div><div class="table-wrap dev-scroll"><table><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th><th>request id</th></tr></thead><tbody id="devNetBody"></tbody></table></div></section>
@@ -177,11 +179,11 @@
               <label class="setting-row checkbox"><input type="checkbox" id="setAutoStop"><span>Stop the previous crawl automatically when navigating to a new page</span></label>
             </section>
             <section class="dev-card"><h4>Crawler preferences</h4>
-              <label class="setting-row"><span>Crawler robots</span><input type="number" id="setRobots" min="1" max="96" step="1"></label>
+              <label class="setting-row"><span>Global concurrency hint</span><input type="number" id="setGlobalConcurrency" min="1" max="32" step="1"></label>
               <label class="setting-row"><span>Per-host concurrency hint</span><input type="number" id="setHostConcurrency" min="1" max="8" step="1"></label>
               <label class="setting-row"><span>Request timeout hint (ms)</span><input type="number" id="setTimeout" min="1000" step="500"></label>
               <label class="setting-row checkbox"><input type="checkbox" id="setBrowserFallback"><span>Allow optional browser-render fallback when the server offers one</span></label>
-              <div class="setting-help">Each robot is a parallel crawler worker sharing the same priority frontier. More robots can improve crawl throughput when CPU/network and per-host limits allow it; they do not bypass robots.txt, rate limits, or site security controls. The server's Render setting is the hard ceiling.</div>
+              <div class="setting-help">These are client preferences/telemetry hints; server safety limits remain controlled by Render environment variables.</div>
             </section>
             <section class="dev-card"><h4>/dev and console</h4>
               <label class="setting-row"><span>Auto-refresh interval (ms)</span><input type="number" id="setDevInterval" min="500" step="250"></label>

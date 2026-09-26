@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS = {
   autoStopPrevious: true,
   devRefreshMs: 1500,
   consoleVerbosity: "all",
-  crawlerRobots: 12,
+  crawlerGlobalConcurrency: 12,
   crawlerHostConcurrency: 3,
   requestTimeoutMs: 15000,
   browserFallback: false
@@ -33,7 +33,7 @@ const state = {
   tabs: [], activeId: null, tabSeq: 0,
   logs: [], netLog: [], devTimer: null, devNetFilter: "all",
   bookmarked: new Set(Array.isArray(bookmarkList) ? bookmarkList.filter(x => typeof x === "string") : []),
-  clientLogQueue: [], clientLogTimer: null,
+  clientLogQueue: [], clientLogTimer: null, searchSuggestTimer: null,
   booted: false
 };
 function makeTab() {
@@ -318,7 +318,7 @@ async function startJobForTab(t, url, loadFrame = true) {
   showBrowser(); updateIdentity(url); setLoading(true, 16, "Connecting…");
   $("pageState").textContent = "Connecting…"; $("serverState").textContent = "Starting crawl"; $("serverState").className = "server-pill warn";
   try {
-    const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, robots: settings.crawlerRobots, perHostConcurrency: settings.crawlerHostConcurrency }) });
+    const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
     t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
     if (activeTab() === t) {
       updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
@@ -357,10 +357,7 @@ async function pollJob(t) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
       $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.links || 0} links · ${gb} GB scanned`;
       $("backendHealth").textContent = "Backend: online";
-      const robotActive = b.workers?.robots?.active ?? c.active ?? 0;
-      const robotMax = b.workers?.robots?.max ?? b.limits?.robots ?? "?";
-      const stateText = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
-      $("serverState").textContent = `${stateText} · ${robotActive}/${robotMax} robots`;
+      $("serverState").textContent = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
       $("serverState").className = "server-pill" + (b.done ? "" : " live");
       const denom = Math.max(1, (c.processed || 0) + (c.queued || 0) + 4); $("loadProgress").style.width = b.done ? "100%" : `${Math.min(88, 42 + ((c.processed || 0) / denom) * 45)}%`;
     }
@@ -414,36 +411,73 @@ async function loadLinks(t = activeTab()) {
 }
 
 // Search UI.
+async function loadSearchSuggestions(query) {
+  const list = $("searchSuggestions");
+  if (!list) return;
+  clearTimeout(state.searchSuggestTimer);
+  const q = String(query || "").trim();
+  if (!q) { list.innerHTML = ""; return; }
+  state.searchSuggestTimer = setTimeout(async () => {
+    try {
+      const { body } = await apiRequest(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 5000 });
+      const suggestions = Array.isArray(body?.suggestions) ? body.suggestions : [];
+      list.innerHTML = suggestions.map(x => `<option value="${esc(x)}"></option>`).join("");
+    } catch {}
+  }, 140);
+}
+async function loadSearchIndexStats() {
+  try {
+    const { body } = await apiRequest("/api/search/stats", { timeoutMs: 5000 });
+    const text = `${Number(body.documents || 0).toLocaleString()} pages · ${Number(body.domains || 0).toLocaleString()} domains · ${Number(body.terms || 0).toLocaleString()} terms`;
+    $("searchCoverage").textContent = `Veyra Index: ${text}`;
+    return body;
+  } catch (e) {
+    $("searchCoverage").textContent = "Veyra Index: status unavailable";
+    return null;
+  }
+}
 async function runSearch(query, reload = false, offset = 0) {
   const t = activeTab(); if (!t) return; t.searchQuery = String(query || "").trim(); t.searchData = offset && t.searchData ? t.searchData : null; t.searchOffset = offset;
   if (t.view !== "search") showSearch(t.searchQuery, !reload); else { $("searchInput").value = t.searchQuery; $("address").value = t.searchQuery; renderSearch(t.searchData || null); }
-  if (!t.searchQuery) { t.searchData = null; renderSearch(null); return; }
-  $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
+  if (!t.searchQuery) { t.searchData = null; renderSearch(null); await loadSearchIndexStats(); return; }
+  $("searchStat").textContent = "Searching Veyra…"; $("searchMeta").textContent = "Searching the local Veyra index.";
   try {
     const { body } = await apiRequest(`/api/search?q=${encodeURIComponent(t.searchQuery)}&offset=${offset}&limit=10`);
     if (offset && t.searchData) t.searchData.results = [...t.searchData.results, ...(body.results || [])]; else t.searchData = { ...body };
-    t.searchOffset = offset; renderSearch(t.searchData);
+    t.searchOffset = offset; renderSearch(t.searchData); loadSearchSuggestions(t.searchQuery);
   } catch (e) { renderSearchError(e); addLog("error", `Search failed: ${e.message}`, { requestId: e.requestId }); }
 }
 function renderSearch(data) {
   const t = activeTab(); if (!t || t.view !== "search") return;
   $("searchInput").value = t.searchQuery; $("address").value = t.searchQuery;
-  if (!data) { $("searchStat").textContent = t.searchQuery ? "Ready" : "Search"; $("searchMeta").textContent = "Type a question, topic, or keyword. URLs open in the Veyra browser."; $("searchResults").innerHTML = ""; $("searchMore").classList.add("hidden"); return; }
-  const count = data.total == null ? `${data.results.length}+` : data.total; $("searchStat").textContent = `${count} result${Number(data.total) === 1 ? "" : "s"}`;
-  $("searchMeta").textContent = `${data.responseTimeMs ?? "—"} ms · ${esc(data.provider || "Veyra")}${data.cached ? " · cached" : ""}`;
-  $("searchResults").innerHTML = (data.results || []).map((r, i) => `<article class="search-result" tabindex="0" data-result="${i}" data-url="${esc(r.url)}"><div class="result-source"><span class="result-icon">${r.favicon ? `<img src="${esc(r.favicon)}" alt="" onerror="this.remove()">` : ""}</span><div><b>${esc(r.title)}</b><div class="result-url">${esc(r.displayUrl || r.url)}</div></div></div><p>${esc(r.snippet || "No description available.")}</p><div class="result-actions"><button class="result-open" data-url="${esc(r.url)}">Open in Veyra</button></div></article>`).join("") || '<div class="empty">No results matched this query.</div>';
+  loadSearchSuggestions(t.searchQuery);
+  if (!data) {
+    $("searchStat").textContent = t.searchQuery ? "Ready" : "Search";
+    $("searchMeta").textContent = "Search words, phrases, domains, or use operators like site: and intitle:.";
+    $("searchResults").innerHTML = ""; $("searchMore").classList.add("hidden"); loadSearchIndexStats(); return;
+  }
+  const count = data.total == null ? `${data.results.length}+` : Number(data.total).toLocaleString();
+  $("searchStat").textContent = `${count} result${Number(data.total) === 1 ? "" : "s"}`;
+  const idx = data.indexStats || {};
+  const indexText = `${Number(idx.documents ?? data.indexSize ?? 0).toLocaleString()} indexed pages · ${Number(idx.domains ?? 0).toLocaleString()} domains`;
+  $("searchMeta").textContent = `${data.responseTimeMs ?? "—"} ms · ${data.provider === "local" ? "Veyra Index" : esc(data.provider || "Veyra")} · ${indexText}${data.cached ? " · cached" : ""}`;
+  $("searchCoverage").textContent = `Veyra Index: ${indexText} · ${Number(idx.terms || 0).toLocaleString()} searchable terms`;
+  $("searchResults").innerHTML = (data.results || []).map((r, i) => `<article class="search-result" tabindex="0" data-result="${i}" data-url="${esc(r.url)}"><div class="result-source"><span class="result-icon">${r.favicon ? `<img src="${esc(r.favicon)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span><div><b>${esc(r.title)}</b><div class="result-url">${esc(r.displayUrl || r.url)}</div><div class="result-domain">${esc(r.domain || hostOf(r.url))}${r.indexedAt ? ` · indexed ${new Date(r.indexedAt).toLocaleDateString()}` : ""}</div></div></div><p>${esc(r.snippet || "No description available.")}</p><div class="result-actions"><span class="result-source-label">Veyra Index</span><button class="result-open" data-url="${esc(r.url)}">Open in Veyra</button></div></article>`).join("") || `<div class="empty search-empty"><b>No indexed pages matched “${esc(t.searchQuery)}”.</b><p>Veyra does not fabricate results. Open a site and let its crawl complete, or configure INDEX_SEEDS on Render to grow Veyra's index automatically.</p><button class="secondary" id="searchOpenSite">Open a site to index</button></div>`;
   $("searchResults").querySelectorAll(".result-open").forEach(b => b.onclick = e => { e.stopPropagation(); openPage(b.dataset.url); });
   $("searchResults").querySelectorAll(".search-result").forEach(card => { card.onclick = e => { if (!e.target.closest("button")) openPage(card.dataset.url); }; });
+  $("searchResults").querySelector("#searchOpenSite")?.addEventListener("click", () => { $("address").focus(); $("address").select(); });
   const more = data.total == null || data.results?.length < data.total; $("searchMore").classList.toggle("hidden", !more);
   $("searchMore").onclick = () => runSearch(t.searchQuery, false, (t.searchData?.results || []).length);
 }
 function renderSearchError(e) {
-  $("searchStat").textContent = "Search unavailable";
-  $("searchMeta").textContent = e.code === "SEARCH_NOT_CONFIGURED" || e.status === 503 ? "Veyra Search is waiting for a configured provider or indexed content." : "The search provider returned an error.";
-  $("searchResults").innerHTML = `<div class="error-card"><b>Search could not complete.</b><p>${esc(e.message || e)}</p><button class="secondary" id="searchRetry">Retry</button><button class="secondary" id="searchCalc">Try Calculator</button></div>`;
+  $("searchStat").textContent = "Search error";
+  $("searchMeta").textContent = e.code === "SEARCH_EMPTY" ? "Enter a search query." : "Veyra's index or provider could not complete the request.";
+  $("searchResults").innerHTML = `<div class="error-card"><b>Veyra Search could not complete.</b><p>${esc(e.message || e)}</p><div class="error-actions"><button class="secondary" id="searchRetry">Retry</button><button class="secondary" id="searchOpenSite">Open a site to index</button><button class="secondary" id="searchCalc">Try Calculator</button></div></div>`;
   $("searchRetry").onclick = () => runSearch(activeTab()?.searchQuery || "", false, 0);
   $("searchCalc").onclick = () => showCalculator(activeTab()?.searchQuery || "");
+  $("searchOpenSite").onclick = () => { $("address").focus(); $("address").select(); };
   $("searchMore").classList.add("hidden");
+  loadSearchIndexStats();
 }
 
 function renderCalculator() {
@@ -469,16 +503,14 @@ async function refreshDev() {
   try {
     const [jobR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
     const j = jobR.body; const s = sysR.body;
-    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Robots|${j.workers?.robots?.active ?? j.counts.active} / ${j.workers?.robots?.max ?? j.limits.robots ?? "?"}`, `Host limit|${j.limits.perHostConcurrency}`, `Warm robots|${j.limits.proxyWarmRobots ?? "?"}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
-    $("devBarRobots").style.width = devPct(j.workers?.robots?.active ?? j.counts.active ?? 0, j.workers?.robots?.max ?? j.limits.robots ?? 1) + "%";
-    $("devBarRobotsLabel").textContent = `${j.workers?.robots?.active ?? j.counts.active ?? 0} / ${j.workers?.robots?.max ?? j.limits.robots ?? "?"}`;
+    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     $("devBarResources").style.width = devPct(j.counts.processed, j.limits.maxResources) + "%"; $("devBarResourcesLabel").textContent = `${j.counts.processed} / ${j.limits.maxResources}`;
     $("devBarScan").style.width = devPct(j.counts.bytesScanned, j.limits.maxScanBytes) + "%"; $("devBarScanLabel").textContent = `${fmtBytes(j.counts.bytesScanned)} / ${fmtBytes(j.limits.maxScanBytes)}`;
     $("devBarHtml").style.width = devPct(j.workers.html.active, j.workers.html.max) + "%"; $("devBarHtmlLabel").textContent = `${j.workers.html.active} / ${j.workers.html.max}`;
     $("devBarAsset").style.width = devPct(j.workers.asset.active, j.workers.asset.max) + "%"; $("devBarAssetLabel").textContent = `${j.workers.asset.active} / ${j.workers.asset.max}`;
     $("devRawJson").textContent = JSON.stringify(j, null, 2);
     await refreshDevJobs();
-    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Search index|${s.searchIndexEntries}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     renderServerRequests(reqR.body.requests || []);
   } catch (e) { $("devJobGrid").innerHTML = `<div class="empty dev-error">Backend diagnostics failed: ${esc(e.message || e)}</div>`; }
 }
@@ -560,7 +592,7 @@ function canonicalizePageMessageUrl(value) {
 
 function renderSettingsForm() {
   $("setSearchMode").value = settings.searchMode; $("setSearchEngine").value = settings.searchEngine; $("setHomepage").value = settings.homepage || ""; $("setConfirmClose").checked = !!settings.confirmCloseWithCrawl; $("setAutoStop").checked = settings.autoStopPrevious !== false;
-  $("setRobots").value = settings.crawlerRobots; $("setHostConcurrency").value = settings.crawlerHostConcurrency; $("setTimeout").value = settings.requestTimeoutMs; $("setBrowserFallback").checked = !!settings.browserFallback; $("setDevInterval").value = settings.devRefreshMs || 1500; $("setConsoleVerbosity").value = settings.consoleVerbosity || "all";
+  $("setGlobalConcurrency").value = settings.crawlerGlobalConcurrency; $("setHostConcurrency").value = settings.crawlerHostConcurrency; $("setTimeout").value = settings.requestTimeoutMs; $("setBrowserFallback").checked = !!settings.browserFallback; $("setDevInterval").value = settings.devRefreshMs || 1500; $("setConsoleVerbosity").value = settings.consoleVerbosity || "all";
 }
 function wireSettingsForm() {
   $("setSearchMode").onchange = e => { settings.searchMode = e.target.value; saveSettings(); addLog("info", `Search mode set to ${e.target.value}.`); };
@@ -568,7 +600,7 @@ function wireSettingsForm() {
   $("setHomepage").onchange = e => { settings.homepage = e.target.value.trim(); saveSettings(); };
   $("setConfirmClose").onchange = e => { settings.confirmCloseWithCrawl = e.target.checked; saveSettings(); };
   $("setAutoStop").onchange = e => { settings.autoStopPrevious = e.target.checked; saveSettings(); };
-  $("setRobots").onchange = e => { settings.crawlerRobots = Math.max(1, Math.min(96, Number(e.target.value) || 12)); saveSettings(); addLog("info", `Crawler robots set to ${settings.crawlerRobots}. New navigations use this value.`); };
+  $("setGlobalConcurrency").onchange = e => { settings.crawlerGlobalConcurrency = Math.max(1, Math.min(32, Number(e.target.value) || 12)); saveSettings(); };
   $("setHostConcurrency").onchange = e => { settings.crawlerHostConcurrency = Math.max(1, Math.min(8, Number(e.target.value) || 3)); saveSettings(); };
   $("setTimeout").onchange = e => { settings.requestTimeoutMs = Math.max(1000, Number(e.target.value) || 15000); saveSettings(); };
   $("setBrowserFallback").onchange = e => { settings.browserFallback = e.target.checked; saveSettings(); };
@@ -620,7 +652,10 @@ function wireApp() {
   $("devExportBtn").onclick = () => { const t = activeTab(); if (!t?.jobId) return addLog("warn", "No active crawl to export."); window.open(API + "/api/crawl/" + encodeURIComponent(t.jobId) + "/export", "_blank", "noopener"); };
   $("pageFrame").addEventListener("load", () => { const t = activeTab(); if (t?.url) { $("pageState").textContent = hostOf(t.url); setLoading(false); } });
   $("pageFrame").addEventListener("loadstart", () => setLoading(true, 60, "Rendering…"));
-  $("searchButton").onclick = () => runSearch($("searchInput").value, false, 0); $("searchInput").onkeydown = e => { if (e.key === "Enter") runSearch($("searchInput").value, false, 0); };
+  $("searchButton").onclick = () => runSearch($("searchInput").value, false, 0);
+  $("searchInput").oninput = e => loadSearchSuggestions(e.target.value);
+  $("searchInput").onkeydown = e => { if (e.key === "Enter") runSearch($("searchInput").value, false, 0); };
+  $("homeInput").oninput = e => loadSearchSuggestions(e.target.value);
   $("downloadBtn").onclick = () => { const t = activeTab(); if (t?.jobId) window.open(API + "/api/crawl/" + encodeURIComponent(t.jobId) + "/export", "_blank", "noopener"); else addLog("info", "There is no crawl export for this tab yet."); };
   $("fatalReload").onclick = () => location.reload(); $("fatalConsole").onclick = () => { $("fatalOverlay").classList.add("hidden"); setTool("consolePanel"); };
   wireSettingsForm(); setupCalculator(); setupConsoleCapture();

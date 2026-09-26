@@ -12,7 +12,8 @@ The frontend calls the Render backend at:
 - Explicit canonical/original URL state separated from the backend proxy URL.
 - Multi-tab history remains canonical and tab-local.
 - Veyra Search is first-class; normal text no longer redirects to Google unless the user explicitly selects external fallback mode in settings.
-- Search result UI supports provider/index metadata, loading/error/empty states, pagination/load-more, keyboard selection, and opens results through Veyra's browser/proxy.
+- Veyra Search presents first-party index coverage, result counts, response time, domains, snippets, favicons, indexed dates, pagination, query suggestions, keyboard navigation, and local search operators.
+- Empty search results explain that Veyra does not fabricate pages and show how opening a site grows the index; Render `INDEX_SEEDS` can grow it automatically in the background.
 - Built-in safe calculator uses a parser rather than `eval()` or `Function()`.
 - Centralized API wrapper with request timeouts, JSON/error handling, request IDs, and network diagnostics.
 - Browser console/error/unhandled-rejection/resource diagnostics are bounded and forwarded to the backend without recursive logging.
@@ -42,21 +43,3 @@ The frontend does not contain any search-provider API key.
 ## Resource fidelity update
 
 The proxy frontend now keeps canonical website URLs separate from internal `/api/view` URLs, and proxied pages unwrap accidental proxy-shaped history URLs before updating the Veyra address bar. The backend resource layer supports larger bounded image/media payloads, Range requests, source-origin referrer context, SVG references, `imagesrcset`, and common lazy-loading attributes.
-
-## Parallel crawler robots
-
-The Crawler preferences section now exposes a **Crawler robots** setting. A robot is one parallel worker consuming the shared backend crawl frontier. New navigations send the selected robot count to `/api/open`; the Render environment variable `CRAWLER_ROBOTS` is the server-side ceiling.
-
-For example, the Render service can be configured with:
-
-```text
-CRAWLER_ROBOTS=24
-CRAWLER_PER_HOST_CONCURRENCY=4
-PROXY_WARM_ROBOTS=12
-PROXY_WARM_LIMIT=64
-PROXY_WARM_PER_HOST=3
-```
-
-More robots can increase crawl throughput when the Render instance, network and target hosts can sustain the additional parallelism. Per-host limits, robots.txt, crawl delays, challenge detection, response-size limits and SSRF protection remain in force.
-
-The proxy also starts non-blocking page-resource warming. Warm robots fetch likely-needed images, stylesheets, scripts, fonts, media and other page resources into the short-lived proxy cache while the first document is already being rendered.
