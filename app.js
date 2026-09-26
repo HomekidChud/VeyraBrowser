@@ -23,19 +23,63 @@ const DEFAULT_SETTINGS = {
   crawlerGlobalConcurrency: 128,
   crawlerHostConcurrency: 8,
   requestTimeoutMs: 15000,
-  browserFallback: false
+  browserFallback: false,
+  downloadsMax: 200,
+  historyMax: 500,
+  extensionDeveloperMode: false
 };
 let settings = { ...DEFAULT_SETTINGS, ...safeJsonParse(safeStorageGet("veyra-settings", "{}"), {}) };
 function saveSettings() { safeStorageSet("veyra-settings", JSON.stringify(settings)); }
 
 const bookmarkList = safeJsonParse(safeStorageGet("veyra-bookmarks", "[]"), []);
+const historyList = safeJsonParse(safeStorageGet("veyra-history", "[]"), []);
+const downloadList = safeJsonParse(safeStorageGet("veyra-downloads", "[]"), []);
+const extensionList = safeJsonParse(safeStorageGet("veyra-extensions", "[]"), []);
+const BUILTIN_EXTENSIONS = [
+  { id: "veyra-focus", name: "Focus Toolbar", version: "1.0.0", description: "Reduces visual browser chrome while you read.", author: "Veyra", enabled: false, builtin: true },
+  { id: "veyra-reading", name: "Reading Surface", version: "1.0.0", description: "Adds a softer reading surface to Veyra.", author: "Veyra", enabled: false, builtin: true },
+  { id: "veyra-compact", name: "Compact UI", version: "1.0.0", description: "Tightens Veyra toolbar and tab spacing.", author: "Veyra", enabled: false, builtin: true }
+];
 const state = {
   tabs: [], activeId: null, tabSeq: 0,
   logs: [], netLog: [], devTimer: null, devNetFilter: "all",
   bookmarked: new Set(Array.isArray(bookmarkList) ? bookmarkList.filter(x => typeof x === "string") : []),
+  history: Array.isArray(historyList) ? historyList.filter(x => x && typeof x === "object").slice(0, 500) : [],
+  downloads: Array.isArray(downloadList) ? downloadList.filter(x => x && typeof x === "object").slice(0, 200) : [],
+  extensions: [...BUILTIN_EXTENSIONS, ...(Array.isArray(extensionList) ? extensionList.filter(x => x && typeof x === "object" && x.id && !BUILTIN_EXTENSIONS.some(b => b.id === x.id)) : [])],
   clientLogQueue: [], clientLogTimer: null, searchSuggestTimer: null,
+  inspectMode: false, downloadControllers: new Map(),
   booted: false
 };
+function saveHistory() { safeStorageSet("veyra-history", JSON.stringify(state.history.slice(0, settings.historyMax || 500))); }
+function saveDownloads() { safeStorageSet("veyra-downloads", JSON.stringify(state.downloads.slice(0, settings.downloadsMax || 200))); }
+function saveExtensions() { safeStorageSet("veyra-extensions", JSON.stringify(state.extensions)); }
+function recordHistory(kind, url, title = "") {
+  const value = String(url || ""); if (!value) return;
+  const previous = state.history[0];
+  const entry = { id: cryptoRandomId(), time: new Date().toISOString(), kind: String(kind || "page"), url: value, title: String(title || hostOf(value) || value).slice(0, 240) };
+  if (previous && previous.url === value && previous.kind === entry.kind) { previous.time = entry.time; previous.title = entry.title; saveHistory(); return; }
+  state.history.unshift(entry);
+  if (state.history.length > (settings.historyMax || 500)) state.history.length = settings.historyMax || 500;
+  saveHistory();
+}
+function activeExtensions() { return state.extensions.filter(x => x.enabled); }
+function applyExtensions() {
+  const browser = document.querySelector(".browser"); if (!browser) return;
+  const enabled = activeExtensions();
+  browser.classList.toggle("focus-extension", enabled.some(x => x.id === "veyra-focus"));
+  browser.classList.toggle("reading-extension", enabled.some(x => x.id === "veyra-reading"));
+  browser.classList.toggle("compact-extension", enabled.some(x => x.id === "veyra-compact"));
+  let style = document.getElementById("veyraExtensionStyles");
+  if (!style) { style = document.createElement("style"); style.id = "veyraExtensionStyles"; document.head.appendChild(style); }
+  const css = enabled.flatMap(x => Array.isArray(x.css) ? x.css : x.css ? [x.css] : []).filter(x => typeof x === "string").slice(0, 20);
+  style.textContent = css.join("\n/* --- extension boundary --- */\n").slice(0, 120000);
+}
+function showView(id) {
+  for (const x of ["homeView","browserView","searchView","calculatorView","downloadsView","historyView","extensionsView","toolView"]) $(x)?.classList.add("hidden");
+  $(id)?.classList.remove("hidden");
+}
+
 function makeTab() {
   return {
     id: "t" + (++state.tabSeq), title: "New Tab", favicon: "", url: "", proxyUrl: "", jobId: null, done: false,
@@ -62,6 +106,9 @@ function goRouteFromUrl() {
   const route = routeName();
   if (route === "/dev") setTool("devPanel", false);
   else if (route === "/settings") setTool("settingsPanel", false);
+  else if (route === "/downloads") showDownloads(false);
+  else if (route === "/history") showHistory(false);
+  else if (route === "/extensions") showExtensions(false);
   else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false);
   else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false);
   else if (location.hash === "#console") setTool("consolePanel", false);
@@ -152,11 +199,31 @@ async function apiRequest(path, options = {}) {
 function cryptoRandomId() { try { return crypto.randomUUID(); } catch { return "v-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); } }
 
 function setLoading(on, pct = 0, message = "Loading page…") {
-  const line = $("loadProgress"), box = $("frameLoader");
+  const line = $("loadProgress"), box = $("frameLoader"), btn = $("reloadBtn");
   if (!line || !box) return;
-  line.style.width = on ? `${Math.max(6, Math.min(100, pct))}%` : "0%";
-  box.classList.toggle("hidden", !on);
+  const active = !!on;
+  line.style.width = active ? `${Math.max(6, Math.min(100, pct))}%` : "0%";
+  box.classList.toggle("hidden", !active);
   $("frameLoaderText").textContent = message;
+  if (btn) {
+    btn.dataset.loading = active ? "1" : "0";
+    btn.title = active ? "Stop loading (Esc)" : "Reload (Ctrl/Cmd+R)";
+    btn.innerHTML = `<svg><use href="#${active ? "i-stop" : "i-reload"}"/></svg>`;
+    btn.onclick = active ? stopCurrentLoad : reloadActive;
+  }
+}
+async function stopCurrentLoad() {
+  const t = activeTab();
+  try { if (t?.jobId && !t.done) await stopJob(t.jobId, true); } catch {}
+  if (t?.poll) { clearInterval(t.poll); t.poll = null; }
+  if (t) { t.done = true; t.loading = false; }
+  const frame = $("pageFrame");
+  if (frame) { try { frame.contentWindow?.stop?.(); } catch {} frame.src = "about:blank"; }
+  $("pageState").textContent = "Stopped";
+  $("serverState").textContent = "Stopped";
+  $("serverState").className = "server-pill warn";
+  setLoading(false);
+  addLog("info", "Page loading stopped.");
 }
 function updateIdentity(url) {
   const address = $("address");
@@ -260,19 +327,19 @@ function newTabAction() { const t = makeTab(); state.tabs.push(t); state.activeI
 function cycleTab(delta) { if (state.tabs.length < 2) return; const i = state.tabs.findIndex(t => t.id === state.activeId); switchTab(state.tabs[(i + delta + state.tabs.length) % state.tabs.length].id); }
 function showHome(pushRoute = true) {
   const t = activeTab(); if (t) t.view = "home";
-  $("homeView").classList.remove("hidden"); $("browserView").classList.add("hidden"); $("searchView").classList.add("hidden"); $("calculatorView").classList.add("hidden"); $("toolView").classList.add("hidden");
+  showView("homeView");
   $("address").value = ""; $("scheme").textContent = "https"; $("pageState").textContent = "Ready"; setLoading(false);
   if (pushRoute) { location.hash = ""; setRoute("/"); }
   renderTabs();
 }
 function showBrowser() {
   const t = activeTab(); if (t) t.view = "browser";
-  $("homeView").classList.add("hidden"); $("browserView").classList.remove("hidden"); $("searchView").classList.add("hidden"); $("calculatorView").classList.add("hidden"); $("toolView").classList.add("hidden");
+  showView("browserView");
   setRoute("/", "", "replace");
 }
 function showSearch(query = "", pushRoute = true) {
   const t = activeTab(); if (!t) return; t.view = "search"; t.searchQuery = String(query || "");
-  $("homeView").classList.add("hidden"); $("browserView").classList.add("hidden"); $("calculatorView").classList.add("hidden"); $("toolView").classList.add("hidden"); $("searchView").classList.remove("hidden");
+  showView("searchView");
   $("address").value = t.searchQuery; $("scheme").textContent = "search"; $("starBtn").classList.remove("saved");
   $("searchInput").value = t.searchQuery;
   if (pushRoute) setRoute("/search", t.searchQuery ? `?q=${encodeURIComponent(t.searchQuery)}` : "", "push");
@@ -282,13 +349,92 @@ function showSearch(query = "", pushRoute = true) {
 }
 function showCalculator(expression = "", pushRoute = true) {
   const t = activeTab(); if (!t) return; t.view = "calculator"; t.calcExpression = String(expression || "");
-  $("homeView").classList.add("hidden"); $("browserView").classList.add("hidden"); $("searchView").classList.add("hidden"); $("toolView").classList.add("hidden"); $("calculatorView").classList.remove("hidden");
+  showView("calculatorView");
   $("address").value = t.calcExpression || "Veyra Calculator"; $("scheme").textContent = "calc"; $("starBtn").classList.remove("saved"); $("calcInput").value = t.calcExpression;
   if (pushRoute) setRoute("/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : "", "push");
   renderCalculator(); renderTabs();
 }
+function showDownloads(pushRoute = true) {
+  const t = activeTab(); if (t) t.view = "downloads"; showView("downloadsView");
+  $("address").value = "Veyra Downloads"; $("scheme").textContent = "downloads"; $("starBtn").classList.remove("saved");
+  if (pushRoute) setRoute("/downloads"); renderDownloads(); renderTabs();
+}
+function showHistory(pushRoute = true) {
+  const t = activeTab(); if (t) t.view = "history"; showView("historyView");
+  $("address").value = "Veyra History"; $("scheme").textContent = "history"; $("starBtn").classList.remove("saved");
+  if (pushRoute) setRoute("/history"); renderHistory(); renderTabs();
+}
+function showExtensions(pushRoute = true) {
+  const t = activeTab(); if (t) t.view = "extensions"; showView("extensionsView");
+  $("address").value = "Veyra Extensions"; $("scheme").textContent = "extensions"; $("starBtn").classList.remove("saved");
+  if (pushRoute) setRoute("/extensions"); renderExtensions(); renderTabs();
+}
+function toggleInspect(enabled = true) {
+  const frame = $("pageFrame"), drawer = $("inspectDrawer"); if (!drawer) return;
+  drawer.classList.toggle("hidden", !enabled); $("inspectHighlight")?.classList.toggle("hidden", !enabled);
+  state.inspectMode = !!enabled; closeMenu();
+  if (frame?.contentWindow) frame.contentWindow.postMessage({ type: "veyra:inspect", enabled: !!enabled }, new URL(API).origin);
+  if (enabled) addLog("info", "Inspect mode enabled."); else addLog("info", "Inspect mode disabled.");
+}
+
+function renderDownloads() {
+  const box = $("downloadsList"); if (!box) return;
+  if (!state.downloads.length) { box.innerHTML = '<div class="empty">No downloads yet.</div>'; return; }
+  box.innerHTML = state.downloads.map(d => `<article class="utility-item"><div class="utility-icon">↓</div><div class="utility-main"><b>${esc(d.name || "Download")}</b><span>${esc(d.url || "")} · ${esc(d.status || "queued")}${d.total ? ` · ${Math.round((d.received||0)/d.total*100)}%` : ""}</span></div><time>${esc(new Date(d.time || Date.now()).toLocaleString())}</time><div class="utility-actions"><button class="secondary tiny" data-redownload="${esc(d.url || "")}">Download again</button>${state.downloadControllers.has(d.id) ? `<button class="danger tiny" data-cancel-download="${esc(d.id)}">Cancel</button>` : ""}</div></article>`).join("");
+  box.querySelectorAll("[data-redownload]").forEach(b => b.onclick = () => startDownload(b.dataset.redownload, "Download"));
+  box.querySelectorAll("[data-cancel-download]").forEach(b => b.onclick = () => cancelDownload(b.dataset.cancelDownload));
+}
+function renderHistory() {
+  const box = $("historyList"); if (!box) return;
+  if (!state.history.length) { box.innerHTML = '<div class="empty">No history yet.</div>'; return; }
+  box.innerHTML = state.history.map(h => `<article class="utility-item"><div class="utility-icon">${h.kind === "search" ? "⌕" : h.kind === "calculator" ? "∑" : "◌"}</div><div class="utility-main"><b>${esc(h.title || h.url)}</b><span>${esc(h.url)}</span></div><time>${esc(new Date(h.time || Date.now()).toLocaleString())}</time><button class="secondary tiny" data-history-url="${esc(h.url)}">Open</button></article>`).join("");
+  box.querySelectorAll("[data-history-url]").forEach(b => b.onclick = () => { const h = state.history.find(x => x.url === b.dataset.historyUrl); if (!h) return; if (h.kind === "search") showSearch(String(h.url).replace(/^search:/, "")); else if (h.kind === "calculator") showCalculator(String(h.url).replace(/^calc:/, "")); else openPage(h.url); });
+}
+const EXT_STORE = [
+  { id: "veyra-focus", name: "Focus Toolbar", version: "1.0.0", description: "Softens the Veyra browser chrome for reading." },
+  { id: "veyra-reading", name: "Reading Surface", version: "1.0.0", description: "Adds a calmer reading surface around proxied pages." },
+  { id: "veyra-compact", name: "Compact UI", version: "1.0.0", description: "Reduces toolbar and tab spacing." },
+  { id: "veyra-shortcuts", name: "Power Shortcuts", version: "1.0.0", description: "Adds built-in keyboard shortcut hints and navigation helpers." }
+];
+function renderExtensions() {
+  const box = $("extensionsGrid"), store = $("extensionStoreGrid"); if (!box || !store) return;
+  box.innerHTML = state.extensions.map(x => `<article class="extension-card"><div class="extension-icon">${esc((x.name || "V").slice(0,1).toUpperCase())}</div><div class="extension-main"><h3>${esc(x.name || x.id)}</h3><p>${esc(x.description || "Veyra extension")}</p><span>v${esc(x.version || "1.0.0")} · ${esc(x.author || "Developer")}</span></div><label class="extension-toggle"><input type="checkbox" data-ext-toggle="${esc(x.id)}" ${x.enabled ? "checked" : ""}><i></i></label></article>`).join("") || '<div class="empty">No extensions installed.</div>';
+  box.querySelectorAll("[data-ext-toggle]").forEach(i => i.onchange = () => toggleExtension(i.dataset.extToggle, i.checked));
+  store.innerHTML = EXT_STORE.map(x => { const installed = state.extensions.some(e => e.id === x.id); return `<article class="extension-card"><div class="extension-icon">${esc(x.name.slice(0,1))}</div><div class="extension-main"><h3>${esc(x.name)}</h3><p>${esc(x.description)}</p><span>v${esc(x.version)} · Veyra Store</span></div><button class="secondary tiny" data-store-install="${esc(x.id)}">${installed ? "Installed" : "Add"}</button></article>`; }).join("");
+  store.querySelectorAll("[data-store-install]").forEach(b => b.onclick = () => installStoreExtension(b.dataset.storeInstall));
+  $("extensionDeveloperMode").checked = !!settings.extensionDeveloperMode; $("extensionDevCard").classList.toggle("hidden", !settings.extensionDeveloperMode);
+}
+function toggleExtension(id, enabled) { const x = state.extensions.find(e => e.id === id); if (!x) return; x.enabled = !!enabled; saveExtensions(); applyExtensions(); renderExtensions(); addLog("info", `${x.name} ${enabled ? "enabled" : "disabled"}.`); }
+function installStoreExtension(id) { const store = EXT_STORE.find(x => x.id === id); if (!store) return; let x = state.extensions.find(e => e.id === id); if (!x) { x = { ...store, author: "Veyra Store", builtin: true, enabled: false }; state.extensions.push(x); } x.enabled = true; saveExtensions(); applyExtensions(); renderExtensions(); addLog("info", `${x.name} installed and enabled.`); }
+async function startDownload(url, name = "Download") {
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  const t = activeTab(); const sid = t?.proxySessionId || "";
+  const item = { id: cryptoRandomId(), time: new Date().toISOString(), url, name, status: "starting", received: 0, total: 0 };
+  state.downloads.unshift(item);
+  if (state.downloads.length > (settings.downloadsMax || 200)) state.downloads.length = settings.downloadsMax || 200;
+  saveDownloads(); renderDownloads();
+  const controller = new AbortController(); state.downloadControllers.set(item.id, controller);
+  const q = `${API}/api/download?url=${encodeURIComponent(url)}${sid ? `&sid=${encodeURIComponent(sid)}` : ""}`;
+  try {
+    const response = await rawFetch(q, { headers: { "X-Veyra-Request-ID": cryptoRandomId() }, signal: controller.signal });
+    if (!response.ok) { let msg = `HTTP ${response.status}`; try { const j = await response.json(); msg = j.error || msg; } catch {} throw new Error(msg); }
+    item.total = Number(response.headers.get("content-length") || 0);
+    const disposition = response.headers.get("content-disposition") || "";
+    const m = disposition.match(/filename(?:\*|)=(?:UTF-8''|)?["']?([^"';]+)["']?/i); if (m && m[1]) item.name = decodeURIComponent(m[1]);
+    const reader = response.body?.getReader(); const chunks = [];
+    if (reader) { for (;;) { const part = await reader.read(); if (part.done) break; chunks.push(part.value); item.received += part.value.byteLength; item.status = item.total ? `${Math.floor(item.received / item.total * 100)}%` : `${Math.round(item.received / 1024)} KB`; renderDownloads(); } }
+    else chunks.push(new Uint8Array(await response.arrayBuffer()));
+    const blob = new Blob(chunks, { type: response.headers.get("content-type") || "application/octet-stream" });
+    const objectUrl = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = objectUrl; a.download = item.name || name || "download"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(objectUrl), 20000);
+    item.status = "complete";
+    addLog("info", `Download complete: ${item.name}`);
+  } catch (e) { item.status = e?.name === "AbortError" ? "cancelled" : `error: ${e.message}`; addLog("error", `Download failed: ${e.message}`); }
+  finally { state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); }
+}
+function cancelDownload(id) { const c = state.downloadControllers.get(id); if (c) c.abort(); }
+
 function setTool(panel, pushRoute = true) {
-  $("homeView").classList.add("hidden"); $("browserView").classList.add("hidden"); $("searchView").classList.add("hidden"); $("calculatorView").classList.add("hidden"); $("toolView").classList.remove("hidden");
+  showView("toolView");
   document.querySelectorAll(".tool-tab").forEach(x => x.classList.toggle("active", x.dataset.panel === panel));
   ["sourcePanel", "linkPanel", "consolePanel", "devPanel", "settingsPanel"].forEach(id => $(id).classList.toggle("hidden", id !== panel));
   if (panel === "sourcePanel") renderResources();
@@ -311,6 +457,9 @@ function restoreTabView(t) {
     setLoading(!t.done && !!t.jobId, 52, "Loading page…");
   } else if (t.view === "search") showSearch(t.searchQuery, false);
   else if (t.view === "calculator") showCalculator(t.calcExpression || "", false);
+  else if (t.view === "downloads") showDownloads(false);
+  else if (t.view === "history") showHistory(false);
+  else if (t.view === "extensions") showExtensions(false);
   else showHome(false);
 }
 
@@ -323,6 +472,7 @@ async function startJobForTab(t, url, loadFrame = true) {
   try {
     const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
     t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
+    recordHistory("page", t.url, t.title);
     if (activeTab() === t) {
       updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
       if (loadFrame) $("pageFrame").src = proxyUrl(t.url, "view", t.proxySessionId);
@@ -360,9 +510,9 @@ async function pollJob(t) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
       const w = b.workers || {};
       const rm = b.robotMesh?.summary || {};
-      $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.data || 0} data · ${c.assets || 0} assets · ${c.links || 0} links · ${w.logicalRobots || 0} robots · ${rm.multitaskingRobots || 0} multitasking · ${rm.helpAccepted || 0} help accepted · ${w.networkSlots || 0} net slots · ${gb} GB scanned`;
+      $("crawlSummary").textContent = b.done ? "Ready" : "Loading…";
       $("backendHealth").textContent = "Backend: online";
-      $("serverState").textContent = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
+      $("serverState").textContent = b.done ? "Ready" : "Loading";
       $("serverState").className = "server-pill" + (b.done ? "" : " live");
       const denom = Math.max(1, (c.processed || 0) + (c.queued || 0) + 4); $("loadProgress").style.width = b.done ? "100%" : `${Math.min(88, 42 + ((c.processed || 0) / denom) * 45)}%`;
     }
@@ -585,6 +735,10 @@ async function handlePageMessage(e) {
   if (d.type === "veyra:unsupported") { addLog("warn", d.reason || "Unsupported page operation.", { pageUrl: d.pageUrl || t.url }); return; }
   if (d.type === "veyra:page-console") { addLog(d.level || "info", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || ""}`, { pageUrl: d.pageUrl || t.url, tabId: t.id, jobId: t.jobId }); return; }
   if (d.type === "veyra:page-error") { addLog("error", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || "Resource error"} @ ${d.url || "inline"}:${d.line || "?"}`, { pageUrl: d.pageUrl || t.url, line: d.line, column: d.column, stack: d.stack || "", tabId: t.id, jobId: t.jobId }); return; }
+  if (d.type === "veyra:inspect-state") { state.inspectMode = !!d.enabled; return; }
+  if (d.type === "veyra:inspect-hover" || d.type === "veyra:inspect-select") { renderInspectData(d); return; }
+  if (d.type === "veyra:find-result") { $("findCount") && ($("findCount").textContent = `${Number(d.matches || 0).toLocaleString()} ${Number(d.matches || 0) === 1 ? "match" : "matches"}`); return; }
+  if (d.type === "veyra:browser-network") { addLog(d.level || "debug", `[network:${hostOf(d.pageUrl || t.url)}] ${d.method || "GET"} ${d.url || ""} ${d.status || ""}`, { pageUrl: d.pageUrl || t.url }); return; }
   if (d.type === "veyra:form" && d.url) { await submitProxyForm(d); return; }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonicalizePageMessageUrl(d.url); if (!target) return;
@@ -611,6 +765,22 @@ function canonicalizePageMessageUrl(value) {
     return u.href;
   } catch { return ""; }
 }
+
+function formatInspectCss(obj) { return Object.entries(obj || {}).map(([k,v]) => `${k}: ${v};`).join("\n"); }
+function renderInspectData(d) {
+  const drawer = $("inspectDrawer"), frame = $("pageFrame"), wrap = $("frameWrap"), hi = $("inspectHighlight"); if (!drawer || !d) return;
+  $("inspectTargetName").textContent = `<${d.tag || "element"}>${d.id ? "#"+d.id : ""}${d.classes ? "."+String(d.classes).trim().split(/\s+/).slice(0,3).join(".") : ""}`;
+  $("inspectOuterHtml").textContent = d.outerHTML || "[no markup available]";
+  const parent = d.parent ? `<div class="inspect-node muted"><span>↳ parent</span><code>${esc((d.parent.tag || "element") + (d.parent.id ? "#" + d.parent.id : ""))}</code><small>${esc(d.parent.path || "")}</small></div>` : "";
+  const children = Array.isArray(d.children) ? d.children.slice(0, 32).map(x => `<div class="inspect-node"><span>↳ child</span><code>${esc(x)}</code></div>`).join("") : "";
+  $("inspectTree").innerHTML = `<div class="inspect-path"><b>DOM path</b><code>${esc(d.path || "")}</code></div>${parent}<div class="inspect-node selected"><span>● selected</span><code>&lt;${esc(d.tag || "element")}&gt;${d.id ? "#"+esc(d.id) : ""}${d.classes ? "."+esc(String(d.classes).trim().split(/\s+/).slice(0,3).join(".")) : ""}</code></div><div class="inspect-attrs">${Object.entries(d.attrs || {}).map(([k,v]) => `<span><b>${esc(k)}</b> <code>${esc(v)}</code></span>`).join("") || "No attributes"}</div>${children ? `<div class="inspect-children"><b>Children (${Math.min(32, d.children.length)})</b>${children}</div>` : ""}`;
+  $("inspectStyles").textContent = formatInspectCss(d.styles);
+  $("inspectComputed").textContent = formatInspectCss(d.computed);
+  const r=d.rect||{}; $("inspectLayout").textContent = [`x: ${Math.round(r.x||0)}`,`y: ${Math.round(r.y||0)}`,`width: ${Math.round(r.width||0)}`,`height: ${Math.round(r.height||0)}`,`scrollWidth: ${d.scrollWidth||0}`,`scrollHeight: ${d.scrollHeight||0}`,`document: ${d.pageUrl||activeTab()?.url||""}`].join("\n");
+  if (hi && frame && wrap && r) { const fr=frame.getBoundingClientRect(), wr=wrap.getBoundingClientRect(); hi.style.left=`${Math.max(0,fr.left-wr.left+(r.x||0))}px`; hi.style.top=`${Math.max(0,fr.top-wr.top+(r.y||0))}px`; hi.style.width=`${Math.max(0,r.width||0)}px`; hi.style.height=`${Math.max(0,r.height||0)}px`; hi.classList.remove("hidden"); }
+}
+function clearInspectHighlight(){ $("inspectHighlight")?.classList.add("hidden"); }
+function setInspectTab(tab) { const map={elements:"inspectElementsPanel",styles:"inspectStylesPanel",computed:"inspectComputedPanel",layout:"inspectLayoutPanel"}; Object.entries(map).forEach(([k,id])=>$(id)?.classList.toggle("hidden",k!==tab)); document.querySelectorAll("[data-inspect-tab]").forEach(b=>b.classList.toggle("active",b.dataset.inspectTab===tab)); }
 
 function renderSettingsForm() {
   $("setSearchMode").value = settings.searchMode; $("setSearchEngine").value = settings.searchEngine; $("setHomepage").value = settings.homepage || ""; $("setConfirmClose").checked = !!settings.confirmCloseWithCrawl; $("setAutoStop").checked = settings.autoStopPrevious !== false;
@@ -656,32 +826,61 @@ function showFatal(error) {
   const overlay = $("fatalOverlay"); if (!overlay) return;
   overlay.classList.remove("hidden"); $("fatalMessage").textContent = String(error?.message || error || "Unknown error");
 }
+function pageCommand(type, payload = {}) {
+  const frame = $("pageFrame"); if (!frame?.contentWindow) return false;
+  try { frame.contentWindow.postMessage({ type, ...payload }, new URL(API).origin); return true; } catch { return false; }
+}
+function printCurrentPage() {
+  if (!activeTab()?.url) { addLog("warn", "No page to print."); return; }
+  if (!pageCommand("veyra:print")) addLog("warn", "The current page cannot be printed yet.");
+}
+function updateFindBar() {
+  const bar = $("findBar"), input = $("findInput"); if (!bar || !input) return;
+  bar.classList.remove("hidden"); input.focus(); input.select();
+  sendFindQuery(input.value);
+}
+function closeFindBar() { $("findBar")?.classList.add("hidden"); pageCommand("veyra:find-close"); $("address")?.focus(); }
+function sendFindQuery(query, direction = "forward") {
+  const q = String(query || "").slice(0, 200);
+  pageCommand("veyra:find", { query: q, direction });
+}
+function findInPage() { updateFindBar(); }
 function wireApp() {
   $("address").onkeydown = e => { if (e.key === "Enter") openPage($("address").value); };
-  $("homeBrowse").onclick = () => openPage($("homeInput").value);
-  $("homeInput").onkeydown = e => { if (e.key === "Enter") openPage($("homeInput").value); };
-  document.querySelectorAll(".shortcuts [data-url]").forEach(b => b.onclick = () => openPage(b.dataset.url));
-  document.querySelectorAll(".shortcuts [data-tool]").forEach(b => b.onclick = () => showCalculator());
+  $("homeBrowse").onclick = () => openPage($("homeInput").value); $("homeInput").onkeydown = e => { if (e.key === "Enter") openPage($("homeInput").value); };
+  document.querySelectorAll(".shortcuts [data-url]").forEach(b => b.onclick = () => openPage(b.dataset.url)); document.querySelectorAll(".shortcuts [data-tool]").forEach(b => b.onclick = () => showCalculator());
   $("homeBtn").onclick = () => showHome(); $("newTab").onclick = newTabAction; $("reloadBtn").onclick = reloadActive;
-  $("backBtn").onclick = () => { const t = activeTab(); if (!t || t.histIndex <= 0) return; t.histIndex--; const target = t.history[t.histIndex]; if (target?.startsWith("search:")) showSearch(target.slice(7)); else if (target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target, false); };
-  $("forwardBtn").onclick = () => { const t = activeTab(); if (!t || t.histIndex >= t.history.length - 1) return; t.histIndex++; const target = t.history[t.histIndex]; if (target?.startsWith("search:")) showSearch(target.slice(7)); else if (target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target, false); };
-  $("starBtn").onclick = saveBookmark; $("toolsMenuBtn").onclick = () => setTool("sourcePanel"); document.querySelectorAll(".tool-tab").forEach(x => x.onclick = () => setTool(x.dataset.panel));
+  $("backBtn").onclick = () => { const t=activeTab(); if(!t||t.histIndex<=0)return; t.histIndex--; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
+  $("forwardBtn").onclick = () => { const t=activeTab(); if(!t||t.histIndex>=t.history.length-1)return; t.histIndex++; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
+  $("starBtn").onclick = saveBookmark; $("toolsMenuBtn").onclick = toggleMenu; document.querySelectorAll(".tool-tab").forEach(x=>x.onclick=()=>setTool(x.dataset.panel));
   $("backToPage").onclick = () => restoreTabView(activeTab()); $("menuBtn").onclick = toggleMenu;
-  $("menuSource").onclick = () => { closeMenu(); setTool("sourcePanel"); }; $("menuLinks").onclick = () => { closeMenu(); setTool("linkPanel"); }; $("menuConsole").onclick = () => { closeMenu(); setTool("consolePanel"); }; $("menuDev").onclick = () => { closeMenu(); setTool("devPanel"); }; $("menuSettings").onclick = () => { closeMenu(); setTool("settingsPanel"); }; $("menuCalculator").onclick = () => { closeMenu(); showCalculator(); }; $("menuSearch").onclick = () => { closeMenu(); showSearch(); }; $("menuHome").onclick = () => { closeMenu(); newTabAction(); };
-  $("consoleFilter").onchange = renderConsole; $("clearConsole").onclick = () => { state.logs = []; renderConsole(); addLog("info", "Console cleared."); };
-  $("copyConsole").onclick = async () => { try { await navigator.clipboard.writeText(state.logs.map(x => `[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n")); addLog("info", "Console copied."); } catch (e) { addLog("error", `Copy failed: ${e.message}`); } };
-  $("devRefreshBtn").onclick = refreshDev; $("devStopBtn").onclick = () => { const t = activeTab(); if (t?.jobId) stopJob(t.jobId); else addLog("warn", "No active crawl to stop."); }; $("devAutoRefresh").onchange = startDevAuto; $("devNetFilter").onchange = e => { state.devNetFilter = e.target.value; renderDevNet(); }; $("devNetClear").onclick = () => { state.netLog = []; renderDevNet(); }; $("devCopyJsonBtn").onclick = async () => { try { await navigator.clipboard.writeText($("devRawJson").textContent || ""); addLog("info", "Raw job JSON copied."); } catch (e) { addLog("error", `Copy failed: ${e.message}`); } };
-  $("devExportBtn").onclick = () => { const t = activeTab(); if (!t?.jobId) return addLog("warn", "No active crawl to export."); window.open(API + "/api/crawl/" + encodeURIComponent(t.jobId) + "/export", "_blank", "noopener"); };
-  $("pageFrame").addEventListener("load", () => { const t = activeTab(); if (t?.url) { $("pageState").textContent = hostOf(t.url); setLoading(false); } });
-  $("pageFrame").addEventListener("loadstart", () => setLoading(true, 60, "Rendering…"));
-  $("searchButton").onclick = () => runSearch($("searchInput").value, false, 0);
-  $("searchInput").oninput = e => loadSearchSuggestions(e.target.value);
-  $("searchInput").onkeydown = e => { if (e.key === "Enter") runSearch($("searchInput").value, false, 0); };
-  $("homeInput").oninput = e => loadSearchSuggestions(e.target.value);
-  $("downloadBtn").onclick = () => { const t = activeTab(); if (t?.jobId) window.open(API + "/api/crawl/" + encodeURIComponent(t.jobId) + "/export", "_blank", "noopener"); else addLog("info", "There is no crawl export for this tab yet."); };
-  $("fatalReload").onclick = () => location.reload(); $("fatalConsole").onclick = () => { $("fatalOverlay").classList.add("hidden"); setTool("consolePanel"); };
-  wireSettingsForm(); setupCalculator(); setupConsoleCapture();
+  $("menuInspect").onclick=()=>{ toggleInspect(!state.inspectMode); closeMenu(); }; $("menuFind").onclick=()=>{closeMenu();findInPage()}; $("menuPrint").onclick=()=>{closeMenu();printCurrentPage()}; $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")}; $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")}; $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")}; $("menuDev").onclick=()=>{closeMenu();setTool("devPanel")}; $("menuSettings").onclick=()=>{closeMenu();setTool("settingsPanel")}; $("menuDownloads").onclick=()=>{closeMenu();showDownloads()}; $("menuHistory").onclick=()=>{closeMenu();showHistory()}; $("menuExtensions").onclick=()=>{closeMenu();showExtensions()}; $("menuCalculator").onclick=()=>{closeMenu();showCalculator()}; $("menuSearch").onclick=()=>{closeMenu();showSearch()}; $("menuHome").onclick=()=>{closeMenu();newTabAction()};
+  $("consoleFilter").onchange=renderConsole; $("clearConsole").onclick=()=>{state.logs=[];renderConsole();addLog("info","Console cleared.")};
+  $("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
+  $("devRefreshBtn").onclick=refreshDev; $("devStopBtn").onclick=()=>{const t=activeTab();if(t?.jobId)stopJob(t.jobId);else addLog("warn","No active crawl to stop.")}; $("devAutoRefresh").onchange=startDevAuto; $("devNetFilter").onchange=e=>{state.devNetFilter=e.target.value;renderDevNet()}; $("devNetClear").onclick=()=>{state.netLog=[];renderDevNet()}; $("devCopyJsonBtn").onclick=async()=>{try{await navigator.clipboard.writeText($("devRawJson").textContent||"");addLog("info","Raw job JSON copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
+  $("devExportBtn").onclick=()=>{const t=activeTab();if(!t?.jobId)return addLog("warn","No active crawl to export.");window.open(API+"/api/crawl/"+encodeURIComponent(t.jobId)+"/export","_blank","noopener")};
+  $("pageFrame").addEventListener("load",()=>{const t=activeTab();if(t?.url){$("pageState").textContent=hostOf(t.url);setLoading(false);if(state.inspectMode)toggleInspect(true)}}); $("pageFrame").addEventListener("loadstart",()=>setLoading(true,60,"Rendering…"));
+  $("searchButton").onclick=()=>runSearch($("searchInput").value,false,0); $("searchInput").oninput=e=>loadSearchSuggestions(e.target.value); $("searchInput").onkeydown=e=>{if(e.key==="Enter")runSearch($("searchInput").value,false,0)}; $("homeInput").oninput=e=>loadSearchSuggestions(e.target.value);
+  $("downloadBtn").onclick=()=>{const t=activeTab();if(t?.url)startDownload(t.url,`${hostOf(t.url)}-page`);else showDownloads()};
+  $("clearDownloadsBtn").onclick=()=>{for(const c of state.downloadControllers.values())c.abort();state.downloads=[];saveDownloads();renderDownloads()}; $("clearHistoryBtn").onclick=()=>{state.history=[];saveHistory();renderHistory()};
+  $("findInput").oninput=e=>sendFindQuery(e.target.value); $("findInput").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();sendFindQuery(e.target.value,e.shiftKey?"backward":"forward")}else if(e.key==="Escape"){e.preventDefault();closeFindBar()}}; $("findNext").onclick=()=>sendFindQuery($("findInput").value,"forward"); $("findPrev").onclick=()=>sendFindQuery($("findInput").value,"backward"); $("findClose").onclick=closeFindBar;
+  $("extensionStoreBtn").onclick=()=>{$("extensionStore").classList.toggle("hidden");}; $("extensionDevBtn").onclick=()=>{settings.extensionDeveloperMode=!settings.extensionDeveloperMode;saveSettings();renderExtensions();if(settings.extensionDeveloperMode)$('extensionDevCard').scrollIntoView({behavior:'smooth',block:'nearest'});};
+  $("extensionDeveloperMode").onchange=e=>{settings.extensionDeveloperMode=e.target.checked;saveSettings();renderExtensions()}; $("loadExtensionBtn").onclick=()=>{if(!settings.extensionDeveloperMode){addLog("warn","Enable Developer mode first.");return;} $("extensionFile").click()};
+  $("extensionFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const data=safeJsonParse(await file.text(),null);const ext=validateExtensionManifest(data);const existing=state.extensions.find(x=>x.id===ext.id);if(existing)Object.assign(existing,ext,{enabled:existing.enabled});else state.extensions.push(ext);saveExtensions();applyExtensions();renderExtensions();addLog("info",`Loaded extension ${ext.name}.`)}catch(err){addLog("error",`Extension load failed: ${err.message}`)}finally{e.target.value=""}};
+  $("exportExtensionsBtn").onclick=()=>exportExtensions();
+  $("inspectCloseBtn").onclick=()=>toggleInspect(false); document.querySelectorAll("[data-inspect-tab]").forEach(b=>b.onclick=()=>setInspectTab(b.dataset.inspectTab));
+  $("fatalReload").onclick=()=>location.reload(); $("fatalConsole").onclick=()=>{$("fatalOverlay").classList.add("hidden");setTool("consolePanel")}; wireSettingsForm();setupCalculator();setupConsoleCapture();
 }
+function validateExtensionManifest(data){
+  if(!data||typeof data!=="object")throw new Error("Manifest must be a JSON object.");
+  const id=String(data.id||"").trim(); const name=String(data.name||"").trim(); const version=String(data.version||"1.0.0").trim();
+  if(!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(id))throw new Error("Invalid extension id."); if(!name||name.length>80)throw new Error("Invalid extension name.");
+  if(data.script||data.js||data.background||data.contentScript||data.permissions?.includes?.("network"))throw new Error("This Veyra extension format does not allow arbitrary script/network access.");
+  const css=Array.isArray(data.css)?data.css.filter(x=>typeof x==="string"):typeof data.css==="string"?[data.css]:[];
+  return {id,name,version,description:String(data.description||"").slice(0,500),author:String(data.author||"Developer").slice(0,80),css:css.map(x=>x.slice(0,20000)).slice(0,8),permissions:Array.isArray(data.permissions)?data.permissions.filter(x=>typeof x==="string").slice(0,12):[],enabled:false,builtin:false,developer:true};
+}
+function exportExtensions(){const blob=new Blob([JSON.stringify(state.extensions,null,2)],{type:"application/json"});const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download="veyra-extensions.json";a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+
 
 window.addEventListener("message", e => handlePageMessage(e).catch(err => addLog("error", `Page message handling failed: ${err.message}`)));
 window.addEventListener("error", e => addLog("error", `Frontend error: ${e.message} @ ${e.filename || "inline"}:${e.lineno || "?"}`, { line: e.lineno, column: e.colno, stack: e.error?.stack || "" }));
@@ -694,7 +893,8 @@ window.addEventListener("keydown", e => {
   if ((mod && key === "w") || (e.altKey && key === "w")) { e.preventDefault(); closeTab(state.activeId); return; } if ((mod && key === "tab" && !e.shiftKey) || (e.altKey && key === "]")) { e.preventDefault(); cycleTab(1); return; }
   if ((mod && key === "tab" && e.shiftKey) || (e.altKey && key === "[")) { e.preventDefault(); cycleTab(-1); return; } if ((mod && key === "l") || (!typing && key === "/")) { e.preventDefault(); $("address").focus(); $("address").select(); return; }
   if (mod && key === "d") { e.preventDefault(); saveBookmark(); return; } if (mod && e.shiftKey && key === "d") { e.preventDefault(); setTool("devPanel"); return; } if (mod && key === ",") { e.preventDefault(); setTool("settingsPanel"); return; }
-  if (!typing && key === "escape") { const t = activeTab(); if (t?.jobId && !t.done) stopJob(t.jobId); return; } if (e.altKey && key === "arrowleft") { e.preventDefault(); $("backBtn").click(); } if (e.altKey && key === "arrowright") { e.preventDefault(); $("forwardBtn").click(); }
+  if (mod && key === "j") { e.preventDefault(); showDownloads(); return; } if (mod && key === "h") { e.preventDefault(); showHistory(); return; } if (mod && key === "f") { e.preventDefault(); findInPage(); return; } if (mod && key === "p") { e.preventDefault(); printCurrentPage(); return; } if (mod && e.shiftKey && key === "i") { e.preventDefault(); toggleInspect(!state.inspectMode); return; }
+  if (!typing && key === "escape") { if (state.inspectMode) { toggleInspect(false); return; } const t = activeTab(); if (t?.jobId && !t.done) stopCurrentLoad(); return; } if (e.altKey && key === "arrowleft") { e.preventDefault(); $("backBtn").click(); } if (e.altKey && key === "arrowright") { e.preventDefault(); $("forwardBtn").click(); }
   if (activeTab()?.view === "search" && !typing && ["arrowdown", "arrowup", "enter"].includes(key)) { e.preventDefault(); const cards = [...document.querySelectorAll(".search-result")]; if (!cards.length) return; let i = cards.findIndex(x => x.classList.contains("keyboard-active")); if (key === "enter" && i >= 0) return openPage(cards[i].dataset.url); i = key === "arrowdown" ? Math.min(cards.length - 1, i + 1) : Math.max(0, i - 1); cards.forEach(x => x.classList.remove("keyboard-active")); cards[i].classList.add("keyboard-active"); cards[i].focus(); }
 });
 
@@ -704,8 +904,8 @@ function boot() {
     let route = routeName();
     const routeParam = new URLSearchParams(location.search).get("veyra_route");
     if (routeParam) { history.replaceState({ veyraRoute: routeParam }, "", routeUrl(routeParam)); route = routeName(); }
-    if (route === "/dev") setTool("devPanel", false); else if (route === "/settings") setTool("settingsPanel", false); else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false); else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false); else if (location.hash === "#console") setTool("consolePanel", false); else if (settings.homepage) openPage(settings.homepage); else showHome(false);
-    health(); addLog("info", "Veyra Browser ready. Canonical navigation, Veyra Search, calculator, bounded crawler, and diagnostics enabled.");
+    if (route === "/dev") setTool("devPanel", false); else if (route === "/settings") setTool("settingsPanel", false); else if (route === "/downloads") showDownloads(false); else if (route === "/history") showHistory(false); else if (route === "/extensions") showExtensions(false); else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false); else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false); else if (location.hash === "#console") setTool("consolePanel", false); else if (settings.homepage) openPage(settings.homepage); else showHome(false);
+    applyExtensions(); renderExtensions(); health(); addLog("info", "Veyra Browser ready. Browser engine, inspect mode, downloads, history, extensions, Veyra Search, and diagnostics enabled.");
   } catch (e) { showFatal(e); }
 }
 boot();

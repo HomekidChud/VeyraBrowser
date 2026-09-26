@@ -12,6 +12,10 @@
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
     <symbol id="i-forward" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
     <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 1 4M20 4v7h-7"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 5v5h5M12 7v5l3 2"/></symbol>
+    <symbol id="i-inspect" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M7 9h10M7 12h6M7 15h4"/></symbol>
+    <symbol id="i-extensions" viewBox="0 0 24 24"><path d="M8 3h4v4h4a2 2 0 0 1 2 2v4h3v4h-3a2 2 0 0 1-2 2h-4v-4H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2V3z"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
@@ -47,8 +51,8 @@
           <button class="omnibox-star" id="starBtn" title="Bookmark"><svg><use href="#i-star"/></svg></button>
         </div>
 
-        <button class="icon-btn" title="Downloads / current crawl export" id="downloadBtn"><svg><use href="#i-download"/></svg></button>
-        <button class="icon-btn" title="Veyra tools" id="toolsMenuBtn"><svg><use href="#i-dev"/></svg></button>
+        <button class="icon-btn" title="Downloads / save current page" id="downloadBtn"><svg><use href="#i-download"/></svg></button>
+        <button class="icon-btn" title="Veyra tools & inspect" id="toolsMenuBtn"><svg><use href="#i-dev"/></svg></button>
         <button class="icon-btn" title="Menu" id="menuBtn"><svg><use href="#i-menu"/></svg></button>
       </div>
 
@@ -113,14 +117,49 @@
         </div>
       </section>
 
+      <section class="downloads-view hidden" id="downloadsView">
+        <div class="utility-shell">
+          <div class="utility-head"><div><div class="eyebrow">VEYRA DOWNLOADS</div><h1>Downloads</h1><p>Downloads started in Veyra are tracked here.</p></div><div class="utility-actions"><button class="secondary tiny" id="clearDownloadsBtn">Clear all</button></div></div>
+          <div class="utility-list" id="downloadsList"><div class="empty">No downloads yet.</div></div>
+        </div>
+      </section>
+
+      <section class="history-view hidden" id="historyView">
+        <div class="utility-shell">
+          <div class="utility-head"><div><div class="eyebrow">VEYRA HISTORY</div><h1>History</h1><p>Your browsing, search and calculator activity stored locally in Veyra.</p></div><div class="utility-actions"><button class="secondary tiny" id="clearHistoryBtn">Clear history</button></div></div>
+          <div class="utility-list" id="historyList"><div class="empty">No history yet.</div></div>
+        </div>
+      </section>
+
+      <section class="extensions-view hidden" id="extensionsView">
+        <div class="utility-shell">
+          <div class="utility-head"><div><div class="eyebrow">VEYRA EXTENSIONS</div><h1>Extensions</h1><p>Install Veyra extensions, manage permissions, or enable Developer mode.</p></div><div class="utility-actions"><button class="secondary tiny" id="extensionStoreBtn">Extension Store</button><button class="secondary tiny" id="extensionDevBtn">Developer mode</button></div></div>
+          <section class="dev-card extension-dev-card hidden" id="extensionDevCard"><div class="dev-card-head"><h4>Developer mode</h4><label class="checkbox"><input type="checkbox" id="extensionDeveloperMode"><span>Allow local developer extension manifests</span></label></div><div class="extension-dev-actions"><input type="file" id="extensionFile" accept="application/json,.json,.veyra.json" hidden><button class="secondary tiny" id="loadExtensionBtn">Load extension manifest</button><button class="secondary tiny" id="exportExtensionsBtn">Export installed</button></div><p class="setting-help">Developer extensions are local Veyra UI extensions. They do not get arbitrary access to browser credentials or network secrets.</p></section>
+          <div class="extension-store hidden" id="extensionStore">
+            <div class="extension-section-head"><b>Veyra Extension Store</b><span>Curated starter extensions</span></div>
+            <div class="extension-grid" id="extensionStoreGrid"></div>
+          </div>
+          <div class="extension-grid" id="extensionsGrid"><div class="empty">No extensions installed.</div></div>
+        </div>
+      </section>
+
       <section class="page-view hidden" id="browserView">
         <div class="page-strip">
           <div class="page-strip-left"><span class="page-dot"></span><span id="pageState">Loading…</span></div>
           <div class="page-strip-right"><span class="server-pill" id="serverState">Crawler idle</span></div>
         </div>
-        <div class="frame-wrap">
+        <div class="frame-wrap" id="frameWrap">
           <iframe id="pageFrame" name="veyraPageFrame" title="Veyra page view" allow="fullscreen; autoplay; clipboard-read; clipboard-write"></iframe>
-          <div class="frame-loader" id="frameLoader"><div class="spinner"></div><span id="frameLoaderText">Loading page…</span></div>
+          <div class="frame-loader" id="frameLoader"><div class="spinner"></div><span id="frameLoaderText">Loading page…</span></div><div class="find-bar hidden" id="findBar"><input id="findInput" placeholder="Find in page" autocomplete="off"><span id="findCount">0 matches</span><button class="secondary tiny" id="findPrev" title="Previous match">↑</button><button class="secondary tiny" id="findNext" title="Next match">↓</button><button class="secondary tiny" id="findClose" title="Close">×</button></div>
+          <div class="inspect-highlight hidden" id="inspectHighlight"></div>
+          <aside class="inspect-drawer hidden" id="inspectDrawer">
+            <div class="inspect-header"><div><span class="eyebrow">INSPECT</span><b id="inspectTargetName">Select an element</b></div><button class="secondary tiny" id="inspectCloseBtn">Close</button></div>
+            <div class="inspect-tabs"><button class="active" data-inspect-tab="elements">Elements</button><button data-inspect-tab="styles">Styles</button><button data-inspect-tab="computed">Computed</button><button data-inspect-tab="layout">Layout</button></div>
+            <div class="inspect-panel" id="inspectElementsPanel"><pre id="inspectOuterHtml">Hover an element to inspect it.</pre><div class="inspect-tree" id="inspectTree"></div></div>
+            <div class="inspect-panel hidden" id="inspectStylesPanel"><pre id="inspectStyles">—</pre></div>
+            <div class="inspect-panel hidden" id="inspectComputedPanel"><pre id="inspectComputed">—</pre></div>
+            <div class="inspect-panel hidden" id="inspectLayoutPanel"><pre id="inspectLayout">—</pre></div>
+          </aside>
         </div>
       </section>
 
@@ -201,7 +240,7 @@
     <footer class="statusbar"><span id="crawlSummary">Ready</span><span id="backendHealth">Backend checking…</span></footer>
 
     <div class="menu-panel hidden" id="menuPanel">
-      <button id="menuSource">View source resources</button><button id="menuLinks">View all links</button><button id="menuConsole">Open #console</button><button id="menuDev">Open /dev</button><button id="menuSettings">Open /settings</button><div class="menu-divider"></div><button id="menuCalculator">Open Calculator</button><button id="menuSearch">Open Veyra Search</button><button id="menuHome">New Veyra tab</button>
+      <button id="menuInspect"><span>Inspect element</span><kbd>Ctrl+Shift+I</kbd></button><button id="menuSource">View source resources</button><button id="menuLinks">View all links</button><button id="menuConsole">Open #console</button><button id="menuDev">Open /dev</button><button id="menuSettings">Open /settings</button><div class="menu-divider"></div><button id="menuFind">Find in page <kbd>Ctrl+F</kbd></button><button id="menuPrint">Print page <kbd>Ctrl+P</kbd></button><button id="menuDownloads">Downloads <kbd>Ctrl+J</kbd></button><button id="menuHistory">History <kbd>Ctrl+H</kbd></button><button id="menuExtensions">Extensions</button><div class="menu-divider"></div><button id="menuCalculator">Open Calculator</button><button id="menuSearch">Open Veyra Search</button><button id="menuHome">New Veyra tab</button>
     </div>
 
     <div class="fatal-overlay hidden" id="fatalOverlay"><div class="fatal-card"><div class="veyra-mark small">V</div><div><div class="eyebrow">RECOVERABLE APP ERROR</div><h2>Veyra recovered from a client-side exception</h2><p id="fatalMessage">The main UI could not finish loading.</p><div class="fatal-actions"><button id="fatalReload">Reload Veyra</button><button class="secondary" id="fatalConsole">Open console</button></div></div></div></div>

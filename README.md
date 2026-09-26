@@ -47,3 +47,10 @@ The frontend does not contain any search-provider API key.
 The proxy frontend now keeps canonical website URLs separate from internal `/api/view` URLs, unwraps accidental proxy-shaped history URLs, preserves a per-tab proxy session across navigation/forms, and displays expanded crawl coverage for HTML, CSS, JS, data, assets, logical robots and actual network slots.
 
 The backend resource layer supports larger bounded image/media payloads, Range requests, source-origin referrer context, selected public-site request metadata, SVG references, `imagesrcset`, common lazy-loading attributes, JSON/XML/text capture, and preservation of upstream 2xx statuses such as 201/204 where applicable.
+
+
+## v8.5 browser features
+The Veyra frontend includes a custom inspect-element mode, custom downloads (Ctrl+J), local history (Ctrl+H), an extension store/developer mode with safe manifest imports, and a loading-state toolbar button that becomes Stop while a page is loading.
+
+## v8.5 browser features
+The toolbar's Reload control becomes a Stop control while a page is loading. The tools dropdown provides Inspect element, Find in page, Print, Downloads, History, Extensions, Calculator, Search and diagnostics. Keyboard shortcuts include Ctrl+J, Ctrl+H, Ctrl+Shift+I, Ctrl+F and Ctrl+P. The extension developer mode accepts local JSON manifests with CSS-only UI customization; arbitrary script, network and credential access is deliberately excluded.
