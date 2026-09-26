@@ -1,7 +1,7 @@
 // Veyra Browse frontend.
 // The Render service is deliberately the only moving part on the client.
 // Keep the Render service named "veyra-browse-crawler" so this works without settings.
-const API = "https://veyra-browse-crawler.onrender.com";
+const API = "https://veyraserver-xscy.onrender.com";
 
 const state = {
   jobId: null,

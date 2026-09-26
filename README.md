@@ -10,6 +10,9 @@ Files:
 Host this repository with GitHub Pages.
 
 The frontend calls the separate Render crawler API:
-`https://minibrowse-crawler.onrender.com`
+`https://veyraserver-xscy.onrender.com`
 
 Render is the crawler/backend only. GitHub Pages remains the website host.
+
+Health endpoint:
+`https://veyraserver-xscy.onrender.com/health`
