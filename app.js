@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS = {
   autoStopPrevious: true,
   devRefreshMs: 1500,
   consoleVerbosity: "all",
-  crawlerGlobalConcurrency: 12,
+  crawlerRobots: 12,
   crawlerHostConcurrency: 3,
   requestTimeoutMs: 15000,
   browserFallback: false
@@ -318,7 +318,7 @@ async function startJobForTab(t, url, loadFrame = true) {
   showBrowser(); updateIdentity(url); setLoading(true, 16, "Connecting…");
   $("pageState").textContent = "Connecting…"; $("serverState").textContent = "Starting crawl"; $("serverState").className = "server-pill warn";
   try {
-    const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+    const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, robots: settings.crawlerRobots, perHostConcurrency: settings.crawlerHostConcurrency }) });
     t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
     if (activeTab() === t) {
       updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
@@ -357,7 +357,10 @@ async function pollJob(t) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
       $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.links || 0} links · ${gb} GB scanned`;
       $("backendHealth").textContent = "Backend: online";
-      $("serverState").textContent = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
+      const robotActive = b.workers?.robots?.active ?? c.active ?? 0;
+      const robotMax = b.workers?.robots?.max ?? b.limits?.robots ?? "?";
+      const stateText = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
+      $("serverState").textContent = `${stateText} · ${robotActive}/${robotMax} robots`;
       $("serverState").className = "server-pill" + (b.done ? "" : " live");
       const denom = Math.max(1, (c.processed || 0) + (c.queued || 0) + 4); $("loadProgress").style.width = b.done ? "100%" : `${Math.min(88, 42 + ((c.processed || 0) / denom) * 45)}%`;
     }
@@ -466,7 +469,9 @@ async function refreshDev() {
   try {
     const [jobR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
     const j = jobR.body; const s = sysR.body;
-    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Robots|${j.workers?.robots?.active ?? j.counts.active} / ${j.workers?.robots?.max ?? j.limits.robots ?? "?"}`, `Host limit|${j.limits.perHostConcurrency}`, `Warm robots|${j.limits.proxyWarmRobots ?? "?"}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devBarRobots").style.width = devPct(j.workers?.robots?.active ?? j.counts.active ?? 0, j.workers?.robots?.max ?? j.limits.robots ?? 1) + "%";
+    $("devBarRobotsLabel").textContent = `${j.workers?.robots?.active ?? j.counts.active ?? 0} / ${j.workers?.robots?.max ?? j.limits.robots ?? "?"}`;
     $("devBarResources").style.width = devPct(j.counts.processed, j.limits.maxResources) + "%"; $("devBarResourcesLabel").textContent = `${j.counts.processed} / ${j.limits.maxResources}`;
     $("devBarScan").style.width = devPct(j.counts.bytesScanned, j.limits.maxScanBytes) + "%"; $("devBarScanLabel").textContent = `${fmtBytes(j.counts.bytesScanned)} / ${fmtBytes(j.limits.maxScanBytes)}`;
     $("devBarHtml").style.width = devPct(j.workers.html.active, j.workers.html.max) + "%"; $("devBarHtmlLabel").textContent = `${j.workers.html.active} / ${j.workers.html.max}`;
@@ -555,7 +560,7 @@ function canonicalizePageMessageUrl(value) {
 
 function renderSettingsForm() {
   $("setSearchMode").value = settings.searchMode; $("setSearchEngine").value = settings.searchEngine; $("setHomepage").value = settings.homepage || ""; $("setConfirmClose").checked = !!settings.confirmCloseWithCrawl; $("setAutoStop").checked = settings.autoStopPrevious !== false;
-  $("setGlobalConcurrency").value = settings.crawlerGlobalConcurrency; $("setHostConcurrency").value = settings.crawlerHostConcurrency; $("setTimeout").value = settings.requestTimeoutMs; $("setBrowserFallback").checked = !!settings.browserFallback; $("setDevInterval").value = settings.devRefreshMs || 1500; $("setConsoleVerbosity").value = settings.consoleVerbosity || "all";
+  $("setRobots").value = settings.crawlerRobots; $("setHostConcurrency").value = settings.crawlerHostConcurrency; $("setTimeout").value = settings.requestTimeoutMs; $("setBrowserFallback").checked = !!settings.browserFallback; $("setDevInterval").value = settings.devRefreshMs || 1500; $("setConsoleVerbosity").value = settings.consoleVerbosity || "all";
 }
 function wireSettingsForm() {
   $("setSearchMode").onchange = e => { settings.searchMode = e.target.value; saveSettings(); addLog("info", `Search mode set to ${e.target.value}.`); };
@@ -563,7 +568,7 @@ function wireSettingsForm() {
   $("setHomepage").onchange = e => { settings.homepage = e.target.value.trim(); saveSettings(); };
   $("setConfirmClose").onchange = e => { settings.confirmCloseWithCrawl = e.target.checked; saveSettings(); };
   $("setAutoStop").onchange = e => { settings.autoStopPrevious = e.target.checked; saveSettings(); };
-  $("setGlobalConcurrency").onchange = e => { settings.crawlerGlobalConcurrency = Math.max(1, Math.min(32, Number(e.target.value) || 12)); saveSettings(); };
+  $("setRobots").onchange = e => { settings.crawlerRobots = Math.max(1, Math.min(96, Number(e.target.value) || 12)); saveSettings(); addLog("info", `Crawler robots set to ${settings.crawlerRobots}. New navigations use this value.`); };
   $("setHostConcurrency").onchange = e => { settings.crawlerHostConcurrency = Math.max(1, Math.min(8, Number(e.target.value) || 3)); saveSettings(); };
   $("setTimeout").onchange = e => { settings.requestTimeoutMs = Math.max(1000, Number(e.target.value) || 15000); saveSettings(); };
   $("setBrowserFallback").onchange = e => { settings.browserFallback = e.target.checked; saveSettings(); };

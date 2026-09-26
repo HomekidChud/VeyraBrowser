@@ -42,3 +42,21 @@ The frontend does not contain any search-provider API key.
 ## Resource fidelity update
 
 The proxy frontend now keeps canonical website URLs separate from internal `/api/view` URLs, and proxied pages unwrap accidental proxy-shaped history URLs before updating the Veyra address bar. The backend resource layer supports larger bounded image/media payloads, Range requests, source-origin referrer context, SVG references, `imagesrcset`, and common lazy-loading attributes.
+
+## Parallel crawler robots
+
+The Crawler preferences section now exposes a **Crawler robots** setting. A robot is one parallel worker consuming the shared backend crawl frontier. New navigations send the selected robot count to `/api/open`; the Render environment variable `CRAWLER_ROBOTS` is the server-side ceiling.
+
+For example, the Render service can be configured with:
+
+```text
+CRAWLER_ROBOTS=24
+CRAWLER_PER_HOST_CONCURRENCY=4
+PROXY_WARM_ROBOTS=12
+PROXY_WARM_LIMIT=64
+PROXY_WARM_PER_HOST=3
+```
+
+More robots can increase crawl throughput when the Render instance, network and target hosts can sustain the additional parallelism. Per-host limits, robots.txt, crawl delays, challenge detection, response-size limits and SSRF protection remain in force.
+
+The proxy also starts non-blocking page-resource warming. Warm robots fetch likely-needed images, stylesheets, scripts, fonts, media and other page resources into the short-lived proxy cache while the first document is already being rendered.
