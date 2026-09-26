@@ -20,8 +20,8 @@ const DEFAULT_SETTINGS = {
   autoStopPrevious: true,
   devRefreshMs: 1500,
   consoleVerbosity: "all",
-  crawlerGlobalConcurrency: 12,
-  crawlerHostConcurrency: 3,
+  crawlerGlobalConcurrency: 128,
+  crawlerHostConcurrency: 8,
   requestTimeoutMs: 15000,
   browserFallback: false
 };
@@ -39,7 +39,7 @@ const state = {
 function makeTab() {
   return {
     id: "t" + (++state.tabSeq), title: "New Tab", favicon: "", url: "", proxyUrl: "", jobId: null, done: false,
-    history: [], histIndex: -1, view: "home", searchQuery: "", searchOffset: 0, searchData: null,
+    history: [], histIndex: -1, view: "home", searchQuery: "", searchOffset: 0, searchData: null, proxySessionId: "",
     consolePageUrl: "", remoteLogIds: new Set(), resources: [], links: [], selected: -1, poll: null
   };
 }
@@ -110,7 +110,10 @@ function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<"
 function pathOf(u) { try { const x = new URL(u); return (x.pathname || "/") + (x.search || "") + (x.hash || ""); } catch { return String(u || ""); } }
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "Veyra"; } }
 function formatUrlDisplay(u) { return String(u || "").replace(/^https?:\/\//, ""); }
-function proxyUrl(url, mode = "view") { return API + (mode === "resource" ? "/api/resource?url=" : "/api/view?url=") + encodeURIComponent(url); }
+function proxyUrl(url, mode = "view", sid = "") {
+  const base = API + (mode === "resource" ? "/api/resource?url=" : "/api/view?url=") + encodeURIComponent(url);
+  return sid ? `${base}&sid=${encodeURIComponent(sid)}` : base;
+}
 
 class ApiError extends Error {
   constructor(message, status = 0, code = "API_ERROR", requestId = "") { super(message); this.status = status; this.code = code; this.requestId = requestId; }
@@ -300,7 +303,7 @@ function restoreTabView(t) {
   if (!t) return;
   if (t.view === "browser" && t.url) {
     showBrowser(); updateIdentity(t.url);
-    const wantedProxy = proxyUrl(t.url, "view");
+    const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId);
     if ($("pageFrame").src !== wantedProxy) $("pageFrame").src = wantedProxy;
     $("pageState").textContent = t.done ? "Ready" : (t.jobId ? "Loading…" : "Ready");
     $("serverState").textContent = t.done ? "Crawler finished" : (t.jobId ? "Crawling…" : "Crawler idle");
@@ -322,7 +325,7 @@ async function startJobForTab(t, url, loadFrame = true) {
     t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
     if (activeTab() === t) {
       updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
-      if (loadFrame) $("pageFrame").src = proxyUrl(t.url, "view");
+      if (loadFrame) $("pageFrame").src = proxyUrl(t.url, "view", t.proxySessionId);
     }
     startPolling(t); renderTabs();
   } catch (e) {
@@ -355,7 +358,8 @@ async function pollJob(t) {
     if (!state.tabs.includes(t)) return; const isActive = activeTab() === t; const c = b.counts || {};
     if (isActive) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
-      $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.links || 0} links · ${gb} GB scanned`;
+      const w = b.workers || {};
+      $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.data || 0} data · ${c.assets || 0} assets · ${c.links || 0} links · ${w.logicalRobots || 0} robots · ${w.networkSlots || 0} net slots · ${gb} GB scanned`;
       $("backendHealth").textContent = "Backend: online";
       $("serverState").textContent = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
       $("serverState").className = "server-pill" + (b.done ? "" : " live");
@@ -503,14 +507,14 @@ async function refreshDev() {
   try {
     const [jobR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
     const j = jobR.body; const s = sysR.body;
-    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS/Data/Assets|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js} / ${j.counts.data || 0} / ${j.counts.assets || 0}`, `Logical robots|${j.workers?.logicalRobots || j.limits?.logicalRobots || 0}`, `Network slots|${j.workers?.networkSlots || j.limits?.maxActiveFetches || 0}`, `Available network slots|${j.workers?.availableNetworkSlots ?? "—"}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     $("devBarResources").style.width = devPct(j.counts.processed, j.limits.maxResources) + "%"; $("devBarResourcesLabel").textContent = `${j.counts.processed} / ${j.limits.maxResources}`;
     $("devBarScan").style.width = devPct(j.counts.bytesScanned, j.limits.maxScanBytes) + "%"; $("devBarScanLabel").textContent = `${fmtBytes(j.counts.bytesScanned)} / ${fmtBytes(j.limits.maxScanBytes)}`;
     $("devBarHtml").style.width = devPct(j.workers.html.active, j.workers.html.max) + "%"; $("devBarHtmlLabel").textContent = `${j.workers.html.active} / ${j.workers.html.max}`;
     $("devBarAsset").style.width = devPct(j.workers.asset.active, j.workers.asset.max) + "%"; $("devBarAssetLabel").textContent = `${j.workers.asset.active} / ${j.workers.asset.max}`;
     $("devRawJson").textContent = JSON.stringify(j, null, 2);
     await refreshDevJobs();
-    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Crawler network slots|${s.network?.crawlerActive ?? 0} / ${s.network?.crawlerLimit ?? "—"}`, `Crawler logical robots|${s.network?.logicalRobots ?? "—"}`, `Warm network slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`, `Warm logical robots|${s.network?.warmLogicalRobots ?? "—"}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     renderServerRequests(reqR.body.requests || []);
   } catch (e) { $("devJobGrid").innerHTML = `<div class="empty dev-error">Backend diagnostics failed: ${esc(e.message || e)}</div>`; }
 }
@@ -550,7 +554,7 @@ function renderProxyError(kind, error) {
 }
 
 async function submitProxyForm(message) {
-  const frame = $("pageFrame"); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(message.url, "view"); form.target = frame.name; form.style.display = "none";
+  const frame = $("pageFrame"); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(message.url, "view", activeTab()?.proxySessionId || ""); form.target = frame.name; form.style.display = "none";
   for (const [name, value] of message.entries || []) { const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input); }
   document.body.appendChild(form); form.submit(); form.remove();
 }
@@ -558,8 +562,9 @@ async function handlePageMessage(e) {
   const d = e.data || {}; if (!d || typeof d !== "object" || !String(d.type || "").startsWith("veyra:")) return;
   try { if (e.origin !== new URL(API).origin) return; } catch { return; }
   const t = activeTab(); if (!t) return;
+  if (d.sessionId && /^[A-Za-z0-9_-]{16,80}$/.test(String(d.sessionId))) t.proxySessionId = String(d.sessionId);
   if (d.type === "veyra:retry") { await reloadActive(); return; }
-  if (d.type === "veyra:open" && d.url) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; renderTabs(); await openPage(d.url); return; }
+  if (d.type === "veyra:open" && d.url) { const nt = makeTab(); nt.proxySessionId = d.sessionId || t.proxySessionId || ""; state.tabs.push(nt); state.activeId = nt.id; renderTabs(); await openPage(d.url); return; }
   if (d.type === "veyra:unsupported") { addLog("warn", d.reason || "Unsupported page operation.", { pageUrl: d.pageUrl || t.url }); return; }
   if (d.type === "veyra:page-console") { addLog(d.level || "info", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || ""}`, { pageUrl: d.pageUrl || t.url, tabId: t.id, jobId: t.jobId }); return; }
   if (d.type === "veyra:page-error") { addLog("error", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || "Resource error"} @ ${d.url || "inline"}:${d.line || "?"}`, { pageUrl: d.pageUrl || t.url, line: d.line, column: d.column, stack: d.stack || "", tabId: t.id, jobId: t.jobId }); return; }
@@ -600,8 +605,8 @@ function wireSettingsForm() {
   $("setHomepage").onchange = e => { settings.homepage = e.target.value.trim(); saveSettings(); };
   $("setConfirmClose").onchange = e => { settings.confirmCloseWithCrawl = e.target.checked; saveSettings(); };
   $("setAutoStop").onchange = e => { settings.autoStopPrevious = e.target.checked; saveSettings(); };
-  $("setGlobalConcurrency").onchange = e => { settings.crawlerGlobalConcurrency = Math.max(1, Math.min(32, Number(e.target.value) || 12)); saveSettings(); };
-  $("setHostConcurrency").onchange = e => { settings.crawlerHostConcurrency = Math.max(1, Math.min(8, Number(e.target.value) || 3)); saveSettings(); };
+  $("setGlobalConcurrency").onchange = e => { settings.crawlerGlobalConcurrency = Math.max(1, Math.min(256, Number(e.target.value) || 128)); saveSettings(); };
+  $("setHostConcurrency").onchange = e => { settings.crawlerHostConcurrency = Math.max(1, Math.min(32, Number(e.target.value) || 8)); saveSettings(); };
   $("setTimeout").onchange = e => { settings.requestTimeoutMs = Math.max(1000, Number(e.target.value) || 15000); saveSettings(); };
   $("setBrowserFallback").onchange = e => { settings.browserFallback = e.target.checked; saveSettings(); };
   $("setDevInterval").onchange = e => { settings.devRefreshMs = Math.max(500, Number(e.target.value) || 1500); saveSettings(); startDevAuto(); };
