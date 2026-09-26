@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Veyra Browse</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">🌐 <b>Veyra Browse</b><span>FAST WEB CRAWLER</span></div>
+      <div class="top-actions">
+        <button class="ghost" id="consoleBtn">#console</button>
+        <button class="ghost" id="linksBtn">Links</button>
+        <button class="ghost" id="filesBtn">Source</button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero" id="homeView">
+        <div class="hero-card">
+          <div class="big-logo">Veyra Browse</div>
+          <div class="sub">Normal browsing on top. High-speed server crawling underneath.</div>
+          <div class="search-row">
+            <input id="urlInput" autocomplete="off" placeholder="https://example.com">
+            <button class="primary" id="crawlBtn">Crawl site</button>
+            <button class="secondary" id="openBtn">Open</button>
+          </div>
+          <div class="quick">
+            <button data-url="https://example.com">example.com</button>
+            <button data-url="https://www.wikipedia.org">wikipedia.org</button>
+            <button data-url="https://developer.mozilla.org">MDN</button>
+          </div>
+          <p class="note">
+            Crawling is performed by the Render backend so your Chromebook does not have
+            to run the crawler. The frontend is static and can live on GitHub Pages.
+          </p>
+        </div>
+      </section>
+
+      <section class="crawl-screen hidden" id="crawlView">
+        <aside class="job-panel">
+          <div class="job-card">
+            <div class="job-title">Crawler</div>
+            <div class="job-url" id="jobUrl">—</div>
+            <div class="status" id="jobStatus">Waiting…</div>
+            <div class="progress"><i id="progressBar"></i></div>
+          </div>
+
+          <div class="metric-grid">
+            <div><b id="mPages">0</b><span>HTML</span></div>
+            <div><b id="mCss">0</b><span>CSS</span></div>
+            <div><b id="mJs">0</b><span>JS</span></div>
+            <div><b id="mLinks">0</b><span>LINKS</span></div>
+          </div>
+
+          <div class="job-card compact">
+            <div><b>Live engine</b></div>
+            <p>Parallel fetch workers, sitemap discovery, robots parsing, URL de-duplication, HTML/CSS/JS link extraction, and path indexing run on the backend.</p>
+          </div>
+
+          <button class="stop" id="stopBtn" disabled>Stop crawl</button>
+          <button class="secondary full" id="exportBtn" disabled>Export crawl JSON</button>
+        </aside>
+
+        <section class="workspace">
+          <div class="toolbar">
+            <div class="tabs">
+              <button class="tab active" data-panel="sourcePanel">Source</button>
+              <button class="tab" data-panel="linkPanel">All links</button>
+              <button class="tab" data-panel="consolePanel">#console</button>
+            </div>
+            <input class="filter" id="filterInput" placeholder="Filter URL / type / path">
+          </div>
+
+          <div class="panel source-panel" id="sourcePanel">
+            <div class="resource-list" id="resourceList">
+              <div class="empty">Start a crawl to see HTML, CSS and JavaScript source.</div>
+            </div>
+            <div class="source-view">
+              <div class="source-head">
+                <b id="sourceTitle">Nothing selected</b>
+                <span id="sourceMeta"></span>
+              </div>
+              <pre id="sourceCode">Source will appear here.</pre>
+            </div>
+          </div>
+
+          <div class="panel link-panel hidden" id="linkPanel">
+            <div class="link-head">
+              <b>Discovered links</b>
+              <span id="linkCount">0</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Path</th><th>Full URL</th><th>Type</th><th>Source</th><th>State</th></tr>
+                </thead>
+                <tbody id="linkBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel console-panel hidden" id="consolePanel">
+            <div class="console-head">
+              <b>Debug console</b>
+              <div class="console-actions">
+                <select id="consoleFilter">
+                  <option value="all">All</option>
+                  <option value="error">Errors</option>
+                  <option value="warn">Warnings</option>
+                  <option value="info">Info</option>
+                  <option value="debug">Debug</option>
+                </select>
+                <button class="secondary" id="copyConsoleBtn">Copy</button>
+                <button class="danger" id="clearConsoleBtn">Clear</button>
+              </div>
+            </div>
+            <div id="consoleLog" class="console-log">
+              <div class="empty">No logs yet.</div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
