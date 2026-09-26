@@ -38,3 +38,7 @@ FRONTEND_ORIGIN=https://YOUR-FRONTEND-HOST
 ```
 
 The frontend does not contain any search-provider API key.
+
+## Resource fidelity update
+
+The proxy frontend now keeps canonical website URLs separate from internal `/api/view` URLs, and proxied pages unwrap accidental proxy-shaped history URLs before updating the Veyra address bar. The backend resource layer supports larger bounded image/media payloads, Range requests, source-origin referrer context, SVG references, `imagesrcset`, and common lazy-loading attributes.

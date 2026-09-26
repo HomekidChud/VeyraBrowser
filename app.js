@@ -528,7 +528,7 @@ async function handlePageMessage(e) {
   if (d.type === "veyra:page-error") { addLog("error", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || "Resource error"} @ ${d.url || "inline"}:${d.line || "?"}`, { pageUrl: d.pageUrl || t.url, line: d.line, column: d.column, stack: d.stack || "", tabId: t.id, jobId: t.jobId }); return; }
   if (d.type === "veyra:form" && d.url) { await submitProxyForm(d); return; }
   if (d.type === "veyra:navigate" && d.url) {
-    let target; try { target = new URL(d.url).href; } catch { return; }
+    const target = canonicalizePageMessageUrl(d.url); if (!target) return;
     const same = t.url === target || t.url?.split("#")[0] === target.split("#")[0];
     if (d.source === "history.pushState" || d.source === "history.replaceState") {
       t.url = target; t.consolePageUrl = target; if (d.source.endsWith("pushState")) { t.history = t.history.slice(0, t.histIndex + 1); t.history.push(target); t.histIndex = t.history.length - 1; }
@@ -544,6 +544,14 @@ async function handlePageMessage(e) {
   }
 }
 function parseProxyCanonical(src) { try { const u = new URL(src); return u.searchParams.get("url") || ""; } catch { return ""; } }
+function canonicalizePageMessageUrl(value) {
+  try {
+    const u = new URL(String(value || ""));
+    const embedded = u.searchParams.get("url");
+    if ((u.pathname === "/api/view" || u.pathname === "/api/resource") && embedded && /^https?:$/i.test(new URL(embedded).protocol)) return new URL(embedded).href;
+    return u.href;
+  } catch { return ""; }
+}
 
 function renderSettingsForm() {
   $("setSearchMode").value = settings.searchMode; $("setSearchEngine").value = settings.searchEngine; $("setHomepage").value = settings.homepage || ""; $("setConfirmClose").checked = !!settings.confirmCloseWithCrawl; $("setAutoStop").checked = settings.autoStopPrevious !== false;
