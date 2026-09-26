@@ -359,7 +359,8 @@ async function pollJob(t) {
     if (isActive) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
       const w = b.workers || {};
-      $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.data || 0} data · ${c.assets || 0} assets · ${c.links || 0} links · ${w.logicalRobots || 0} robots · ${w.networkSlots || 0} net slots · ${gb} GB scanned`;
+      const rm = b.robotMesh?.summary || {};
+      $("crawlSummary").textContent = `Crawler: ${c.processed || 0} processed · ${c.htmlPages || 0} HTML · ${c.css || 0} CSS · ${c.js || 0} JS · ${c.data || 0} data · ${c.assets || 0} assets · ${c.links || 0} links · ${w.logicalRobots || 0} robots · ${rm.multitaskingRobots || 0} multitasking · ${rm.helpAccepted || 0} help accepted · ${w.networkSlots || 0} net slots · ${gb} GB scanned`;
       $("backendHealth").textContent = "Backend: online";
       $("serverState").textContent = b.statusText || (b.done ? "Crawler finished" : "Crawling…");
       $("serverState").className = "server-pill" + (b.done ? "" : " live");
@@ -505,16 +506,27 @@ function devPct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) :
 async function refreshDev() {
   const t = activeTab(); if (!t?.jobId) { renderDevEmpty(); return; }
   try {
-    const [jobR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
-    const j = jobR.body; const s = sysR.body;
+    const [jobR, robotsR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}/robots?limit=48`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
+    const j = jobR.body; const robotData = robotsR.body || {}; const s = sysR.body;
     $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS/Data/Assets|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js} / ${j.counts.data || 0} / ${j.counts.assets || 0}`, `Logical robots|${j.workers?.logicalRobots || j.limits?.logicalRobots || 0}`, `Network slots|${j.workers?.networkSlots || j.limits?.maxActiveFetches || 0}`, `Available network slots|${j.workers?.availableNetworkSlots ?? "—"}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     $("devBarResources").style.width = devPct(j.counts.processed, j.limits.maxResources) + "%"; $("devBarResourcesLabel").textContent = `${j.counts.processed} / ${j.limits.maxResources}`;
     $("devBarScan").style.width = devPct(j.counts.bytesScanned, j.limits.maxScanBytes) + "%"; $("devBarScanLabel").textContent = `${fmtBytes(j.counts.bytesScanned)} / ${fmtBytes(j.limits.maxScanBytes)}`;
     $("devBarHtml").style.width = devPct(j.workers.html.active, j.workers.html.max) + "%"; $("devBarHtmlLabel").textContent = `${j.workers.html.active} / ${j.workers.html.max}`;
     $("devBarAsset").style.width = devPct(j.workers.asset.active, j.workers.asset.max) + "%"; $("devBarAssetLabel").textContent = `${j.workers.asset.active} / ${j.workers.asset.max}`;
     $("devRawJson").textContent = JSON.stringify(j, null, 2);
+    const rm = robotData.summary || j.robotMesh?.summary || {};
+    $("robotMeshSummary").textContent = `${rm.logicalRobots || 0} robots · ${rm.activeRobots || 0} active · ${rm.multitaskingRobots || 0} multitasking · ${rm.helpAccepted || 0} help accepted`;
+    $("robotMeshGrid").innerHTML = [`Logical fleet|${rm.logicalRobots || 0}`, `Active robots|${rm.activeRobots || 0}`, `Multitasking|${rm.multitaskingRobots || 0}`, `Idle|${rm.idleRobots || 0}`, `Queued robot tasks|${rm.queuedRobotTasks || 0}`, `Global page queue|${rm.globalPageQueue || 0}`, `Global resource queue|${rm.globalResourceQueue || 0}`, `Network|${rm.networkActive || 0} / ${rm.networkLimit || 0}`, `Help requests|${rm.helpRequests || 0}`, `Accepted|${rm.helpAccepted || 0}`, `Declined|${rm.helpDeclined || 0}`, `Tasks shared|${rm.helpGiven || 0}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("robotMeshBody").innerHTML = (robotData.robots || []).map(r => `<tr><td class="mono">${esc(r.id)}</td><td>${esc(r.status)}</td><td>${r.activeTasks}</td><td>${r.queuedTasks}</td><td>${r.completed}</td><td>${r.helpRequests}</td><td>${r.helpAccepted}</td><td>${r.helpDeclined}</td><td>${r.helpGiven}</td><td>${esc(r.lastTask?.url || "—")}</td></tr>`).join("") || '<tr><td colspan="10" class="empty">No robot activity to display.</td></tr>';
+    const events = (robotData.events || []).slice().reverse().filter(e => String(e.type || "").startsWith("help-"));
+    $("robotHelpBody").innerHTML = events.map(e => {
+      const target = e.target || "—"; const requester = e.requester || "—";
+      const detail = e.task ? `${e.task.type || "task"}: ${e.task.url || ""}` : e.accepted != null ? (e.accepted ? "accepted" : "declined") : (e.candidates ? `${e.candidates.length} candidates inspected` : "");
+      return `<tr><td>${new Date(e.time).toLocaleTimeString([], {hour12:false})}</td><td>${esc(e.type)}</td><td class="mono">${esc(requester)}</td><td class="mono">${esc(target)}</td><td>${esc(detail)}</td></tr>`;
+    }).join("") || '<tr><td colspan="5" class="empty">No help negotiations yet.</td></tr>';
+    $("browserEngineGrid").innerHTML = [`Fetch slots|${s.network?.browserActive ?? 0} / ${s.network?.browserLimit ?? "—"}`, `Waiting browser requests|${s.network?.browserQueued ?? 0}`, `In-flight browser keys|${s.browser?.inFlight ?? 0}`, `Deduplicated|${s.browser?.deduped ?? 0}`, `Completed|${s.browser?.completed ?? 0}`, `Failed|${s.browser?.failed ?? 0}`, `Per-host limit|${s.network?.browserPerHost ?? "—"}`, `Sessions|${s.browser?.sessions ?? 0}`, `Proxy cache|${s.browser?.cacheEntries ?? s.proxyCacheEntries ?? 0}`, `Warm slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     await refreshDevJobs();
-    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Crawler network slots|${s.network?.crawlerActive ?? 0} / ${s.network?.crawlerLimit ?? "—"}`, `Crawler logical robots|${s.network?.logicalRobots ?? "—"}`, `Warm network slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`, `Warm logical robots|${s.network?.warmLogicalRobots ?? "—"}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
+    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Crawler network slots|${s.network?.crawlerActive ?? 0} / ${s.network?.crawlerLimit ?? "—"}`, `Crawler logical robots|${s.network?.logicalRobots ?? "—"}`, `Crawler queued fetch waiters|${s.network?.crawlerQueued ?? 0}`, `Browser network slots|${s.network?.browserActive ?? 0} / ${s.network?.browserLimit ?? "—"}`, `Browser queued requests|${s.network?.browserQueued ?? 0}`, `Warm network slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`, `Warm logical robots|${s.network?.warmLogicalRobots ?? "—"}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
     renderServerRequests(reqR.body.requests || []);
   } catch (e) { $("devJobGrid").innerHTML = `<div class="empty dev-error">Backend diagnostics failed: ${esc(e.message || e)}</div>`; }
 }
@@ -531,7 +543,12 @@ function renderDevNet() {
 function renderDevEmpty() {
   $("devJobGrid").innerHTML = '<div class="empty">No active crawl in this tab. Open a public website to start one.</div>';
   ["devBarResources","devBarScan","devBarHtml","devBarAsset"].forEach(id => $(id).style.width = "0%");
-  $("devRawJson").textContent = "—"; refreshDevJobs();
+  $("devRawJson").textContent = "—";
+  if ($("robotMeshSummary")) $("robotMeshSummary").textContent = "Waiting for robot telemetry…";
+  if ($("robotMeshBody")) $("robotMeshBody").innerHTML = '<tr><td colspan="10" class="empty">No active crawl.</td></tr>';
+  if ($("robotHelpBody")) $("robotHelpBody").innerHTML = '<tr><td colspan="5" class="empty">No active crawl.</td></tr>';
+  if ($("browserEngineGrid")) $("browserEngineGrid").innerHTML = '<div class="empty">Open a page to see browser network scheduler activity.</div>';
+  refreshDevJobs();
 }
 function startDevAuto() { if (state.devTimer) clearInterval(state.devTimer); if ($("devAutoRefresh")?.checked) state.devTimer = setInterval(refreshDev, Math.max(500, Number(settings.devRefreshMs) || 1500)); }
 
