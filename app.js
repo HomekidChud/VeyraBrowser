@@ -1,299 +1,186 @@
-// Veyra Browse frontend.
-// The Render service is deliberately the only moving part on the client.
-// Keep the Render service named "veyra-browse-crawler" so this works without settings.
-const API = "https://veyraserver-xscy.onrender.com";
-
-const state = {
-  jobId: null,
-  data: null,
-  resources: [],
-  selected: -1,
-  poll: null,
-  logs: [],
-  lastLogId: 0
+const API="https://veyraserver-xscy.onrender.com";
+const state={
+  jobId:null,currentUrl:"",history:[],histIndex:-1,poll:null,
+  logs:[],remoteLogIds:new Set(),resources:[],selected:-1,links:[],
+  bookmarked:new Set(JSON.parse(localStorage.getItem("veyra-bookmarks")||"[]"))
 };
+const $=id=>document.getElementById(id);
 
-const $ = (id) => document.getElementById(id);
-
-function addLog(level, message) {
-  state.logs.push({ id: ++state.lastLogId, time: new Date(), level, message: String(message) });
-  if (state.logs.length > 2000) state.logs.splice(0, state.logs.length - 2000);
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function pathOf(u){try{const x=new URL(u);return (x.pathname||"/")+(x.search||"")}catch{return u}}
+function hostOf(u){try{return new URL(u).hostname.replace(/^www\./,"")}catch{return "Veyra Browse"}}
+function addLog(level,msg){
+  state.logs.push({time:new Date(),level,message:String(msg)});
+  if(state.logs.length>2000)state.logs.splice(0,state.logs.length-2000);
   renderConsole();
 }
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[m]);
+function setLoading(on,pct=0){
+  const line=$("loadProgress");
+  line.style.width=on?`${Math.max(6,Math.min(100,pct))}%`:"0%";
+  $("frameLoader").classList.toggle("hidden",!on);
 }
-function pathOf(url) {
-  try {
-    const u = new URL(url);
-    return (u.pathname || "/") + (u.search || "");
-  } catch {
-    return url;
+function updateIdentity(url){
+  $("tabTitle").textContent=hostOf(url);
+  $("scheme").textContent=(new URL(url).protocol||"https:").replace(":","");
+  $("siteState").style.color=(new URL(url).protocol==="https:")?"#7aa6df":"#cfad6b";
+  $("starBtn").classList.toggle("saved",state.bookmarked.has(url));
+  $("address").value=url;
+}
+function normalize(input){
+  let v=String(input||"").trim();if(!v)return null;
+  if(/^[a-z][a-z0-9+.-]*:\/\//i.test(v))return v;
+  if(/^[\w.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(v))return "https://"+v;
+  return "https://www.google.com/search?q="+encodeURIComponent(v);
+}
+function showHome(){
+  $("homeView").classList.remove("hidden");$("browserView").classList.add("hidden");$("toolView").classList.add("hidden");
+  $("tabTitle").textContent="New Tab";$("address").value="";$("scheme").textContent="https";$("pageState").textContent="Ready";
+  setLoading(false);
+}
+function showBrowser(){
+  $("homeView").classList.add("hidden");$("browserView").classList.remove("hidden");$("toolView").classList.add("hidden");
+}
+function setTool(panel){
+  $("homeView").classList.add("hidden");$("browserView").classList.add("hidden");$("toolView").classList.remove("hidden");
+  document.querySelectorAll(".tool-tab").forEach(x=>x.classList.toggle("active",x.dataset.panel===panel));
+  ["sourcePanel","linkPanel","consolePanel"].forEach(id=>$(id).classList.toggle("hidden",id!==panel));
+  if(panel==="sourcePanel")renderResources();
+  if(panel==="linkPanel")loadLinks();
+  if(panel==="consolePanel")renderConsole();
+}
+function navigateInternal(url,push=true){
+  if(!url)return;
+  state.currentUrl=url;
+  updateIdentity(url);
+  if(push){state.history=state.history.slice(0,state.histIndex+1);state.history.push(url);state.histIndex=state.history.length-1;}
+  openPage(url,false);
+}
+async function openPage(input,push=true){
+  const url=normalize(input);if(!url)return;
+  let parsed;try{parsed=new URL(url)}catch{return}
+  if(!/^https?:$/.test(parsed.protocol)){addLog("warn","Only HTTP(S) URLs are supported.");return}
+  showBrowser();updateIdentity(url);setLoading(true,14);$("pageState").textContent="Connecting…";$("serverState").textContent="Starting crawler";$("serverState").className="server-pill warn";
+  addLog("info","Opening "+url);
+  if(push){state.history=state.history.slice(0,state.histIndex+1);state.history.push(url);state.histIndex=state.history.length-1;}
+  try{
+    const r=await fetch(API+"/api/open",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({url})});
+    const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    state.jobId=b.jobId;state.currentUrl=b.url;state.remoteLogIds.clear();
+    $("address").value=b.url;$("pageState").textContent="Loading "+hostOf(b.url)+"…";setLoading(true,38);
+    $("pageFrame").src=API+"/api/view?url="+encodeURIComponent(b.url);
+    startPolling(b.jobId);
+  }catch(e){
+    setLoading(false);$("pageState").textContent="Could not load page";$("serverState").textContent="Backend error";$("serverState").className="server-pill warn";
+    addLog("error","Open failed: "+(e.stack||e.message||e));
   }
 }
-
-function showView(mode) {
-  $("homeView").classList.toggle("hidden", mode !== "home");
-  $("crawlView").classList.toggle("hidden", mode !== "crawl");
+function startPolling(jobId){
+  if(state.poll)clearInterval(state.poll);
+  pollJob(jobId);state.poll=setInterval(()=>pollJob(jobId),500);
 }
-
-function openNormally() {
-  const raw = $("urlInput").value.trim();
-  if (!raw) return;
-  let u = raw;
-  if (!/^https?:\/\//i.test(u)) {
-    if (/^[\w.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(u)) u = "https://" + u;
-    else u = "https://www.google.com/search?q=" + encodeURIComponent(u);
-  }
-  addLog("info", "Opening " + u);
-  window.open(u, "_blank", "noopener");
-}
-
-async function startCrawl() {
-  const raw = $("urlInput").value.trim();
-  if (!raw) return addLog("warn", "Enter a URL first.");
-  $("crawlBtn").disabled = true;
-  $("stopBtn").disabled = false;
-  showView("crawl");
-  addLog("info", "Sending crawl job to Render…");
-
-  try {
-    const res = await fetch(API + "/api/crawl", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: raw })
-    });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || "HTTP " + res.status);
-    state.jobId = body.id;
-    state.data = body;
-    state.resources = [];
-    state.selected = -1;
-    $("jobUrl").textContent = body.url;
-    $("sourceCode").textContent = "Crawler started on Render…";
-    addLog("info", "Job " + body.id + " started.");
-    beginPolling();
-  } catch (e) {
-    addLog("error", "Could not start crawl: " + (e.stack || e.message || e));
-    $("crawlBtn").disabled = false;
-    $("stopBtn").disabled = true;
-  }
-}
-
-function beginPolling() {
-  if (state.poll) clearInterval(state.poll);
-  pollStatus();
-  state.poll = setInterval(pollStatus, 450);
-}
-
-async function pollStatus() {
-  if (!state.jobId) return;
-  try {
-    const res = await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId));
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || "HTTP " + res.status);
-    state.data = body;
-    updateDashboard(body);
-
-    if (Array.isArray(body.logs)) {
-      for (const entry of body.logs) {
-        const key = entry.id || (entry.time + "|" + entry.message);
-        if (!state.logs.some(x => x.remoteKey === key)) {
-          state.logs.push({remoteKey:key, id:key, time:new Date(entry.time), level:entry.level, message:"[backend] "+entry.message});
-        }
-      }
-      if (state.logs.length > 2000) state.logs.splice(0, state.logs.length - 2000);
-      renderConsole();
+async function pollJob(jobId){
+  try{
+    const r=await fetch(API+"/api/crawl/"+encodeURIComponent(jobId));const b=await r.json();
+    if(!r.ok)throw new Error(b.error||"HTTP "+r.status);if(state.jobId!==jobId)return;
+    const c=b.counts||{};
+    $("crawlSummary").textContent=`Crawler: ${c.processed||0} processed · ${c.htmlPages||0} HTML · ${c.css||0} CSS · ${c.js||0} JS · ${c.links||0} links`;
+    $("backendHealth").textContent="Backend: online";
+    $("serverState").textContent=b.done?(b.status==="done"?"Crawler finished":"Crawler stopped"):`Crawling · ${c.links||0} links`;
+    $("serverState").className="server-pill"+(b.done?"":" live");
+    $("loadProgress").style.width=b.done?"100%":`${Math.min(88,42+(c.processed||0)/Math.max(1,c.processed+(c.queued||0)+4)*45)}%`;
+    for(const x of (b.logs||[])){
+      if(state.remoteLogIds.has(x.id))continue;
+      state.remoteLogIds.add(x.id);state.logs.push({time:new Date(x.time),level:x.level,message:"[server] "+x.message});
     }
-
-    if (body.done) {
-      clearInterval(state.poll);
-      state.poll = null;
-      $("stopBtn").disabled = true;
-      $("crawlBtn").disabled = false;
-      $("exportBtn").disabled = false;
-      addLog("info", "Crawl finished: " + body.reason);
-      await loadResources();
-      await loadLinks();
-    } else if (body.status === "stopped") {
-      clearInterval(state.poll);
-      state.poll = null;
-      $("stopBtn").disabled = true;
-      $("crawlBtn").disabled = false;
-      $("exportBtn").disabled = true;
-      addLog("warn", "Crawl stopped.");
-      await loadResources();
-      await loadLinks();
+    if(state.logs.length>2000)state.logs.splice(0,state.logs.length-2000);renderConsole();
+    if(b.done){
+      clearInterval(state.poll);state.poll=null;setLoading(false);
+      $("pageState").textContent=b.statusText||"Ready";
+      await loadResources();await loadLinks();
+      addLog("info",b.statusText||"Crawler finished.");
     }
-  } catch (e) {
-    addLog("error", "Polling error: " + (e.stack || e.message || e));
-  }
+  }catch(e){$("backendHealth").textContent="Backend: error";addLog("error","Crawler status error: "+(e.message||e))}
+}
+async function loadResources(){
+  if(!state.jobId)return;
+  try{const r=await fetch(API+"/api/crawl/"+encodeURIComponent(state.jobId)+"/resources");const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);state.resources=b.resources||[];renderResources()}
+  catch(e){addLog("error","Source list failed: "+(e.message||e))}
+}
+function renderResources(){
+  const box=$("resourceList");if(!box)return;
+  if(!state.resources.length){box.innerHTML='<div class="empty">No captured resources yet.</div>';return}
+  const q=($("sourceTitle").dataset.filter||"").toLowerCase();
+  const arr=state.resources.filter(r=>!q||r.url.toLowerCase().includes(q)||r.type.includes(q));
+  box.innerHTML=arr.map(r=>`<div class="resource ${r.id===state.selected?"active":""}" data-id="${r.id}">
+    <div class="rtype">${esc(r.type)} · ${esc(String(r.status))}</div>
+    <div class="rurl">${esc(pathOf(r.url))}</div>
+    <div class="rmeta">${esc(r.url)} · ${esc(r.bytesLabel||"")}${r.truncated?" · truncated":""}</div>
+  </div>`).join("");
+  box.querySelectorAll(".resource").forEach(el=>el.onclick=()=>selectResource(Number(el.dataset.id)));
+}
+async function selectResource(id){
+  state.selected=id;renderResources();const r=state.resources.find(x=>x.id===id);if(!r)return;
+  $("sourceTitle").textContent=r.type.toUpperCase()+" — "+pathOf(r.url);$("sourceMeta").textContent=`${r.url} · ${r.status} · ${r.bytesLabel||""}`;$("sourceCode").textContent="Loading source…";
+  try{const resp=await fetch(API+"/api/crawl/"+encodeURIComponent(state.jobId)+"/source/"+encodeURIComponent(id));const b=await resp.json();if(!resp.ok)throw new Error(b.error||"HTTP "+resp.status);$("sourceCode").textContent=b.source||"[empty]"}
+  catch(e){$("sourceCode").textContent="SOURCE ERROR\n\n"+(e.stack||e.message||e);addLog("error","Source fetch failed: "+(e.message||e))}
+}
+async function loadLinks(){
+  if(!state.jobId)return;
+  try{const r=await fetch(API+"/api/crawl/"+encodeURIComponent(state.jobId)+"/links");const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    state.links=b.links||[];$("linkCount").textContent=state.links.length;
+    $("linkBody").innerHTML=state.links.map(l=>`<tr><td><a href="${esc(API+"/api/view?url="+encodeURIComponent(l.url))}" target="_blank" rel="noopener">${esc(pathOf(l.url))}</a></td><td>${esc(l.url)}</td><td>${esc(l.type)}</td><td>${esc(pathOf(l.source))}</td><td>${l.captured?"captured":"discovered"}</td></tr>`).join("");
+  }catch(e){addLog("error","Links failed: "+(e.message||e))}
+}
+function renderConsole(){
+  const filter=$("consoleFilter").value;const rows=state.logs.filter(x=>filter==="all"||x.level===filter);
+  if(!rows.length){$("consoleLog").innerHTML='<div class="empty">No matching logs.</div>';return}
+  $("consoleLog").innerHTML=rows.map(x=>`<div class="log ${x.level}"><span class="time">${new Date(x.time).toLocaleTimeString([], {hour12:false})}</span><span class="level">${esc(x.level.toUpperCase())}</span><span class="msg">${esc(x.message)}</span></div>`).join("");
+  $("consoleLog").scrollTop=$("consoleLog").scrollHeight;
+}
+async function health(){
+  try{const r=await fetch(API+"/health");if(!r.ok)throw new Error("HTTP "+r.status);$("backendHealth").textContent="Backend: online"}
+  catch(e){$("backendHealth").textContent="Backend: offline";addLog("error","Backend health check failed: "+(e.message||e))}
+}
+function toggleMenu(){ $("menuPanel").classList.toggle("hidden") }
+function closeMenu(){ $("menuPanel").classList.add("hidden") }
+function saveBookmark(){
+  if(!state.currentUrl)return;
+  if(state.bookmarked.has(state.currentUrl))state.bookmarked.delete(state.currentUrl);else state.bookmarked.add(state.currentUrl);
+  localStorage.setItem("veyra-bookmarks",JSON.stringify([...state.bookmarked]));$("starBtn").classList.toggle("saved",state.bookmarked.has(state.currentUrl));
+  addLog("info",state.bookmarked.has(state.currentUrl)?"Bookmarked "+state.currentUrl:"Removed bookmark.");
 }
 
-function updateDashboard(d) {
-  $("jobStatus").textContent = d.statusText || d.status || "Running…";
-  $("mPages").textContent = d.counts?.htmlPages ?? 0;
-  $("mCss").textContent = d.counts?.css ?? 0;
-  $("mJs").textContent = d.counts?.js ?? 0;
-  $("mLinks").textContent = d.counts?.links ?? 0;
-  const pct = d.maxUrls ? Math.min(100, (d.counts?.processed || 0) / d.maxUrls * 100) : 0;
-  $("progressBar").style.width = pct + "%";
-}
-
-async function stopCrawl() {
-  if (!state.jobId) return;
-  try {
-    await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId) + "/stop", { method: "POST" });
-    addLog("warn", "Stop requested.");
-  } catch (e) {
-    addLog("error", "Stop request failed: " + (e.message || e));
-  }
-}
-
-async function loadResources() {
-  if (!state.jobId) return;
-  try {
-    const res = await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId) + "/resources");
-    const body = await res.json();
-    state.resources = body.resources || [];
-    renderResources();
-  } catch (e) {
-    addLog("error", "Resource list failed: " + (e.message || e));
-  }
-}
-
-function renderResources() {
-  const q = $("filterInput").value.trim().toLowerCase();
-  const arr = state.resources.filter(r =>
-    !q || r.type.includes(q) || r.url.toLowerCase().includes(q) || pathOf(r.url).toLowerCase().includes(q)
-  );
-  if (!arr.length) {
-    $("resourceList").innerHTML = '<div class="empty">No matching resources.</div>';
-    return;
-  }
-  $("resourceList").innerHTML = arr.map(r => {
-    const idx = state.resources.indexOf(r);
-    return `<div class="resource ${idx===state.selected?'active':''}" data-idx="${idx}">
-      <div class="rtype">${escapeHtml(r.type)} · ${escapeHtml(String(r.status))}</div>
-      <div class="rurl">${escapeHtml(pathOf(r.url))}</div>
-      <div class="rmeta">${escapeHtml(r.url)} · ${escapeHtml(r.bytesLabel)}${r.truncated?' · truncated':''}</div>
-    </div>`;
-  }).join("");
-  $("resourceList").querySelectorAll(".resource").forEach(el =>
-    el.addEventListener("click", () => selectResource(Number(el.dataset.idx)))
-  );
-}
-
-async function selectResource(index) {
-  state.selected = index;
-  renderResources();
-  const r = state.resources[index];
-  if (!r || !state.jobId) return;
-  $("sourceTitle").textContent = r.type.toUpperCase() + " — " + pathOf(r.url);
-  $("sourceMeta").textContent = `${r.url} · ${r.status} · ${r.bytesLabel}${r.truncated?' · truncated':''}`;
-  $("sourceCode").textContent = "Loading source…";
-  try {
-    const res = await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId) + "/source/" + encodeURIComponent(r.id));
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || "HTTP " + res.status);
-    $("sourceCode").textContent = body.source || "[empty source]";
-  } catch (e) {
-    $("sourceCode").textContent = "SOURCE ERROR\n\n" + (e.stack || e.message || e);
-    addLog("error", "Source fetch failed: " + (e.message || e));
-  }
-}
-
-async function loadLinks() {
-  if (!state.jobId) return;
-  try {
-    const res = await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId) + "/links");
-    const body = await res.json();
-    const links = body.links || [];
-    $("linkCount").textContent = links.length;
-    $("linkBody").innerHTML = links.map(l => `
-      <tr>
-        <td><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(pathOf(l.url))}</a></td>
-        <td>${escapeHtml(l.url)}</td>
-        <td><span class="badge ${l.internal?'internal':'external'}">${escapeHtml(l.type)}</span></td>
-        <td>${escapeHtml(pathOf(l.source))}</td>
-        <td><span class="${l.captured?'captured':'discovered'}">${l.captured?'captured':'discovered'}</span></td>
-      </tr>
-    `).join("");
-  } catch (e) {
-    addLog("error", "Link list failed: " + (e.message || e));
-  }
-}
-
-function renderConsole() {
-  const filter = $("consoleFilter").value;
-  const rows = state.logs.filter(x => filter === "all" || x.level === filter);
-  if (!rows.length) {
-    $("consoleLog").innerHTML = '<div class="empty">No matching logs.</div>';
-    return;
-  }
-  $("consoleLog").innerHTML = rows.map(x => {
-    const d = x.time instanceof Date ? x.time : new Date(x.time);
-    return `<div class="log ${x.level}">
-      <span class="time">${d.toLocaleTimeString([], {hour12:false})}</span>
-      <span class="level">${escapeHtml(x.level.toUpperCase())}</span>
-      <span class="msg">${escapeHtml(x.message)}</span>
-    </div>`;
-  }).join("");
-  $("consoleLog").scrollTop = $("consoleLog").scrollHeight;
-}
-
-async function exportCrawl() {
-  if (!state.jobId) return;
-  try {
-    const res = await fetch(API + "/api/crawl/" + encodeURIComponent(state.jobId) + "/export");
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "veyra-browse-" + state.jobId + ".json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    addLog("info", "Export downloaded.");
-  } catch (e) {
-    addLog("error", "Export failed: " + (e.message || e));
-  }
-}
-
-async function copyConsole() {
-  const text = state.logs.map(x => `[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    addLog("info", "Console copied.");
-  } catch (e) {
-    addLog("error", "Clipboard failed: " + (e.message || e));
-  }
-}
-
-function setPanel(panel) {
-  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x.dataset.panel === panel));
-  ["sourcePanel","linkPanel","consolePanel"].forEach(id => $(id).classList.toggle("hidden", id !== panel));
-  if (panel === "consolePanel") renderConsole();
-  if (panel === "linkPanel") loadLinks();
-  if (panel === "sourcePanel") renderResources();
-}
-
-document.querySelectorAll(".tab").forEach(x => x.addEventListener("click", () => setPanel(x.dataset.panel)));
-$("crawlBtn").addEventListener("click", startCrawl);
-$("stopBtn").addEventListener("click", stopCrawl);
-$("openBtn").addEventListener("click", openNormally);
-$("exportBtn").addEventListener("click", exportCrawl);
-$("filterInput").addEventListener("input", renderResources);
-$("consoleFilter").addEventListener("change", renderConsole);
-$("copyConsoleBtn").addEventListener("click", copyConsole);
-$("clearConsoleBtn").addEventListener("click", () => { state.logs=[]; renderConsole(); addLog("info", "Console cleared."); });
-$("consoleBtn").addEventListener("click", () => { showView("crawl"); setPanel("consolePanel"); });
-$("linksBtn").addEventListener("click", () => { showView("crawl"); setPanel("linkPanel"); });
-$("filesBtn").addEventListener("click", () => { showView("crawl"); setPanel("sourcePanel"); });
-document.querySelectorAll(".quick button").forEach(b => b.addEventListener("click", () => {
-  $("urlInput").value = b.dataset.url;
-}));
-
-window.addEventListener("error", e => addLog("error", `Frontend error: ${e.message} @ ${e.filename||"inline"}:${e.lineno||"?"}`));
-window.addEventListener("unhandledrejection", e => addLog("error", "Unhandled promise: " + (e.reason?.stack || e.reason || "")));
-
-addLog("info", "Veyra Browse frontend ready.");
+$("goBtn").onclick=()=>openPage($("address").value);
+$("address").onkeydown=e=>{if(e.key==="Enter")openPage($("address").value)};
+$("homeBrowse").onclick=()=>openPage($("homeInput").value);
+$("homeInput").onkeydown=e=>{if(e.key==="Enter")openPage($("homeInput").value)};
+document.querySelectorAll(".shortcuts button").forEach(b=>b.onclick=()=>openPage(b.dataset.url));
+$("homeBtn").onclick=showHome;
+$("newTab").onclick=showHome;
+$("tabClose").onclick=showHome;
+$("reloadBtn").onclick=()=>{if(state.currentUrl)openPage(state.currentUrl,false)};
+$("backBtn").onclick=()=>{if(state.histIndex>0){state.histIndex--;openPage(state.history[state.histIndex],false)}};
+$("forwardBtn").onclick=()=>{if(state.histIndex<state.history.length-1){state.histIndex++;openPage(state.history[state.histIndex],false)}};
+$("starBtn").onclick=saveBookmark;
+$("toolsMenuBtn").onclick=()=>{setTool("sourcePanel")};
+$("consoleBtn")?.remove();
+$("sourceBtn")?.remove();
+$("linksBtn")?.remove();
+document.querySelectorAll(".tool-tab").forEach(x=>x.onclick=()=>setTool(x.dataset.panel));
+$("backToPage").onclick=showBrowser;
+$("menuBtn").onclick=toggleMenu;
+$("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")};
+$("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")};
+$("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")};
+$("menuHome").onclick=()=>{closeMenu();showHome()};
+$("consoleFilter").onchange=renderConsole;
+$("clearConsole").onclick=()=>{state.logs=[];state.remoteLogIds.clear();renderConsole();addLog("info","Console cleared.")};
+$("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error","Copy failed: "+(e.message||e))}};
+$("pageFrame").addEventListener("load",()=>{$("pageState").textContent=state.currentUrl?hostOf(state.currentUrl):"Ready";setLoading(false)});
+window.addEventListener("message",e=>{const d=e.data||{};if(d.type!=="veyra:navigate"||!d.url)return;const u=normalize(d.url);if(!u)return;state.currentUrl=u;$("address").value=u;$("tabTitle").textContent=hostOf(u);addLog("debug","Page navigation: "+u)});
+window.addEventListener("error",e=>addLog("error",`Frontend error: ${e.message} @ ${e.filename||"inline"}:${e.lineno||"?"}`));
+window.addEventListener("unhandledrejection",e=>addLog("error","Unhandled promise: "+(e.reason?.stack||e.reason||"")));
+document.addEventListener("click",e=>{if(!$("menuPanel").contains(e.target)&&e.target!==$("menuBtn"))closeMenu()});
+$("pageFrame").addEventListener("loadstart",()=>setLoading(true,60));
+health();
+addLog("info","Veyra Browse is ready.");

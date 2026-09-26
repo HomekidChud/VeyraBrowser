@@ -3,127 +3,164 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111318">
   <title>Veyra Browse</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="top">
-      <div class="brand">🌐 <b>Veyra Browse</b><span>FAST WEB CRAWLER</span></div>
-      <div class="top-actions">
-        <button class="ghost" id="consoleBtn">#console</button>
-        <button class="ghost" id="linksBtn">Links</button>
-        <button class="ghost" id="filesBtn">Source</button>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-reload" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 1 4M20 4v7h-7"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.2 2.5 3.2 5.3 3.2 8.5s-1 6-3.2 8.5c-2.2-2.5-3.2-5.3-3.2-8.5s1-6 3.2-8.5z"/></symbol>
+    <symbol id="i-dev" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></symbol>
+  </svg>
+
+  <div class="browser">
+    <header class="chrome">
+      <div class="tabs-row">
+        <div class="tab active" id="mainTab">
+          <span class="tab-favicon"><svg><use href="#i-globe"/></svg></span>
+          <span class="tab-title" id="tabTitle">New Tab</span>
+          <button class="tab-close" title="Close tab" id="tabClose">×</button>
+        </div>
+        <button class="new-tab" title="New tab" id="newTab"><svg><use href="#i-plus"/></svg></button>
       </div>
+
+      <div class="toolbar-row">
+        <button class="icon-btn" id="backBtn" title="Back"><svg><use href="#i-back"/></svg></button>
+        <button class="icon-btn" id="forwardBtn" title="Forward"><svg><use href="#i-forward"/></svg></button>
+        <button class="icon-btn" id="reloadBtn" title="Reload"><svg><use href="#i-reload"/></svg></button>
+        <button class="icon-btn" id="homeBtn" title="Home"><svg><use href="#i-home"/></svg></button>
+
+        <div class="omnibox">
+          <div class="omnibox-left" id="siteState">
+            <svg><use href="#i-lock"/></svg>
+            <span id="scheme">https</span>
+          </div>
+          <input id="address" autocomplete="off" spellcheck="false" placeholder="Search or enter a web address">
+          <button class="omnibox-star" id="starBtn" title="Bookmark"><svg><use href="#i-star"/></svg></button>
+        </div>
+
+        <button class="icon-btn" title="Downloads" id="downloadBtn"><svg><use href="#i-download"/></svg></button>
+        <button class="icon-btn" title="Veyra tools" id="toolsMenuBtn"><svg><use href="#i-dev"/></svg></button>
+        <button class="icon-btn" title="Menu" id="menuBtn"><svg><use href="#i-menu"/></svg></button>
+      </div>
+
+      <div class="load-line"><i id="loadProgress"></i></div>
     </header>
 
-    <main class="shell">
-      <section class="hero" id="homeView">
-        <div class="hero-card">
-          <div class="big-logo">Veyra Browse</div>
-          <div class="sub">Normal browsing on top. High-speed server crawling underneath.</div>
-          <div class="search-row">
-            <input id="urlInput" autocomplete="off" placeholder="https://example.com">
-            <button class="primary" id="crawlBtn">Crawl site</button>
-            <button class="secondary" id="openBtn">Open</button>
+    <main class="viewport">
+      <section class="newtab-view" id="homeView">
+        <div class="newtab-center">
+          <div class="veyra-mark">V</div>
+          <div class="wordmark">Veyra</div>
+          <div class="wordmark-sub">Browse the web. Discover what powers it.</div>
+          <div class="new-search">
+            <svg><use href="#i-search"/></svg>
+            <input id="homeInput" placeholder="Search or enter a web address" autocomplete="off">
+            <button id="homeBrowse">Browse</button>
           </div>
-          <div class="quick">
-            <button data-url="https://example.com">example.com</button>
-            <button data-url="https://www.wikipedia.org">wikipedia.org</button>
-            <button data-url="https://developer.mozilla.org">MDN</button>
+          <div class="shortcuts">
+            <button data-url="https://example.com"><span>EX</span><b>Example</b></button>
+            <button data-url="https://www.wikipedia.org"><span>W</span><b>Wikipedia</b></button>
+            <button data-url="https://developer.mozilla.org"><span>MD</span><b>MDN</b></button>
           </div>
-          <p class="note">
-            Crawling is performed by the Render backend so your Chromebook does not have
-            to run the crawler. The frontend is static and can live on GitHub Pages.
-          </p>
+          <div class="newtab-note">Veyra Browse is powered by a server-side page proxy and crawler. The crawler works quietly in the background.</div>
         </div>
       </section>
 
-      <section class="crawl-screen hidden" id="crawlView">
-        <aside class="job-panel">
-          <div class="job-card">
-            <div class="job-title">Crawler</div>
-            <div class="job-url" id="jobUrl">—</div>
-            <div class="status" id="jobStatus">Waiting…</div>
-            <div class="progress"><i id="progressBar"></i></div>
+      <section class="page-view hidden" id="browserView">
+        <div class="page-strip">
+          <div class="page-strip-left">
+            <span class="page-dot"></span>
+            <span id="pageState">Loading…</span>
           </div>
-
-          <div class="metric-grid">
-            <div><b id="mPages">0</b><span>HTML</span></div>
-            <div><b id="mCss">0</b><span>CSS</span></div>
-            <div><b id="mJs">0</b><span>JS</span></div>
-            <div><b id="mLinks">0</b><span>LINKS</span></div>
+          <div class="page-strip-right">
+            <span class="server-pill" id="serverState">Crawler idle</span>
           </div>
-
-          <div class="job-card compact">
-            <div><b>Live engine</b></div>
-            <p>Parallel fetch workers, sitemap discovery, robots parsing, URL de-duplication, HTML/CSS/JS link extraction, and path indexing run on the backend.</p>
+        </div>
+        <div class="frame-wrap">
+          <iframe id="pageFrame" title="Veyra page view" allow="fullscreen; autoplay; clipboard-read; clipboard-write"></iframe>
+          <div class="frame-loader" id="frameLoader">
+            <div class="spinner"></div>
+            <span>Loading page…</span>
           </div>
+        </div>
+      </section>
 
-          <button class="stop" id="stopBtn" disabled>Stop crawl</button>
-          <button class="secondary full" id="exportBtn" disabled>Export crawl JSON</button>
-        </aside>
-
-        <section class="workspace">
-          <div class="toolbar">
-            <div class="tabs">
-              <button class="tab active" data-panel="sourcePanel">Source</button>
-              <button class="tab" data-panel="linkPanel">All links</button>
-              <button class="tab" data-panel="consolePanel">#console</button>
-            </div>
-            <input class="filter" id="filterInput" placeholder="Filter URL / type / path">
+      <section class="tools-view hidden" id="toolView">
+        <div class="tools-top">
+          <div class="tool-tabs">
+            <button class="tool-tab active" data-panel="sourcePanel">Source</button>
+            <button class="tool-tab" data-panel="linkPanel">All links</button>
+            <button class="tool-tab" data-panel="consolePanel">#console</button>
           </div>
+          <button class="back-to-page" id="backToPage">← Back to page</button>
+        </div>
 
-          <div class="panel source-panel" id="sourcePanel">
-            <div class="resource-list" id="resourceList">
-              <div class="empty">Start a crawl to see HTML, CSS and JavaScript source.</div>
-            </div>
-            <div class="source-view">
-              <div class="source-head">
+        <div id="sourcePanel" class="tool-panel source-panel">
+          <div class="resource-list" id="resourceList"><div class="empty">Browse a page first.</div></div>
+          <div class="source-view">
+            <div class="source-head">
+              <div>
+                <span class="eyebrow">RESOURCE</span>
                 <b id="sourceTitle">Nothing selected</b>
-                <span id="sourceMeta"></span>
               </div>
-              <pre id="sourceCode">Source will appear here.</pre>
+              <span id="sourceMeta"></span>
             </div>
+            <pre id="sourceCode">Source appears here after the backend captures it.</pre>
           </div>
+        </div>
 
-          <div class="panel link-panel hidden" id="linkPanel">
-            <div class="link-head">
-              <b>Discovered links</b>
-              <span id="linkCount">0</span>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Path</th><th>Full URL</th><th>Type</th><th>Source</th><th>State</th></tr>
-                </thead>
-                <tbody id="linkBody"></tbody>
-              </table>
-            </div>
+        <div id="linkPanel" class="tool-panel hidden link-panel">
+          <div class="panel-head"><div><span class="eyebrow">INDEX</span><b>All discovered links</b></div><span id="linkCount">0</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Path</th><th>URL</th><th>Type</th><th>Source</th><th>State</th></tr></thead>
+              <tbody id="linkBody"></tbody>
+            </table>
           </div>
+        </div>
 
-          <div class="panel console-panel hidden" id="consolePanel">
-            <div class="console-head">
-              <b>Debug console</b>
-              <div class="console-actions">
-                <select id="consoleFilter">
-                  <option value="all">All</option>
-                  <option value="error">Errors</option>
-                  <option value="warn">Warnings</option>
-                  <option value="info">Info</option>
-                  <option value="debug">Debug</option>
-                </select>
-                <button class="secondary" id="copyConsoleBtn">Copy</button>
-                <button class="danger" id="clearConsoleBtn">Clear</button>
-              </div>
-            </div>
-            <div id="consoleLog" class="console-log">
-              <div class="empty">No logs yet.</div>
+        <div id="consolePanel" class="tool-panel hidden console-panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">DEBUG</span><b>#console</b></div>
+            <div class="console-actions">
+              <select id="consoleFilter">
+                <option value="all">All</option><option value="error">Errors</option>
+                <option value="warn">Warnings</option><option value="info">Info</option>
+                <option value="debug">Debug</option>
+              </select>
+              <button class="secondary" id="copyConsole">Copy</button>
+              <button class="danger" id="clearConsole">Clear</button>
             </div>
           </div>
-        </section>
+          <div class="console-log" id="consoleLog"><div class="empty">No logs yet.</div></div>
+        </div>
       </section>
     </main>
+
+    <footer class="statusbar">
+      <span id="crawlSummary">Ready</span>
+      <span id="backendHealth">Backend checking…</span>
+    </footer>
+
+    <div class="menu-panel hidden" id="menuPanel">
+      <button id="menuSource">View source resources</button>
+      <button id="menuLinks">View all links</button>
+      <button id="menuConsole">Open #console</button>
+      <div class="menu-divider"></div>
+      <button id="menuHome">New Veyra tab</button>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>
