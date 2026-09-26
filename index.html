@@ -21,6 +21,7 @@
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.2 2.5 3.2 5.3 3.2 8.5s-1 6-3.2 8.5c-2.2-2.5-3.2-5.3-3.2-8.5s1-6 3.2-8.5z"/></symbol>
     <symbol id="i-dev" viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M16 16l5 5"/></symbol>
+    <symbol id="i-calculator" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8 7h8M8 11h2M14 11h2M8 15h2M14 15h2M8 18h8"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 5h5v5"/><path d="M19 5l-9 9"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></symbol>
   </svg>
 
@@ -46,7 +47,7 @@
           <button class="omnibox-star" id="starBtn" title="Bookmark"><svg><use href="#i-star"/></svg></button>
         </div>
 
-        <button class="icon-btn" title="Downloads" id="downloadBtn"><svg><use href="#i-download"/></svg></button>
+        <button class="icon-btn" title="Downloads / current crawl export" id="downloadBtn"><svg><use href="#i-download"/></svg></button>
         <button class="icon-btn" title="Veyra tools" id="toolsMenuBtn"><svg><use href="#i-dev"/></svg></button>
         <button class="icon-btn" title="Menu" id="menuBtn"><svg><use href="#i-menu"/></svg></button>
       </div>
@@ -59,37 +60,65 @@
         <div class="newtab-center">
           <div class="veyra-mark">V</div>
           <div class="wordmark">Veyra</div>
-          <div class="wordmark-sub">Browse the web. Discover what powers it.</div>
+          <div class="wordmark-sub">Browse the web. Search it. Inspect what powers it.</div>
           <div class="new-search">
             <svg><use href="#i-search"/></svg>
             <input id="homeInput" placeholder="Search or enter a web address" autocomplete="off">
-            <button id="homeBrowse">Browse</button>
+            <button id="homeBrowse">Search</button>
           </div>
           <div class="shortcuts">
             <button data-url="https://example.com"><span>EX</span><b>Example</b></button>
             <button data-url="https://www.wikipedia.org"><span>W</span><b>Wikipedia</b></button>
             <button data-url="https://developer.mozilla.org"><span>MD</span><b>MDN</b></button>
+            <button data-tool="calculator"><span><svg><use href="#i-calculator"/></svg></span><b>Calculator</b></button>
           </div>
-          <div class="newtab-note">Veyra Browse is powered by a server-side page proxy and crawler. The crawler works quietly in the background.</div>
+          <div class="newtab-note">Veyra Search uses a provider or Veyra's own crawl index. The browser proxy and crawler remain separate so the first page can appear quickly.</div>
+        </div>
+      </section>
+
+      <section class="search-view hidden" id="searchView">
+        <div class="search-shell">
+          <div class="search-heading">
+            <div><div class="eyebrow">VEYRA SEARCH</div><h1>Search the web through Veyra</h1></div>
+            <div class="search-stat" id="searchStat">Ready</div>
+          </div>
+          <div class="search-bar">
+            <svg><use href="#i-search"/></svg>
+            <input id="searchInput" autocomplete="off" spellcheck="false" placeholder="Search Veyra">
+            <button id="searchButton">Search</button>
+          </div>
+          <div class="search-meta" id="searchMeta"></div>
+          <div class="search-results" id="searchResults"></div>
+          <div class="search-actions"><button class="secondary" id="searchMore">Load more</button></div>
+        </div>
+      </section>
+
+      <section class="calculator-view hidden" id="calculatorView">
+        <div class="calculator-shell">
+          <div class="search-heading"><div><div class="eyebrow">VEYRA TOOL</div><h1>Calculator</h1></div><div class="search-stat">Local · no remote request</div></div>
+          <div class="calc-card">
+            <input id="calcInput" class="calc-input" autocomplete="off" inputmode="decimal" placeholder="e.g. (10 + 5) / 3">
+            <div class="calc-result" id="calcResult">0</div>
+            <div class="calc-status" id="calcStatus">Supports + − × ÷ % parentheses and negative numbers.</div>
+            <div class="calc-keypad">
+              <button data-calc="7">7</button><button data-calc="8">8</button><button data-calc="9">9</button><button data-calc="/">÷</button>
+              <button data-calc="4">4</button><button data-calc="5">5</button><button data-calc="6">6</button><button data-calc="*">×</button>
+              <button data-calc="1">1</button><button data-calc="2">2</button><button data-calc="3">3</button><button data-calc="-">−</button>
+              <button data-calc="0">0</button><button data-calc=".">.</button><button data-calc="%">%</button><button data-calc="+">+</button>
+              <button data-calc="(">(</button><button data-calc=")">)</button><button id="calcClear" class="secondary">C</button><button id="calcEquals" class="calc-equals">=</button>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="page-view hidden" id="browserView">
         <div class="page-strip">
-          <div class="page-strip-left">
-            <span class="page-dot"></span>
-            <span id="pageState">Loading…</span>
-          </div>
-          <div class="page-strip-right">
-            <span class="server-pill" id="serverState">Crawler idle</span>
-          </div>
+          <div class="page-strip-left"><span class="page-dot"></span><span id="pageState">Loading…</span></div>
+          <div class="page-strip-right"><span class="server-pill" id="serverState">Crawler idle</span></div>
         </div>
         <div class="frame-wrap">
-          <iframe id="pageFrame" title="Veyra page view" allow="fullscreen; autoplay; clipboard-read; clipboard-write"></iframe>
-          <div class="frame-loader" id="frameLoader">
-            <div class="spinner"></div>
-            <span>Loading page…</span>
-          </div>
+          <iframe id="pageFrame" name="veyraPageFrame" title="Veyra page view" allow="fullscreen; autoplay; clipboard-read; clipboard-write"></iframe>
+          <div class="frame-loader" id="frameLoader"><div class="spinner"></div><span id="frameLoaderText">Loading page…</span></div>
         </div>
       </section>
 
@@ -108,175 +137,69 @@
         <div id="sourcePanel" class="tool-panel source-panel">
           <div class="resource-list" id="resourceList"><div class="empty">Browse a page first.</div></div>
           <div class="source-view">
-            <div class="source-head">
-              <div>
-                <span class="eyebrow">RESOURCE</span>
-                <b id="sourceTitle">Nothing selected</b>
-              </div>
-              <span id="sourceMeta"></span>
-            </div>
+            <div class="source-head"><div><span class="eyebrow">RESOURCE</span><b id="sourceTitle">Nothing selected</b></div><span id="sourceMeta"></span></div>
             <pre id="sourceCode">Source appears here after the backend captures it.</pre>
           </div>
         </div>
 
         <div id="linkPanel" class="tool-panel hidden link-panel">
           <div class="panel-head"><div><span class="eyebrow">INDEX</span><b>All discovered links</b></div><span id="linkCount">0</span></div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Path</th><th>URL</th><th>Type</th><th>Source</th><th>State</th></tr></thead>
-              <tbody id="linkBody"></tbody>
-            </table>
-          </div>
+          <div class="table-wrap"><table><thead><tr><th>Path</th><th>URL</th><th>Type</th><th>Source</th><th>State</th></tr></thead><tbody id="linkBody"></tbody></table></div>
         </div>
 
         <div id="consolePanel" class="tool-panel hidden console-panel">
-          <div class="panel-head">
-            <div><span class="eyebrow">DEBUG</span><b>#console</b></div>
-            <div class="console-actions">
-              <select id="consoleFilter">
-                <option value="all">All</option><option value="error">Errors</option>
-                <option value="warn">Warnings</option><option value="info">Info</option>
-                <option value="debug">Debug</option>
-              </select>
-              <button class="secondary" id="copyConsole">Copy</button>
-              <button class="danger" id="clearConsole">Clear</button>
-            </div>
-          </div>
+          <div class="panel-head"><div><span class="eyebrow">DEBUG</span><b>#console</b></div><div class="console-actions"><select id="consoleFilter"><option value="all">All</option><option value="error">Errors</option><option value="warn">Warnings</option><option value="info">Info</option><option value="debug">Debug</option></select><button class="secondary" id="copyConsole">Copy</button><button class="danger" id="clearConsole">Clear</button></div></div>
           <div class="console-log" id="consoleLog"><div class="empty">No logs yet.</div></div>
         </div>
 
         <div id="devPanel" class="tool-panel hidden dev-panel">
-          <div class="panel-head">
-            <div><span class="eyebrow">DEV</span><b>Live crawl &amp; server debug</b></div>
-            <div class="console-actions">
-              <label class="dev-auto"><input type="checkbox" id="devAutoRefresh" checked> Auto-refresh</label>
-              <button class="secondary" id="devRefreshBtn">Refresh</button>
-              <button class="danger" id="devStopBtn">Stop crawl</button>
-            </div>
-          </div>
-          <div class="dev-body" id="devBody">
-
-            <section class="dev-card">
-              <div class="dev-card-head">
-                <h4>Current job — live view</h4>
-                <div class="dev-card-actions">
-                  <button class="secondary tiny" id="devCopyJsonBtn">Copy JSON</button>
-                  <button class="secondary tiny" id="devExportBtn">Export</button>
-                </div>
-              </div>
-              <div class="dev-grid" id="devJobGrid"><div class="empty">No active crawl. Open a page to start one.</div></div>
-              <div class="dev-bars">
-                <div class="dev-bar"><span>Resources processed</span><div class="bar"><i id="devBarResources"></i></div><b id="devBarResourcesLabel">0 / 0</b></div>
-                <div class="dev-bar"><span>Scan budget</span><div class="bar"><i id="devBarScan"></i></div><b id="devBarScanLabel">0 / 0</b></div>
-                <div class="dev-bar"><span>HTML workers</span><div class="bar"><i id="devBarHtml"></i></div><b id="devBarHtmlLabel">0 / 0</b></div>
-                <div class="dev-bar"><span>Asset workers</span><div class="bar"><i id="devBarAsset"></i></div><b id="devBarAssetLabel">0 / 0</b></div>
-              </div>
-            </section>
-
-            <section class="dev-card">
-              <h4>All jobs on server</h4>
-              <div class="table-wrap dev-scroll">
-                <table><thead><tr><th>ID</th><th>Root</th><th>Status</th><th>Processed</th><th>Links</th><th></th></tr></thead><tbody id="devJobsBody"></tbody></table>
-              </div>
-            </section>
-
-            <section class="dev-card">
-              <h4>Server health</h4>
-              <div class="dev-grid" id="devSystemGrid"><div class="empty">Checking…</div></div>
-            </section>
-
-            <section class="dev-card">
-              <div class="dev-card-head">
-                <h4>Network — frontend → backend</h4>
-                <div class="dev-card-actions">
-                  <select id="devNetFilter">
-                    <option value="all">All</option>
-                    <option value="ok">2xx / 3xx</option>
-                    <option value="err">4xx / 5xx / failed</option>
-                  </select>
-                  <button class="secondary tiny" id="devNetClear">Clear</button>
-                </div>
-              </div>
-              <div class="table-wrap dev-scroll">
-                <table><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th></tr></thead><tbody id="devNetBody"></tbody></table>
-              </div>
-            </section>
-
-            <section class="dev-card">
-              <h4>Raw job JSON</h4>
-              <pre id="devRawJson">—</pre>
-            </section>
-
+          <div class="panel-head"><div><span class="eyebrow">DEV</span><b>Live crawl, server debug &amp; network</b></div><div class="console-actions"><label class="dev-auto"><input type="checkbox" id="devAutoRefresh" checked> Auto-refresh</label><button class="secondary" id="devRefreshBtn">Refresh</button><button class="danger" id="devStopBtn">Stop crawl</button></div></div>
+          <div class="dev-body">
+            <section class="dev-card"><div class="dev-card-head"><h4>Current job — live view</h4><div class="dev-card-actions"><button class="secondary tiny" id="devCopyJsonBtn">Copy JSON</button><button class="secondary tiny" id="devExportBtn">Export</button></div></div><div class="dev-grid" id="devJobGrid"><div class="empty">No active crawl.</div></div><div class="dev-bars"><div class="dev-bar"><span>Resources processed</span><div class="bar"><i id="devBarResources"></i></div><b id="devBarResourcesLabel">0 / 0</b></div><div class="dev-bar"><span>Scan budget</span><div class="bar"><i id="devBarScan"></i></div><b id="devBarScanLabel">0 / 0</b></div><div class="dev-bar"><span>HTML workers</span><div class="bar"><i id="devBarHtml"></i></div><b id="devBarHtmlLabel">0 / 0</b></div><div class="dev-bar"><span>Asset workers</span><div class="bar"><i id="devBarAsset"></i></div><b id="devBarAssetLabel">0 / 0</b></div></div></section>
+            <section class="dev-card"><h4>All jobs on server</h4><div class="table-wrap dev-scroll"><table><thead><tr><th>ID</th><th>Root</th><th>Status</th><th>Processed</th><th>Links</th><th></th></tr></thead><tbody id="devJobsBody"></tbody></table></div></section>
+            <section class="dev-card"><h4>Server health</h4><div class="dev-grid" id="devSystemGrid"><div class="empty">Checking…</div></div></section>
+            <section class="dev-card"><div class="dev-card-head"><h4>Network — frontend → backend</h4><div class="dev-card-actions"><select id="devNetFilter"><option value="all">All</option><option value="ok">2xx / 3xx</option><option value="err">4xx / 5xx / failed</option></select><button class="secondary tiny" id="devNetClear">Clear</button></div></div><div class="table-wrap dev-scroll"><table><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th><th>request id</th></tr></thead><tbody id="devNetBody"></tbody></table></div></section>
+            <section class="dev-card"><h4>Raw job JSON</h4><pre id="devRawJson">—</pre></section>
           </div>
         </div>
 
         <div id="settingsPanel" class="tool-panel hidden settings-panel">
-          <div class="panel-head">
-            <div><span class="eyebrow">SETTINGS</span><b>Customize Veyra Browse</b></div>
-            <div class="console-actions">
-              <button class="danger tiny" id="settingsResetBtn">Reset to defaults</button>
-            </div>
-          </div>
-          <div class="settings-body" id="settingsBody">
-            <section class="dev-card">
-              <h4>Browsing</h4>
-              <label class="setting-row">
-                <span>Default search engine</span>
-                <select id="setSearchEngine">
-                  <option value="google">Google</option>
-                  <option value="bing">Bing</option>
-                  <option value="duckduckgo">DuckDuckGo</option>
-                </select>
-              </label>
-              <label class="setting-row">
-                <span>Custom homepage for new tabs (blank = New Tab screen)</span>
-                <input id="setHomepage" placeholder="https://example.com">
-              </label>
-              <label class="setting-row checkbox">
-                <input type="checkbox" id="setConfirmClose">
-                <span>Confirm before closing a tab with an active crawl</span>
-              </label>
+          <div class="panel-head"><div><span class="eyebrow">SETTINGS</span><b>Customize Veyra</b></div><div class="console-actions"><button class="danger tiny" id="settingsResetBtn">Reset to defaults</button></div></div>
+          <div class="settings-body">
+            <section class="dev-card"><h4>Search</h4>
+              <label class="setting-row"><span>Default search experience</span><select id="setSearchMode"><option value="veyra">Veyra Search</option><option value="external">External fallback</option></select></label>
+              <label class="setting-row"><span>External search engine (only when enabled)</span><select id="setSearchEngine"><option value="google">Google</option><option value="bing">Bing</option><option value="duckduckgo">DuckDuckGo</option></select></label>
+              <div class="setting-help">The frontend never receives a Veyra search API key. External providers remain optional.</div>
             </section>
-            <section class="dev-card">
-              <h4>Crawler</h4>
-              <label class="setting-row checkbox">
-                <input type="checkbox" id="setAutoStop">
-                <span>Stop the previous crawl automatically when navigating to a new page (recommended — avoids old crawls piling up in the background)</span>
-              </label>
+            <section class="dev-card"><h4>Browsing</h4>
+              <label class="setting-row"><span>Custom homepage for new tabs</span><input id="setHomepage" placeholder="https://example.com"></label>
+              <label class="setting-row checkbox"><input type="checkbox" id="setConfirmClose"><span>Confirm before closing a tab with an active crawl</span></label>
+              <label class="setting-row checkbox"><input type="checkbox" id="setAutoStop"><span>Stop the previous crawl automatically when navigating to a new page</span></label>
             </section>
-            <section class="dev-card">
-              <h4>/dev panel</h4>
-              <label class="setting-row">
-                <span>Auto-refresh interval (ms)</span>
-                <input type="number" id="setDevInterval" min="500" step="250">
-              </label>
+            <section class="dev-card"><h4>Crawler preferences</h4>
+              <label class="setting-row"><span>Global concurrency hint</span><input type="number" id="setGlobalConcurrency" min="1" max="32" step="1"></label>
+              <label class="setting-row"><span>Per-host concurrency hint</span><input type="number" id="setHostConcurrency" min="1" max="8" step="1"></label>
+              <label class="setting-row"><span>Request timeout hint (ms)</span><input type="number" id="setTimeout" min="1000" step="500"></label>
+              <label class="setting-row checkbox"><input type="checkbox" id="setBrowserFallback"><span>Allow optional browser-render fallback when the server offers one</span></label>
+              <div class="setting-help">These are client preferences/telemetry hints; server safety limits remain controlled by Render environment variables.</div>
             </section>
-            <section class="dev-card">
-              <h4>Data</h4>
-              <div class="settings-actions">
-                <button class="secondary tiny" id="settingsClearBookmarks">Clear bookmarks</button>
-                <button class="secondary tiny" id="settingsClearLogs">Clear console &amp; network logs</button>
-              </div>
+            <section class="dev-card"><h4>/dev and console</h4>
+              <label class="setting-row"><span>Auto-refresh interval (ms)</span><input type="number" id="setDevInterval" min="500" step="250"></label>
+              <label class="setting-row"><span>Console verbosity</span><select id="setConsoleVerbosity"><option value="all">All</option><option value="info">Info+</option><option value="warn">Warnings + errors</option><option value="error">Errors only</option></select></label>
             </section>
+            <section class="dev-card"><h4>Data</h4><div class="settings-actions"><button class="secondary tiny" id="settingsClearBookmarks">Clear bookmarks</button><button class="secondary tiny" id="settingsClearLogs">Clear console &amp; network logs</button></div></section>
           </div>
         </div>
       </section>
     </main>
 
-    <footer class="statusbar">
-      <span id="crawlSummary">Ready</span>
-      <span id="backendHealth">Backend checking…</span>
-    </footer>
+    <footer class="statusbar"><span id="crawlSummary">Ready</span><span id="backendHealth">Backend checking…</span></footer>
 
     <div class="menu-panel hidden" id="menuPanel">
-      <button id="menuSource">View source resources</button>
-      <button id="menuLinks">View all links</button>
-      <button id="menuConsole">Open #console</button>
-      <button id="menuDev">Open /dev</button>
-      <button id="menuSettings">Open /settings</button>
-      <div class="menu-divider"></div>
-      <button id="menuHome">New Veyra tab</button>
+      <button id="menuSource">View source resources</button><button id="menuLinks">View all links</button><button id="menuConsole">Open #console</button><button id="menuDev">Open /dev</button><button id="menuSettings">Open /settings</button><div class="menu-divider"></div><button id="menuCalculator">Open Calculator</button><button id="menuSearch">Open Veyra Search</button><button id="menuHome">New Veyra tab</button>
     </div>
+
+    <div class="fatal-overlay hidden" id="fatalOverlay"><div class="fatal-card"><div class="veyra-mark small">V</div><div><div class="eyebrow">RECOVERABLE APP ERROR</div><h2>Veyra recovered from a client-side exception</h2><p id="fatalMessage">The main UI could not finish loading.</p><div class="fatal-actions"><button id="fatalReload">Reload Veyra</button><button class="secondary" id="fatalConsole">Open console</button></div></div></div></div>
   </div>
   <script src="app.js"></script>
 </body>
