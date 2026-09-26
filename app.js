@@ -2,9 +2,33 @@ const API="https://veyraserver-xscy.onrender.com";
 const state={
   jobId:null,currentUrl:"",history:[],histIndex:-1,poll:null,
   logs:[],remoteLogIds:new Set(),resources:[],selected:-1,links:[],
-  bookmarked:new Set(JSON.parse(localStorage.getItem("veyra-bookmarks")||"[]"))
+  bookmarked:new Set(JSON.parse(localStorage.getItem("veyra-bookmarks")||"[]")),
+  netLog:[],devTimer:null,devNetFilter:"all"
 };
 const $=id=>document.getElementById(id);
+
+// --- /dev network capture ---------------------------------------------------
+// Transparently records every call this frontend makes to the Veyra backend
+// (method, path, status, latency) so the /dev panel can show a live network
+// log without touching every call site.
+const __rawFetch=window.fetch.bind(window);
+window.fetch=function(input,init){
+  const url=typeof input==="string"?input:(input&&input.url)||"";
+  const isApi=url.indexOf(API)===0;
+  const method=(init&&init.method)||(typeof input!=="string"&&input&&input.method)||"GET";
+  const start=performance.now();
+  const p=__rawFetch(input,init);
+  if(isApi){
+    p.then(res=>logNet(method,url,res.status,performance.now()-start)).catch(()=>logNet(method,url,"ERR",performance.now()-start));
+  }
+  return p;
+};
+function logNet(method,url,status,ms){
+  let path=url;try{const u=new URL(url);path=u.pathname+(u.search?u.search.slice(0,60):"")}catch{}
+  state.netLog.push({time:new Date(),method,path,status,ms:Math.round(ms)});
+  if(state.netLog.length>300)state.netLog.splice(0,state.netLog.length-300);
+  if(!$("devPanel").classList.contains("hidden"))renderDevNet();
+}
 
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function pathOf(u){try{const x=new URL(u);return (x.pathname||"/")+(x.search||"")}catch{return u}}
@@ -43,10 +67,13 @@ function showBrowser(){
 function setTool(panel){
   $("homeView").classList.add("hidden");$("browserView").classList.add("hidden");$("toolView").classList.remove("hidden");
   document.querySelectorAll(".tool-tab").forEach(x=>x.classList.toggle("active",x.dataset.panel===panel));
-  ["sourcePanel","linkPanel","consolePanel"].forEach(id=>$(id).classList.toggle("hidden",id!==panel));
+  ["sourcePanel","linkPanel","consolePanel","devPanel"].forEach(id=>$(id).classList.toggle("hidden",id!==panel));
   if(panel==="sourcePanel")renderResources();
   if(panel==="linkPanel")loadLinks();
   if(panel==="consolePanel")renderConsole();
+  if(panel==="devPanel"){refreshDev();startDevAuto()}
+  else if(state.devTimer){clearInterval(state.devTimer);state.devTimer=null}
+  if(location.hash!==(panel==="devPanel"?"#/dev":""))history.replaceState(null,"",panel==="devPanel"?"#/dev":location.pathname);
 }
 function navigateInternal(url,push=true){
   if(!url)return;
@@ -137,6 +164,116 @@ function renderConsole(){
   $("consoleLog").innerHTML=rows.map(x=>`<div class="log ${x.level}"><span class="time">${new Date(x.time).toLocaleTimeString([], {hour12:false})}</span><span class="level">${esc(x.level.toUpperCase())}</span><span class="msg">${esc(x.message)}</span></div>`).join("");
   $("consoleLog").scrollTop=$("consoleLog").scrollHeight;
 }
+// --- /dev panel: live crawl view, worker gauges, server health, network log, stop ---
+function fmtBytes(n){
+  n=Number(n)||0;
+  if(n<1024)return n+" B";
+  if(n<1024*1024)return (n/1024).toFixed(1)+" KB";
+  if(n<1024*1024*1024)return (n/1024/1024).toFixed(2)+" MB";
+  return (n/1024/1024/1024).toFixed(2)+" GB";
+}
+function fmtMs(ms){
+  ms=Number(ms)||0;const s=Math.floor(ms/1000);
+  if(s<60)return s+"s";
+  const m=Math.floor(s/60);if(m<60)return m+"m "+(s%60)+"s";
+  const h=Math.floor(m/60);return h+"h "+(m%60)+"m";
+}
+function devPct(a,b){return b>0?Math.max(0,Math.min(100,(a/b)*100)):0}
+
+async function refreshDev(){
+  await Promise.allSettled([refreshDevJob(),refreshDevAllJobs(),refreshDevSystem()]);
+  renderDevNet();
+}
+async function refreshDevJob(){
+  const grid=$("devJobGrid");
+  if(!state.jobId){
+    grid.innerHTML='<div class="empty">No active crawl. Open a page to start one.</div>';
+    ["devBarResources","devBarScan","devBarHtml","devBarAsset"].forEach(id=>$(id).style.width="0%");
+    $("devRawJson").textContent="—";
+    return;
+  }
+  try{
+    const r=await fetch(API+"/api/crawl/"+encodeURIComponent(state.jobId));const b=await r.json();
+    if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    const c=b.counts||{},w=b.workers||{html:{},asset:{}};
+    grid.innerHTML=`
+      <div><span>Job</span><b>${esc(b.id)}</b></div>
+      <div><span>Root</span><b>${esc(b.url)}</b></div>
+      <div><span>Status</span><b class="dev-status dev-${esc(b.status)}">${esc(b.statusText||b.status)}</b></div>
+      <div><span>Elapsed</span><b>${fmtMs(b.elapsedMs||0)}</b></div>
+      <div><span>Processed</span><b>${(c.processed||0).toLocaleString()}</b></div>
+      <div><span>Queued</span><b>${(c.queued||0).toLocaleString()}</b></div>
+      <div><span>HTML / CSS / JS</span><b>${(c.htmlPages||0).toLocaleString()} / ${(c.css||0).toLocaleString()} / ${(c.js||0).toLocaleString()}</b></div>
+      <div><span>Links found</span><b>${(c.links||0).toLocaleString()}</b></div>
+      <div><span>Bytes scanned</span><b>${fmtBytes(c.bytesScanned||0)}</b></div>
+      <div><span>robots.txt / sitemaps</span><b>${b.robotsLoaded?"loaded":"none"} · ${b.sitemapsFound||0}</b></div>
+    `;
+    $("devBarResources").style.width=devPct(c.processed||0,b.maxUrls||1)+"%";
+    $("devBarResourcesLabel").textContent=`${(c.processed||0).toLocaleString()} / ${(b.maxUrls||0).toLocaleString()}`;
+    $("devBarScan").style.width=devPct(c.bytesScanned||0,b.maxScanBytes||1)+"%";
+    $("devBarScanLabel").textContent=`${fmtBytes(c.bytesScanned||0)} / ${fmtBytes(b.maxScanBytes||0)}`;
+    $("devBarHtml").style.width=devPct(w.html.active||0,w.html.max||1)+"%";
+    $("devBarHtmlLabel").textContent=`${w.html.active||0} / ${w.html.max||0} active · ${w.html.queued||0} queued`;
+    $("devBarAsset").style.width=devPct(w.asset.active||0,w.asset.max||1)+"%";
+    $("devBarAssetLabel").textContent=`${w.asset.active||0} / ${w.asset.max||0} active · ${w.asset.queued||0} queued`;
+    $("devRawJson").textContent=JSON.stringify(b,null,2);
+  }catch(e){grid.innerHTML=`<div class="empty">Job status error: ${esc(e.message||e)}</div>`}
+}
+async function refreshDevAllJobs(){
+  const body=$("devJobsBody");
+  try{
+    const r=await fetch(API+"/api/debug/jobs");const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    const rows=b.jobs||[];
+    body.innerHTML=rows.length?rows.map(j=>`<tr class="${j.id===state.jobId?"active":""}">
+      <td>${esc(j.id.slice(0,8))}</td><td>${esc(j.url)}</td><td>${esc(j.status)}</td>
+      <td>${(j.counts?.processed||0).toLocaleString()}</td><td>${(j.counts?.links||0).toLocaleString()}</td>
+      <td><button class="secondary tiny" data-job="${esc(j.id)}" ${j.done?"disabled":""}>Stop</button></td>
+    </tr>`).join(""):'<tr><td colspan="6" class="empty">No jobs on server yet.</td></tr>';
+    body.querySelectorAll("button[data-job]").forEach(btn=>btn.onclick=()=>stopJob(btn.dataset.job));
+  }catch(e){body.innerHTML=`<tr><td colspan="6" class="empty">Failed: ${esc(e.message||e)}</td></tr>`}
+}
+async function refreshDevSystem(){
+  const grid=$("devSystemGrid");
+  try{
+    const t0=performance.now();
+    const r=await fetch(API+"/api/debug/system");const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    const latency=Math.round(performance.now()-t0);
+    grid.innerHTML=`
+      <div><span>Backend</span><b class="dev-status dev-done">online · ${latency}ms</b></div>
+      <div><span>Uptime</span><b>${fmtMs((b.uptimeSec||0)*1000)}</b></div>
+      <div><span>Node</span><b>${esc(b.nodeVersion||"?")}</b></div>
+      <div><span>Memory (RSS)</span><b>${fmtBytes(b.memory?.rss||0)}</b></div>
+      <div><span>Heap used / total</span><b>${fmtBytes(b.memory?.heapUsed||0)} / ${fmtBytes(b.memory?.heapTotal||0)}</b></div>
+      <div><span>Jobs (active/total)</span><b>${b.jobs?.active||0} / ${b.jobs?.total||0}</b></div>
+      <div><span>Proxy cache entries</span><b>${b.proxyCacheEntries||0}</b></div>
+    `;
+  }catch(e){grid.innerHTML=`<div class="empty dev-status dev-error">Backend unreachable: ${esc(e.message||e)}</div>`}
+}
+function renderDevNet(){
+  const body=$("devNetBody");if(!body)return;
+  const f=state.devNetFilter;
+  const rows=state.netLog.slice().reverse().filter(x=>{
+    if(f==="all")return true;
+    const bad=x.status==="ERR"||Number(x.status)>=400;
+    return f==="err"?bad:!bad;
+  }).slice(0,120);
+  body.innerHTML=rows.length?rows.map(x=>`<tr class="${x.status==="ERR"||Number(x.status)>=400?"neterr":""}">
+    <td>${new Date(x.time).toLocaleTimeString([], {hour12:false})}</td><td>${esc(x.method)}</td><td>${esc(x.path)}</td><td>${esc(String(x.status))}</td><td>${x.ms}</td>
+  </tr>`).join(""):'<tr><td colspan="5" class="empty">No requests yet.</td></tr>';
+}
+async function stopJob(id){
+  if(!id)return;
+  try{
+    const r=await fetch(API+"/api/crawl/"+encodeURIComponent(id)+"/stop",{method:"POST"});
+    const b=await r.json();if(!r.ok)throw new Error(b.error||"HTTP "+r.status);
+    addLog("warn","Stop requested for job "+id+".");refreshDev();
+  }catch(e){addLog("error","Stop failed: "+(e.message||e))}
+}
+function startDevAuto(){
+  if(state.devTimer){clearInterval(state.devTimer);state.devTimer=null}
+  if($("devAutoRefresh").checked)state.devTimer=setInterval(refreshDev,1500);
+}
+
 async function health(){
   try{const r=await fetch(API+"/health");if(!r.ok)throw new Error("HTTP "+r.status);$("backendHealth").textContent="Backend: online"}
   catch(e){$("backendHealth").textContent="Backend: offline";addLog("error","Backend health check failed: "+(e.message||e))}
@@ -150,7 +287,7 @@ function saveBookmark(){
   addLog("info",state.bookmarked.has(state.currentUrl)?"Bookmarked "+state.currentUrl:"Removed bookmark.");
 }
 
-$("goBtn").onclick=()=>openPage($("address").value);
+$("goBtn")?.addEventListener("click",()=>openPage($("address").value));
 $("address").onkeydown=e=>{if(e.key==="Enter")openPage($("address").value)};
 $("homeBrowse").onclick=()=>openPage($("homeInput").value);
 $("homeInput").onkeydown=e=>{if(e.key==="Enter")openPage($("homeInput").value)};
@@ -172,7 +309,17 @@ $("menuBtn").onclick=toggleMenu;
 $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")};
 $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")};
 $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")};
+$("menuDev").onclick=()=>{closeMenu();setTool("devPanel")};
 $("menuHome").onclick=()=>{closeMenu();showHome()};
+$("devRefreshBtn").onclick=refreshDev;
+$("devStopBtn").onclick=()=>{if(state.jobId)stopJob(state.jobId);else addLog("warn","No active crawl to stop.")};
+$("devAutoRefresh").onchange=startDevAuto;
+$("devNetFilter").onchange=e=>{state.devNetFilter=e.target.value;renderDevNet()};
+$("devNetClear").onclick=()=>{state.netLog=[];renderDevNet()};
+$("devCopyJsonBtn").onclick=async()=>{try{await navigator.clipboard.writeText($("devRawJson").textContent||"");addLog("info","Raw job JSON copied.")}catch(e){addLog("error","Copy failed: "+(e.message||e))}};
+$("devExportBtn").onclick=()=>{if(!state.jobId){addLog("warn","No active crawl to export.");return}window.open(API+"/api/crawl/"+encodeURIComponent(state.jobId)+"/export","_blank")};
+window.addEventListener("keydown",e=>{if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==="d"){e.preventDefault();setTool("devPanel")}});
+if(location.hash==="#/dev")setTool("devPanel");
 $("consoleFilter").onchange=renderConsole;
 $("clearConsole").onclick=()=>{state.logs=[];state.remoteLogIds.clear();renderConsole();addLog("info","Console cleared.")};
 $("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error","Copy failed: "+(e.message||e))}};

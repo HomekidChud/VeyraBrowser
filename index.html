@@ -103,6 +103,7 @@
             <button class="tool-tab active" data-panel="sourcePanel">Source</button>
             <button class="tool-tab" data-panel="linkPanel">All links</button>
             <button class="tool-tab" data-panel="consolePanel">#console</button>
+            <button class="tool-tab" data-panel="devPanel">/dev</button>
           </div>
           <button class="back-to-page" id="backToPage">← Back to page</button>
         </div>
@@ -146,6 +147,71 @@
           </div>
           <div class="console-log" id="consoleLog"><div class="empty">No logs yet.</div></div>
         </div>
+
+        <div id="devPanel" class="tool-panel hidden dev-panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">DEV</span><b>Live crawl &amp; server debug</b></div>
+            <div class="console-actions">
+              <label class="dev-auto"><input type="checkbox" id="devAutoRefresh" checked> Auto-refresh</label>
+              <button class="secondary" id="devRefreshBtn">Refresh</button>
+              <button class="danger" id="devStopBtn">Stop crawl</button>
+            </div>
+          </div>
+          <div class="dev-body" id="devBody">
+
+            <section class="dev-card">
+              <div class="dev-card-head">
+                <h4>Current job — live view</h4>
+                <div class="dev-card-actions">
+                  <button class="secondary tiny" id="devCopyJsonBtn">Copy JSON</button>
+                  <button class="secondary tiny" id="devExportBtn">Export</button>
+                </div>
+              </div>
+              <div class="dev-grid" id="devJobGrid"><div class="empty">No active crawl. Open a page to start one.</div></div>
+              <div class="dev-bars">
+                <div class="dev-bar"><span>Resources processed</span><div class="bar"><i id="devBarResources"></i></div><b id="devBarResourcesLabel">0 / 0</b></div>
+                <div class="dev-bar"><span>Scan budget</span><div class="bar"><i id="devBarScan"></i></div><b id="devBarScanLabel">0 / 0</b></div>
+                <div class="dev-bar"><span>HTML workers</span><div class="bar"><i id="devBarHtml"></i></div><b id="devBarHtmlLabel">0 / 0</b></div>
+                <div class="dev-bar"><span>Asset workers</span><div class="bar"><i id="devBarAsset"></i></div><b id="devBarAssetLabel">0 / 0</b></div>
+              </div>
+            </section>
+
+            <section class="dev-card">
+              <h4>All jobs on server</h4>
+              <div class="table-wrap dev-scroll">
+                <table><thead><tr><th>ID</th><th>Root</th><th>Status</th><th>Processed</th><th>Links</th><th></th></tr></thead><tbody id="devJobsBody"></tbody></table>
+              </div>
+            </section>
+
+            <section class="dev-card">
+              <h4>Server health</h4>
+              <div class="dev-grid" id="devSystemGrid"><div class="empty">Checking…</div></div>
+            </section>
+
+            <section class="dev-card">
+              <div class="dev-card-head">
+                <h4>Network — frontend → backend</h4>
+                <div class="dev-card-actions">
+                  <select id="devNetFilter">
+                    <option value="all">All</option>
+                    <option value="ok">2xx / 3xx</option>
+                    <option value="err">4xx / 5xx / failed</option>
+                  </select>
+                  <button class="secondary tiny" id="devNetClear">Clear</button>
+                </div>
+              </div>
+              <div class="table-wrap dev-scroll">
+                <table><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th></tr></thead><tbody id="devNetBody"></tbody></table>
+              </div>
+            </section>
+
+            <section class="dev-card">
+              <h4>Raw job JSON</h4>
+              <pre id="devRawJson">—</pre>
+            </section>
+
+          </div>
+        </div>
       </section>
     </main>
 
@@ -158,6 +224,7 @@
       <button id="menuSource">View source resources</button>
       <button id="menuLinks">View all links</button>
       <button id="menuConsole">Open #console</button>
+      <button id="menuDev">Open /dev</button>
       <div class="menu-divider"></div>
       <button id="menuHome">New Veyra tab</button>
     </div>

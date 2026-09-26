@@ -55,6 +55,32 @@ pre{flex:1;overflow:auto;margin:0;padding:14px;background:#080b0f;color:#dfe7f0;
 .statusbar{height:24px;background:#0b0e12;border-top:1px solid #202630;color:#687488;font-size:9px;display:flex;align-items:center;justify-content:space-between;padding:0 9px}
 .menu-panel{position:absolute;top:93px;right:8px;width:205px;background:#1b2028;border:1px solid #353c47;border-radius:10px;box-shadow:0 16px 42px #0008;padding:6px;z-index:50}.menu-panel button{width:100%;border:0;background:transparent;color:#dce3eb;text-align:left;padding:9px;border-radius:7px;font-size:11px}.menu-panel button:hover{background:#2a313b}.menu-divider{height:1px;background:#313844;margin:5px 0}
 .empty{padding:28px;text-align:center;color:#667287;font-size:11px}
+.dev-panel{display:flex;flex-direction:column;overflow:hidden}
+.dev-auto{display:flex;align-items:center;gap:5px;font-size:10px;color:#9aa6b6}
+.dev-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.dev-card{background:#10151d;border:1px solid var(--line);border-radius:10px;padding:12px}
+.dev-card h4{margin:0 0 10px;font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:#8894a6;font-weight:700}
+.dev-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.dev-card-head h4{margin:0}
+.dev-card-actions{display:flex;gap:6px;align-items:center}
+.tiny{height:24px!important;padding:0 8px!important;font-size:9px!important}
+.dev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 16px}
+.dev-grid>div{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-bottom:1px dashed #1c222c}
+.dev-grid span{font-size:9px;color:#6d7c91;text-transform:uppercase;letter-spacing:.5px}
+.dev-grid b{font-size:11.5px;color:#e3e9f1;font-weight:600;word-break:break-all}
+.dev-status{padding:1px 6px;border-radius:5px;background:#1b2531;color:#9dbff0;display:inline-block;width:fit-content}
+.dev-status.dev-done,.dev-status.dev-running{background:#153322;color:#75dda0}
+.dev-status.dev-stopping,.dev-status.dev-stopped,.dev-status.dev-error{background:#3b301a;color:#e9c36f}
+.dev-status.dev-error{background:#3a1f22;color:#f3a1a1}
+.dev-bars{display:flex;flex-direction:column;gap:9px;margin-top:12px}
+.dev-bar{display:grid;grid-template-columns:130px 1fr auto;align-items:center;gap:10px;font-size:10px;color:#8794a7}
+.dev-bar .bar{height:7px;border-radius:4px;background:#1a212b;overflow:hidden}
+.dev-bar .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3b6fae,#78aaf1);transition:width .3s ease}
+.dev-bar b{font-size:9.5px;color:#aab6c6;white-space:nowrap;font-weight:600}
+.dev-scroll{max-height:220px}
+.dev-scroll table{font-size:10px}
+tr.active td{background:#182234}
+tr.neterr td{color:#f3a1a1}
+#devRawJson{max-height:260px;font-size:10px}
 .hidden{display:none!important}
 @media(max-width:850px){
  .tab{min-width:160px}.top-actions{display:none}#downloadBtn{display:none}
