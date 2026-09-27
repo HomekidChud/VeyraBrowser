@@ -1,7 +1,7 @@
 // Veyra UI chrome: landing + auth, new tab page, omnibox, menus, popovers, shortcuts, sync.
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
-  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION
+  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings
 } from "./core.js";
 import { initExtensions } from "./extensions.js";
 import { initSettings } from "./settings.js";
@@ -208,7 +208,7 @@ export async function pullSync() {
   try {
     const r = await api("/api/auth/data"); const d = r.data; if (!d || typeof d !== "object") return;
     syncing = true;
-    if (d.settings) { const keep = settings.adminToken; Object.assign(settings, d.settings, { adminToken: keep }); save("veyra-settings", settings); }
+    if (d.settings) { const keep = settings.adminToken; Object.assign(settings, migrateSettings({ ...d.settings }), { adminToken: keep }); save("veyra-settings", settings); }
     if (Array.isArray(d.bookmarks)) { B.state.bookmarks = d.bookmarks.filter(b => b?.url); save("veyra-bookmarks", B.state.bookmarks); }
     if (d.extensions) save("veyra-extensions", d.extensions);
     if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);

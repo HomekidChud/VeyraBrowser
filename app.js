@@ -2,7 +2,7 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
 import { initUI } from "./ui.js";
@@ -304,11 +304,33 @@ function showFrameForTab(t) {
 }
 
 // ---------------------------------------------------------------- sessions (2-minute limit)
+// Render's free plan sleeps when idle and takes 30–60 s to wake. Instead of failing,
+// keep the user informed and poll /health until the server answers.
+const WAKE_CODES = new Set(["API_TIMEOUT", "API_NETWORK_ERROR"]);
+export async function wakeServer(maxMs = 100000) {
+  const until = Date.now() + maxMs; let n = 0;
+  while (Date.now() < until) {
+    n++;
+    setLoading(true, Math.min(12 + n * 3, 40), `Waking up the Veyra server… (${Math.round((maxMs - (until - Date.now())) / 1000)} s)`);
+    try { const h = await api("/health", { timeoutMs: 12000 }); if (h?.ok !== false) return true; } catch {}
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  return false;
+}
+async function createSessionWithWake() {
+  try { return await api("/api/session", { json: {}, timeoutMs: 20000 }); }
+  catch (e) {
+    if (!WAKE_CODES.has(e.code) && ![502, 503, 504].includes(e.status)) throw e;
+    addLog("info", "Server is asleep or busy, waking it up…");
+    if (!(await wakeServer())) throw new ApiError("The Veyra server didn't wake up in time. It may be redeploying; try again in a minute.", 0, "SERVER_ASLEEP");
+    return await api("/api/session", { json: {}, timeoutMs: 30000 });
+  }
+}
 export async function ensureSession() {
   const s = state.session;
   if (s && s.expiresAt - Date.now() > 800) return s;
   if (s) await endSession("timer");
-  const body = await api("/api/session", { json: {} });
+  const body = await createSessionWithWake();
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
   state.session = { id: body.sessionId, startedAt: Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
@@ -429,11 +451,22 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   api("/api/open", { json: { url, sessionId: session.id } }).then(b => { if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return; } t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Background index skipped: ${e.message}`); });
   if (mode === "BROWSER_ENGINE") {
     try { await startBrowserSession(t, url); renderTabs(); return; }
-    catch (e) { if (e.code === "SESSION_EXPIRED") return; addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`); t.browserMode = "FAST_PROXY"; t.browserSessionId = ""; if (!settings.browserFallback) return renderError(t, "server", e); }
+    catch (e) {
+      if (e.code === "SESSION_EXPIRED") return;
+      if (!state.tabs.includes(t) || t.url !== url) return;
+      addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
+      if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+      t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
+      // Capacity/timeout/network problems always fall back; only a forced "browser" runtime shows the error.
+      if (settings.runtime === "browser" && !settings.browserFallback) return renderError(t, "server", e);
+      state.capabilityCache.set(hostOf(url), "FAST_PROXY");
+    }
   }
   t.browserMode = "FAST_PROXY";
   if (activeTab() === t) setLoading(true, 45, `Fetching ${hostOf(url)}…`);
   if (loadFrame) { const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id); }
+  clearTimeout(t.loadGuard);
+  t.loadGuard = setTimeout(() => { if (t.loading && t.url === url && state.tabs.includes(t)) { t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon(); } }, 25000);
   if (activeTab() === t) showFrameForTab(t);
   renderTabs(); updateIdentity();
 }
@@ -492,7 +525,7 @@ async function startBrowserSession(t, url) {
     try { const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url } }); t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url; if (activeTab() === t) showFrameForTab(t); t.loading = false; return; }
     catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
-  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid } });
+  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid }, timeoutMs: 45000 });
   t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url; t.loading = false;
   frameFor(t)?.remove();
   if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
@@ -912,6 +945,9 @@ async function handleMessage(e) {
       if (!same) { pushTabHistory(t, target); t.url = target; recordHistory("page", target, t.title); if (t.jobId && !t.done) stopJob(t.jobId); t.jobId = null; if (!settings.preserveLog) { t.console = []; t.network = []; } hooks.dt?.onNavigate(t); if (state.session) api("/api/open", { json: { url: target, sessionId: state.session.id } }).then(b => { t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(() => {}); }
       else { const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); } }
     } else { t.url = target; }
+    // The page runtime reports "document-navigation" once the DOM is ready. Some sites
+    // (Google, YouTube…) keep fetching forever and never fire the iframe "load" event.
+    if (d.source === "document-navigation" && t.loading) { t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false); }
     if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
     renderTabsSoon();
   }

@@ -43,12 +43,24 @@ export const DEFAULT_SETTINGS = {
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 20000, browserFallback: true,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 2,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
+// Migrate settings saved by older frontends (v8.3 stored a 15 s timeout and fallback off,
+// which made slow Chromium starts on small Render plans show an error instead of the page).
+export function migrateSettings(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if ((Number(obj.settingsVersion) || 0) < 2) {
+    obj.browserFallback = true;
+    obj.requestTimeoutMs = Math.max(Number(obj.requestTimeoutMs) || 0, 30000);
+    obj.settingsVersion = 2;
+  }
+  return obj;
+}
+{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 2) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
 export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
