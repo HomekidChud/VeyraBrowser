@@ -89,6 +89,41 @@ function makeTab() {
 }
 function activeTab() { return state.tabs.find(t => t.id === state.activeId); }
 
+// --- Per-tab frame isolation -------------------------------------------------
+// Each tab owns its own <iframe>, kept alive in the DOM and just hidden/shown
+// on tab switch. This avoids the old design (one shared #pageFrame reused by
+// every tab) which meant switching tabs briefly showed the *previous* tab's
+// leftover document while the new URL loaded. Each frame now remembers its
+// own last-rendered page, exactly like a real browser tab.
+function frameIdFor(tabId) { return "frame-" + tabId; }
+function getFrame(tabId) { return document.getElementById(frameIdFor(tabId)); }
+function getOrCreateFrame(t) {
+  if (!t) return null;
+  let frame = getFrame(t.id);
+  if (frame) return frame;
+  frame = document.createElement("iframe");
+  frame.id = frameIdFor(t.id);
+  frame.name = "veyraFrame_" + t.id;
+  frame.className = "tab-frame";
+  frame.title = "Veyra page view";
+  frame.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write");
+  frame.addEventListener("load", () => {
+    if (activeTab()?.id !== t.id) return;
+    if (t.url) { $("pageState").textContent = hostOf(t.url); setLoading(false); if (state.inspectMode) toggleInspect(true); }
+  });
+  frame.addEventListener("loadstart", () => { if (activeTab()?.id === t.id) setLoading(true, 60, "Rendering…"); });
+  const wrap = $("frameWrap"), loader = $("frameLoader");
+  if (wrap) wrap.insertBefore(frame, loader || wrap.firstChild);
+  return frame;
+}
+function activeFrame() { const t = activeTab(); return t ? getOrCreateFrame(t) : null; }
+function showFrameForTab(t) {
+  if (!t) return;
+  const wanted = getOrCreateFrame(t);
+  document.querySelectorAll("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", el === wanted));
+}
+function destroyFrame(tabId) { getFrame(tabId)?.remove(); }
+
 function routeName() {
   const p = location.pathname;
   if (APP_BASE && p.startsWith(APP_BASE + "/")) return p.slice(APP_BASE.length) || "/";
@@ -217,7 +252,7 @@ async function stopCurrentLoad() {
   try { if (t?.jobId && !t.done) await stopJob(t.jobId, true); } catch {}
   if (t?.poll) { clearInterval(t.poll); t.poll = null; }
   if (t) { t.done = true; t.loading = false; }
-  const frame = $("pageFrame");
+  const frame = t ? getFrame(t.id) : null;
   if (frame) { try { frame.contentWindow?.stop?.(); } catch {} frame.src = "about:blank"; }
   $("pageState").textContent = "Stopped";
   $("serverState").textContent = "Stopped";
@@ -318,6 +353,7 @@ function closeTab(id) {
   if (settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab has an active crawl running. Close it anyway?")) return;
   if (t.poll) clearInterval(t.poll);
   if (t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
+  destroyFrame(t.id);
   state.tabs.splice(idx, 1);
   if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
   else if (state.activeId === id) state.activeId = state.tabs[Math.max(0, idx - 1)].id;
@@ -335,6 +371,7 @@ function showHome(pushRoute = true) {
 function showBrowser() {
   const t = activeTab(); if (t) t.view = "browser";
   showView("browserView");
+  showFrameForTab(t);
   setRoute("/", "", "replace");
 }
 function showSearch(query = "", pushRoute = true) {
@@ -370,7 +407,7 @@ function showExtensions(pushRoute = true) {
   if (pushRoute) setRoute("/extensions"); renderExtensions(); renderTabs();
 }
 function toggleInspect(enabled = true) {
-  const frame = $("pageFrame"), drawer = $("inspectDrawer"); if (!drawer) return;
+  const frame = activeFrame(), drawer = $("inspectDrawer"); if (!drawer) return;
   drawer.classList.toggle("hidden", !enabled); $("inspectHighlight")?.classList.toggle("hidden", !enabled);
   state.inspectMode = !!enabled; closeMenu();
   if (frame?.contentWindow) frame.contentWindow.postMessage({ type: "veyra:inspect", enabled: !!enabled }, new URL(API).origin);
@@ -449,8 +486,9 @@ function restoreTabView(t) {
   if (!t) return;
   if (t.view === "browser" && t.url) {
     showBrowser(); updateIdentity(t.url);
+    const frame = getOrCreateFrame(t);
     const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId);
-    if ($("pageFrame").src !== wantedProxy) $("pageFrame").src = wantedProxy;
+    if (frame.src !== wantedProxy) frame.src = wantedProxy;
     $("pageState").textContent = t.done ? "Ready" : (t.jobId ? "Loading…" : "Ready");
     $("serverState").textContent = t.done ? "Crawler finished" : (t.jobId ? "Crawling…" : "Crawler idle");
     $("serverState").className = "server-pill" + (!t.done && t.jobId ? " live" : "");
@@ -475,7 +513,7 @@ async function startJobForTab(t, url, loadFrame = true) {
     recordHistory("page", t.url, t.title);
     if (activeTab() === t) {
       updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
-      if (loadFrame) $("pageFrame").src = proxyUrl(t.url, "view", t.proxySessionId);
+      if (loadFrame) getOrCreateFrame(t).src = proxyUrl(t.url, "view", t.proxySessionId);
     }
     startPolling(t); renderTabs();
   } catch (e) {
@@ -716,12 +754,12 @@ function renderProxyError(kind, error) {
   const title = kind === "server" ? "Veyra could not reach the server" : kind === "unsupported" ? "This page cannot be proxied safely" : kind === "security" ? "This site requires its own security verification" : kind === "invalid" ? "That address is not valid" : "The page could not be displayed";
   const detail = error?.message || "An unknown error occurred.";
   const direct = t?.url ? `<a class="error-direct" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Open directly</a>` : "";
-  $("pageFrame").srcdoc = `<main class="veyra-frame-error"><div class="error-icon">V</div><div class="eyebrow">VEYRA BROWSER</div><h1>${esc(title)}</h1><p>${esc(detail)}</p><div class="error-actions"><button onclick="parent.postMessage({type:'veyra:retry'},'*')">Retry</button>${direct}</div></main>`;
+  getOrCreateFrame(t).srcdoc = `<main class="veyra-frame-error"><div class="error-icon">V</div><div class="eyebrow">VEYRA BROWSER</div><h1>${esc(title)}</h1><p>${esc(detail)}</p><div class="error-actions"><button onclick="parent.postMessage({type:'veyra:retry'},'*')">Retry</button>${direct}</div></main>`;
   $("pageState").textContent = title; $("serverState").textContent = kind === "security" ? "Challenge" : "Error"; $("serverState").className = "server-pill warn";
 }
 
 async function submitProxyForm(message) {
-  const frame = $("pageFrame"); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(message.url, "view", activeTab()?.proxySessionId || ""); form.target = frame.name; form.style.display = "none";
+  const frame = activeFrame(); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(message.url, "view", activeTab()?.proxySessionId || ""); form.target = frame.name; form.style.display = "none";
   for (const [name, value] of message.entries || []) { const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input); }
   document.body.appendChild(form); form.submit(); form.remove();
 }
@@ -750,7 +788,7 @@ async function handlePageMessage(e) {
     if (d.title) t.title = d.title; if (d.favicon) t.favicon = d.favicon;
     if (!same || t.view !== "browser") {
       t.history = t.history.slice(0, t.histIndex + 1); t.history.push(target); t.histIndex = t.history.length - 1;
-      const currentFrameCanonical = parseProxyCanonical($("pageFrame").src);
+      const currentFrameCanonical = parseProxyCanonical(activeFrame()?.src || "");
       if (currentFrameCanonical === target) await startJobForTab(t, target, false); else await startJobForTab(t, target, true);
       renderTabs();
     } else { updateIdentity(target); renderTabs(); }
@@ -768,7 +806,7 @@ function canonicalizePageMessageUrl(value) {
 
 function formatInspectCss(obj) { return Object.entries(obj || {}).map(([k,v]) => `${k}: ${v};`).join("\n"); }
 function renderInspectData(d) {
-  const drawer = $("inspectDrawer"), frame = $("pageFrame"), wrap = $("frameWrap"), hi = $("inspectHighlight"); if (!drawer || !d) return;
+  const drawer = $("inspectDrawer"), frame = activeFrame(), wrap = $("frameWrap"), hi = $("inspectHighlight"); if (!drawer || !d) return;
   $("inspectTargetName").textContent = `<${d.tag || "element"}>${d.id ? "#"+d.id : ""}${d.classes ? "."+String(d.classes).trim().split(/\s+/).slice(0,3).join(".") : ""}`;
   $("inspectOuterHtml").textContent = d.outerHTML || "[no markup available]";
   const parent = d.parent ? `<div class="inspect-node muted"><span>↳ parent</span><code>${esc((d.parent.tag || "element") + (d.parent.id ? "#" + d.parent.id : ""))}</code><small>${esc(d.parent.path || "")}</small></div>` : "";
@@ -827,7 +865,7 @@ function showFatal(error) {
   overlay.classList.remove("hidden"); $("fatalMessage").textContent = String(error?.message || error || "Unknown error");
 }
 function pageCommand(type, payload = {}) {
-  const frame = $("pageFrame"); if (!frame?.contentWindow) return false;
+  const frame = activeFrame(); if (!frame?.contentWindow) return false;
   try { frame.contentWindow.postMessage({ type, ...payload }, new URL(API).origin); return true; } catch { return false; }
 }
 function printCurrentPage() {
@@ -859,7 +897,6 @@ function wireApp() {
   $("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
   $("devRefreshBtn").onclick=refreshDev; $("devStopBtn").onclick=()=>{const t=activeTab();if(t?.jobId)stopJob(t.jobId);else addLog("warn","No active crawl to stop.")}; $("devAutoRefresh").onchange=startDevAuto; $("devNetFilter").onchange=e=>{state.devNetFilter=e.target.value;renderDevNet()}; $("devNetClear").onclick=()=>{state.netLog=[];renderDevNet()}; $("devCopyJsonBtn").onclick=async()=>{try{await navigator.clipboard.writeText($("devRawJson").textContent||"");addLog("info","Raw job JSON copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
   $("devExportBtn").onclick=()=>{const t=activeTab();if(!t?.jobId)return addLog("warn","No active crawl to export.");window.open(API+"/api/crawl/"+encodeURIComponent(t.jobId)+"/export","_blank","noopener")};
-  $("pageFrame").addEventListener("load",()=>{const t=activeTab();if(t?.url){$("pageState").textContent=hostOf(t.url);setLoading(false);if(state.inspectMode)toggleInspect(true)}}); $("pageFrame").addEventListener("loadstart",()=>setLoading(true,60,"Rendering…"));
   $("searchButton").onclick=()=>runSearch($("searchInput").value,false,0); $("searchInput").oninput=e=>loadSearchSuggestions(e.target.value); $("searchInput").onkeydown=e=>{if(e.key==="Enter")runSearch($("searchInput").value,false,0)}; $("homeInput").oninput=e=>loadSearchSuggestions(e.target.value);
   $("downloadBtn").onclick=()=>{const t=activeTab();if(t?.url)startDownload(t.url,`${hostOf(t.url)}-page`);else showDownloads()};
   $("clearDownloadsBtn").onclick=()=>{for(const c of state.downloadControllers.values())c.abort();state.downloads=[];saveDownloads();renderDownloads()}; $("clearHistoryBtn").onclick=()=>{state.history=[];saveHistory();renderHistory()};
