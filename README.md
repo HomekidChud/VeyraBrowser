@@ -64,3 +64,7 @@ The frontend now distinguishes `FAST_PROXY` and `BROWSER_ENGINE` per tab. Capabi
 ## v8.7.2 Google search navigation hardening
 
 Canonical proxy URL unwrapping is now recursive and malformed proxy links are rejected instead of falling back to the API origin.
+
+
+## Veyra VPN
+Use the **VPN** tool to connect the active tab through a server-configured HTTP/HTTPS/SOCKS5 gateway. This is a Veyra session tunnel, not a device-wide VPN.

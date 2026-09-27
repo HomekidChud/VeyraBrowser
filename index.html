@@ -169,7 +169,7 @@
             <button class="tool-tab" data-panel="linkPanel">All links</button>
             <button class="tool-tab" data-panel="consolePanel">#console</button>
             <button class="tool-tab" data-panel="devPanel">/dev</button>
-            <button class="tool-tab" data-panel="settingsPanel">/settings</button>
+            <button class="tool-tab" data-panel="settingsPanel">/settings</button><button class="tool-tab" data-panel="vpnPanel">VPN</button>
           </div>
           <button class="back-to-page" id="backToPage">← Back to page</button>
         </div>
@@ -233,13 +233,14 @@
             <section class="dev-card"><h4>Data</h4><div class="settings-actions"><button class="secondary tiny" id="settingsClearBookmarks">Clear bookmarks</button><button class="secondary tiny" id="settingsClearLogs">Clear console &amp; network logs</button></div></section>
           </div>
         </div>
+        <div id="vpnPanel" class="tool-panel hidden settings-panel"></div>
       </section>
     </main>
 
     <footer class="statusbar"><span id="crawlSummary">Ready</span><span id="backendHealth">Backend checking…</span></footer>
 
     <div class="menu-panel hidden" id="menuPanel">
-      <button id="menuInspect"><span>Inspect element</span><kbd>Ctrl+Shift+I</kbd></button><button id="menuSource">View source resources</button><button id="menuLinks">View all links</button><button id="menuConsole">Open #console</button><button id="menuDev">Open /dev</button><button id="menuSettings">Open /settings</button><div class="menu-divider"></div><button id="menuFind">Find in page <kbd>Ctrl+F</kbd></button><button id="menuPrint">Print page <kbd>Ctrl+P</kbd></button><button id="menuDownloads">Downloads <kbd>Ctrl+J</kbd></button><button id="menuHistory">History <kbd>Ctrl+H</kbd></button><button id="menuExtensions">Extensions</button><div class="menu-divider"></div><button id="menuCalculator">Open Calculator</button><button id="menuSearch">Open Veyra Search</button><button id="menuHome">New Veyra tab</button>
+      <button id="menuInspect"><span>Inspect element</span><kbd>Ctrl+Shift+I</kbd></button><button id="menuSource">View source resources</button><button id="menuLinks">View all links</button><button id="menuConsole">Open #console</button><button id="menuDev">Open /dev</button><button id="menuSettings">Open /settings</button><button id="menuVpn">Veyra VPN <kbd>Ctrl+Shift+V</kbd></button><div class="menu-divider"></div><button id="menuFind">Find in page <kbd>Ctrl+F</kbd></button><button id="menuPrint">Print page <kbd>Ctrl+P</kbd></button><button id="menuDownloads">Downloads <kbd>Ctrl+J</kbd></button><button id="menuHistory">History <kbd>Ctrl+H</kbd></button><button id="menuExtensions">Extensions</button><div class="menu-divider"></div><button id="menuCalculator">Open Calculator</button><button id="menuSearch">Open Veyra Search</button><button id="menuHome">New Veyra tab</button>
     </div>
 
     <div class="fatal-overlay hidden" id="fatalOverlay"><div class="fatal-card"><div class="veyra-mark small">V</div><div><div class="eyebrow">RECOVERABLE APP ERROR</div><h2>Veyra recovered from a client-side exception</h2><p id="fatalMessage">The main UI could not finish loading.</p><div class="fatal-actions"><button id="fatalReload">Reload Veyra</button><button class="secondary" id="fatalConsole">Open console</button></div></div></div></div>

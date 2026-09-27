@@ -84,7 +84,7 @@ function makeTab() {
   return {
     id: "t" + (++state.tabSeq), title: "New Tab", favicon: "", url: "", proxyUrl: "", jobId: null, done: false,
     history: [], histIndex: -1, view: "home", searchQuery: "", searchOffset: 0, searchData: null, proxySessionId: "",
-    browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserScreenshot: null, browserStatus: "",
+    browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserScreenshot: null, browserStatus: "", vpnProfileId: "", vpnConnected: false,
     consolePageUrl: "", remoteLogIds: new Set(), resources: [], links: [], selected: -1, poll: null
   };
 }
@@ -165,7 +165,23 @@ async function refreshBrowserSurface(t, force=false) {
   } catch(e) { addLog("error",`Browser session error: ${e.message}`); }
 }
 async function startBrowserSession(t,url,jobId='') {
-  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url,jobId})});
+  if (t.browserSessionId) {
+    try {
+      const {body}=await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
+      t.browserMode='BROWSER_ENGINE'; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
+      showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
+      await refreshBrowserSurface(t,true);
+      if(t.browserPoll)clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700);
+      return body.session;
+    } catch (e) {
+      if (e.code !== 'BROWSER_SESSION_NOT_FOUND') {
+        await stopBrowserSession(t);
+        throw e;
+      }
+      t.browserSessionId = '';
+    }
+  }
+  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url,jobId,proxySessionId:t.proxySessionId||"",vpnProfileId:t.vpnProfileId||""})});
   t.browserMode='BROWSER_ENGINE'; t.browserSessionId=body.session.id; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
   showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
   await refreshBrowserSurface(t,true);
@@ -524,16 +540,28 @@ async function startDownload(url, name = "Download") {
 }
 function cancelDownload(id) { const c = state.downloadControllers.get(id); if (c) c.abort(); }
 
+
+async function renderVpnPanel() {
+  const box=$("vpnPanel"); if(!box)return;
+  try{const {body}=await apiRequest('/api/vpn/status'); const t=activeTab(); const profiles=Array.isArray(body.profiles)?body.profiles:[]; const current=t?.vpnProfileId||'';
+    box.innerHTML=`<div class="panel-head"><div><span class="eyebrow">VEYRA VPN</span><b>Private network tunnel</b></div><span class="server-pill ${body.enabled&&body.configured?'live':'warn'}">${!body.enabled?'Disabled':body.configured?`${profiles.length} profile${profiles.length===1?'':'s'}`:'Not configured'}</span></div><div class="vpn-card"><p>Connect the active Veyra tab through a server-side HTTP/HTTPS/SOCKS5 gateway. Credentials stay on Render. This is a Veyra tunnel, not an operating-system-wide VPN.</p>${profiles.length?`<label class="setting-row"><span>Profile</span><select id="vpnProfileSelect">${profiles.map(p=>`<option value="${esc(p.id)}" ${p.id===current?'selected':''}>${esc(p.name)}${p.region?` · ${esc(p.region)}`:''}</option>`).join('')}</select></label>`:'<div class="empty">No VPN gateway is configured on Render.</div>'}<div class="vpn-status">${t?.vpnConnected&&current?`Connected · ${esc((profiles.find(p=>p.id===current)||{}).name||current)}`:'Disconnected'}</div><div class="settings-actions"><button class="secondary tiny" id="vpnConnectBtn" ${!profiles.length||!body.enabled?'disabled':''}>Connect</button><button class="secondary tiny" id="vpnTestBtn" ${!profiles.length||!body.enabled?'disabled':''}>Test gateway</button><button class="danger tiny" id="vpnDisconnectBtn" ${!t?.vpnConnected?'disabled':''}>Disconnect</button></div><div class="setting-help">Configure VPN_PROXY_SERVER or VPN_PROFILES_JSON on Render. Never put credentials in frontend JavaScript.</div></div>`;
+    $("vpnConnectBtn")?.addEventListener('click',async()=>{const tab=activeTab();if(!tab)return;tab.proxySessionId ||= cryptoRandomId();const profileId=$("vpnProfileSelect")?.value||'';try{const r=await apiRequest('/api/vpn/connect',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:tab.proxySessionId,profileId})});tab.vpnProfileId=r.body.profile?.id||profileId;tab.vpnConnected=true;if(tab.browserSessionId){const u=tab.url,j=tab.jobId||'';await stopBrowserSession(tab);try{await startBrowserSession(tab,u,j)}catch(e){tab.browserMode='FAST_PROXY';tab.browserSessionId='';addLog('warn',`VPN browser restart failed; using proxy: ${e.message}`);getOrCreateFrame(tab).src=proxyUrl(u,'view',tab.proxySessionId);showFrameForTab(tab)}}else if(tab.url&&tab.view==='browser'){getOrCreateFrame(tab).src=proxyUrl(tab.url,'view',tab.proxySessionId)}addLog('info',`Veyra VPN connected: ${r.body.profile?.name||tab.vpnProfileId}`);renderVpnPanel()}catch(e){addLog('error',`VPN connect failed: ${e.message}`)}});
+    $("vpnTestBtn")?.addEventListener('click',async()=>{const profileId=$("vpnProfileSelect")?.value||'';try{const r=await apiRequest('/api/vpn/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profileId})});addLog('info',`VPN gateway test passed: HTTP ${r.body.status}`);alert(`Veyra VPN gateway responded (HTTP ${r.body.status}).`)}catch(e){addLog('error',`VPN gateway test failed: ${e.message}`);alert(`VPN gateway test failed: ${e.message}`)}});
+    $("vpnDisconnectBtn")?.addEventListener('click',async()=>{const tab=activeTab();if(!tab)return;try{await apiRequest('/api/vpn/disconnect',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:tab.proxySessionId||''})});tab.vpnConnected=false;tab.vpnProfileId='';if(tab.browserSessionId){const u=tab.url,j=tab.jobId||'';await stopBrowserSession(tab);try{await startBrowserSession(tab,u,j)}catch(e){tab.browserMode='FAST_PROXY';tab.browserSessionId='';addLog('warn',`VPN disconnect browser restart failed; using proxy: ${e.message}`);getOrCreateFrame(tab).src=proxyUrl(u,'view',tab.proxySessionId);showFrameForTab(tab)}}else if(tab.url&&tab.view==='browser'){getOrCreateFrame(tab).src=proxyUrl(tab.url,'view',tab.proxySessionId)}addLog('info','Veyra VPN disconnected.');renderVpnPanel()}catch(e){addLog('error',`VPN disconnect failed: ${e.message}`)}});
+  }catch(e){box.innerHTML=`<div class="panel-head"><div><span class="eyebrow">VEYRA VPN</span><b>Unavailable</b></div></div><div class="empty">${esc(e.message)}</div>`}
+}
+
 function setTool(panel, pushRoute = true) {
   showView("toolView");
   document.querySelectorAll(".tool-tab").forEach(x => x.classList.toggle("active", x.dataset.panel === panel));
-  ["sourcePanel", "linkPanel", "consolePanel", "devPanel", "settingsPanel"].forEach(id => $(id).classList.toggle("hidden", id !== panel));
+  ["sourcePanel", "linkPanel", "consolePanel", "devPanel", "settingsPanel", "vpnPanel"].forEach(id => $(id)?.classList.toggle("hidden", id !== panel));
   if (panel === "sourcePanel") renderResources();
   if (panel === "linkPanel") loadLinks();
   if (panel === "consolePanel") { location.hash = "#console"; renderConsole(); }
   if (panel === "devPanel") { if (pushRoute) setRoute("/dev"); refreshDev(); startDevAuto(); }
   else if (state.devTimer) { clearInterval(state.devTimer); state.devTimer = null; }
   if (panel === "settingsPanel") { if (pushRoute) setRoute("/settings"); renderSettingsForm(); }
+  if (panel === "vpnPanel") { if (pushRoute) setRoute("/vpn"); renderVpnPanel(); }
   if (panel === "sourcePanel" || panel === "linkPanel") { if (pushRoute) { location.hash = ""; setRoute("/"); } }
 }
 function restoreTabView(t) {
@@ -556,35 +584,54 @@ function restoreTabView(t) {
 
 async function startJobForTab(t, url, loadFrame = true) {
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
-  if (t.browserSessionId) await stopBrowserSession(t);
   if (t.poll) clearInterval(t.poll);
+  if (t.browserPoll) clearTimeout(t.browserPoll);
   t.resources = []; t.links = []; t.selected = -1; t.remoteLogIds = new Set(); t.done = false; t.jobId = null; t.url = url; t.title = hostOf(url); t.view = "browser"; t.browserMode = "FAST_PROXY";
   showBrowser(); updateIdentity(url); setLoading(true, 16, "Choosing page runtime…");
   $("pageState").textContent = "Choosing runtime…"; $("serverState").textContent = "Capability detection"; $("serverState").className = "server-pill warn";
   let mode = "FAST_PROXY";
   try { const cap = await apiRequest('/api/browser/capability',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}); mode = cap.body.mode || 'FAST_PROXY'; } catch(e) { addLog('debug',`Capability detection failed; using fast proxy: ${e.message}`); }
+
+  if (mode === "FAST_PROXY" && t.browserSessionId) await stopBrowserSession(t);
+
   if (mode === "BROWSER_ENGINE") {
     try {
-      let jobId = '';
+      let jobId = t.jobId || '';
       try {
-        const opened = await apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
-        jobId = opened.body?.jobId || '';
+        if (!jobId) {
+          const opened = await apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
+          jobId = opened.body?.jobId || '';
+        }
         t.jobId = jobId || null;
         if (t.jobId) startPolling(t);
       } catch(e) { addLog('debug',`Background indexing skipped: ${e.message}`); }
       await startBrowserSession(t,url,jobId); recordHistory("page",t.url,t.title); renderTabs();
       return;
     } catch(e) {
-      t.browserMode='FAST_PROXY'; t.browserSessionId=''; addLog('warn',`Browser engine unavailable; falling back to FAST_PROXY: ${e.message}`);
-      if (e.code === 'BROWSER_CAPACITY') renderProxyError('server', e);
+      addLog('warn',`Browser engine unavailable; falling back to FAST_PROXY: ${e.message}`);
+      t.browserMode='FAST_PROXY'; t.browserSessionId='';
+      if (e.code === 'BROWSER_CAPACITY') addLog('info','Browser capacity is full; this tab is continuing with FAST_PROXY instead of failing the navigation.');
+      if (e.code === 'BROWSER_ENGINE_UNAVAILABLE') addLog('info','Chromium is unavailable; this tab is continuing with FAST_PROXY.');
+      // Do not recurse into navigateUrl here. We already know the canonical URL
+      // and can use the existing job (if one was created) or create exactly one.
     }
   }
+
   try {
-    const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
-    t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
+    let body;
+    if (t.jobId) {
+      body = { jobId: t.jobId, url: t.url, viewUrl: `/api/view?url=${encodeURIComponent(t.url)}` };
+    } else {
+      const opened = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+      body = opened.body;
+      t.jobId = body.jobId;
+    }
+    t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
+    t.browserMode = "FAST_PROXY";
     recordHistory("page", t.url, t.title);
     if (activeTab() === t) { updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…"); if (loadFrame) getOrCreateFrame(t).src = proxyUrl(t.url, "view", t.proxySessionId); showFrameForTab(t); }
-    startPolling(t); renderTabs();
+    if (t.jobId) startPolling(t);
+    renderTabs();
   } catch (e) { t.jobId = null; t.done = true; if (activeTab() === t) renderProxyError("server", e); addLog("error", `Open failed: ${e.message}`, { requestId: e.requestId, stack: e.stack || "" }); }
 }
 async function navigateUrl(url, pushHistory = true, loadFrame = true) {
@@ -967,7 +1014,7 @@ function wireApp() {
   $("forwardBtn").onclick = async () => { const t=activeTab(); if(!t)return; if(t.browserSessionId){try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'forward'})});await refreshBrowserSurface(t,true);return}catch{}} if(t.histIndex>=t.history.length-1)return; t.histIndex++; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
   $("starBtn").onclick = saveBookmark; $("toolsMenuBtn").onclick = toggleMenu; document.querySelectorAll(".tool-tab").forEach(x=>x.onclick=()=>setTool(x.dataset.panel));
   $("backToPage").onclick = () => restoreTabView(activeTab()); $("menuBtn").onclick = toggleMenu;
-  $("menuInspect").onclick=()=>{ toggleInspect(!state.inspectMode); closeMenu(); }; $("menuFind").onclick=()=>{closeMenu();findInPage()}; $("menuPrint").onclick=()=>{closeMenu();printCurrentPage()}; $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")}; $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")}; $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")}; $("menuDev").onclick=()=>{closeMenu();setTool("devPanel")}; $("menuSettings").onclick=()=>{closeMenu();setTool("settingsPanel")}; $("menuDownloads").onclick=()=>{closeMenu();showDownloads()}; $("menuHistory").onclick=()=>{closeMenu();showHistory()}; $("menuExtensions").onclick=()=>{closeMenu();showExtensions()}; $("menuCalculator").onclick=()=>{closeMenu();showCalculator()}; $("menuSearch").onclick=()=>{closeMenu();showSearch()}; $("menuHome").onclick=()=>{closeMenu();newTabAction()};
+  $("menuInspect").onclick=()=>{ toggleInspect(!state.inspectMode); closeMenu(); }; $("menuFind").onclick=()=>{closeMenu();findInPage()}; $("menuPrint").onclick=()=>{closeMenu();printCurrentPage()}; $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")}; $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")}; $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")}; $("menuDev").onclick=()=>{closeMenu();setTool("devPanel")}; $("menuSettings").onclick=()=>{closeMenu();setTool("settingsPanel")}; $("menuVpn").onclick=()=>{closeMenu();setTool("vpnPanel")}; $("menuDownloads").onclick=()=>{closeMenu();showDownloads()}; $("menuHistory").onclick=()=>{closeMenu();showHistory()}; $("menuExtensions").onclick=()=>{closeMenu();showExtensions()}; $("menuCalculator").onclick=()=>{closeMenu();showCalculator()}; $("menuSearch").onclick=()=>{closeMenu();showSearch()}; $("menuHome").onclick=()=>{closeMenu();newTabAction()};
   $("consoleFilter").onchange=renderConsole; $("clearConsole").onclick=()=>{state.logs=[];renderConsole();addLog("info","Console cleared.")};
   $("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
   $("devRefreshBtn").onclick=refreshDev; $("devStopBtn").onclick=()=>{const t=activeTab();if(t?.jobId)stopJob(t.jobId);else addLog("warn","No active crawl to stop.")}; $("devAutoRefresh").onchange=startDevAuto; $("devNetFilter").onchange=e=>{state.devNetFilter=e.target.value;renderDevNet()}; $("devNetClear").onclick=()=>{state.netLog=[];renderDevNet()}; $("devCopyJsonBtn").onclick=async()=>{try{await navigator.clipboard.writeText($("devRawJson").textContent||"");addLog("info","Raw job JSON copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
@@ -1001,7 +1048,7 @@ document.addEventListener("click", e => { const menu = $("menuPanel"); if (menu 
 window.addEventListener("keydown", e => {
   const mod = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "") ? e.metaKey : e.ctrlKey;
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) && !e.altKey && !mod; const key = e.key.toLowerCase();
-  if (mod && key === "r") { e.preventDefault(); reloadActive(); return; } if ((mod && key === "t") || (e.altKey && key === "t")) { e.preventDefault(); newTabAction(); return; }
+  if (mod && e.shiftKey && key === "v") { e.preventDefault(); setTool("vpnPanel"); return; } if (mod && key === "r") { e.preventDefault(); reloadActive(); return; } if ((mod && key === "t") || (e.altKey && key === "t")) { e.preventDefault(); newTabAction(); return; }
   if ((mod && key === "w") || (e.altKey && key === "w")) { e.preventDefault(); closeTab(state.activeId); return; } if ((mod && key === "tab" && !e.shiftKey) || (e.altKey && key === "]")) { e.preventDefault(); cycleTab(1); return; }
   if ((mod && key === "tab" && e.shiftKey) || (e.altKey && key === "[")) { e.preventDefault(); cycleTab(-1); return; } if ((mod && key === "l") || (!typing && key === "/")) { e.preventDefault(); $("address").focus(); $("address").select(); return; }
   if (mod && key === "d") { e.preventDefault(); saveBookmark(); return; } if (mod && e.shiftKey && key === "d") { e.preventDefault(); setTool("devPanel"); return; } if (mod && key === ",") { e.preventDefault(); setTool("settingsPanel"); return; }
@@ -1016,7 +1063,7 @@ function boot() {
     let route = routeName();
     const routeParam = new URLSearchParams(location.search).get("veyra_route");
     if (routeParam) { history.replaceState({ veyraRoute: routeParam }, "", routeUrl(routeParam)); route = routeName(); }
-    if (route === "/dev") setTool("devPanel", false); else if (route === "/settings") setTool("settingsPanel", false); else if (route === "/downloads") showDownloads(false); else if (route === "/history") showHistory(false); else if (route === "/extensions") showExtensions(false); else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false); else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false); else if (location.hash === "#console") setTool("consolePanel", false); else if (settings.homepage) openPage(settings.homepage); else showHome(false);
+    if (route === "/dev") setTool("devPanel", false); else if (route === "/settings") setTool("settingsPanel", false); else if (route === "/downloads") showDownloads(false); else if (route === "/history") showHistory(false); else if (route === "/extensions") showExtensions(false); else if (route === "/vpn") setTool("vpnPanel", false); else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false); else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false); else if (location.hash === "#console") setTool("consolePanel", false); else if (settings.homepage) openPage(settings.homepage); else showHome(false);
     applyExtensions(); renderExtensions(); health(); addLog("info", "Veyra Browser ready. Browser engine, inspect mode, downloads, history, extensions, Veyra Search, and diagnostics enabled.");
   } catch (e) { showFatal(e); }
 }
