@@ -131,7 +131,7 @@ function ensureBrowserViewport() {
     img.addEventListener("mousemove",async e=>{ if(!state.inspectMode)return; const t=activeTab(); const r=img.getBoundingClientRect(); const x=Math.max(0,Math.min(1365,(e.clientX-r.left)*1365/r.width)); const y=Math.max(0,Math.min(820,(e.clientY-r.top)*820/r.height)); try{const q=await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/inspect`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({x,y})}); if(q.body.data)renderInspectData(q.body.data)}catch{}});
     img.addEventListener("wheel",e=>{e.preventDefault();sendPointer("wheel",e)} ,{passive:false});
     window.addEventListener("keydown",async e=>{ const t=activeTab(); if(!t?.browserSessionId || document.activeElement?.tagName==='INPUT' || document.activeElement?.tagName==='TEXTAREA') return; const mod=e.ctrlKey||e.metaKey; if(mod||e.altKey) return; try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:"key",key:e.key.length===1?e.key:e.key})}); await refreshBrowserSurface(t,true);}catch{} });
-    v.querySelector("#browserVerifyComplete").onclick=()=>v.querySelector("#browserVerify")?.classList.add("hidden");
+    v.querySelector("#browserVerifyComplete").onclick=async()=>{ v.querySelector("#browserVerify")?.classList.add("hidden"); const t=activeTab(); if(t?.browserSessionId) await refreshBrowserSurface(t,true).catch(()=>{}); };
     v.querySelector("#browserVerifyRetry").onclick=()=>refreshBrowserSurface(activeTab(),true);
     v.querySelector("#browserVerifyDirect").onclick=()=>{const t=activeTab();if(t?.url)window.open(t.url,"_blank","noopener")};
   }
@@ -153,8 +153,7 @@ async function refreshBrowserSurface(t, force=false) {
     const s = r.body.session; const previousUrl=t.url; t.url=s.canonicalUrl||t.url; t.browserStatus=s.status; t.title=s.title||hostOf(t.url);
     if (t.url && previousUrl && t.url !== previousUrl) { t.history=t.history.slice(0,t.histIndex+1); t.history.push(t.url); t.histIndex=t.history.length-1; recordHistory('page',t.url,t.title); }
     const img=$("browserRemoteImage"), v=$("browserRemoteViewport"); if(!img||!v)return;
-    if(force || !img.dataset.session) { img.dataset.session=t.browserSessionId; img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`; }
-    else if(force) img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
+    if(force || !img.dataset.session || img.dataset.session !== t.browserSessionId) { img.dataset.session=t.browserSessionId; img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`; }
     const verify=$("browserVerify"); verify?.classList.toggle("hidden", s.status!=="VERIFICATION_REQUIRED");
     $("browserRemoteBadge").textContent=s.status==='VERIFICATION_REQUIRED'?"VERIFY":"BROWSER";
     $("pageState").textContent=s.status==='VERIFICATION_REQUIRED'?"Website verification required":hostOf(t.url);
