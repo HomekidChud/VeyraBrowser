@@ -8,6 +8,36 @@ import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./br
 import { initUI } from "./ui.js";
 import { initDevtools } from "./devtools.js";
 
+// Official YouTube embed compatibility. For public watch/Shorts/live URLs,
+// use YouTube's documented IFrame embed player so playback stays in YouTube's
+// own player instead of trying to proxy googlevideo media through the small
+// Render Free instance. This is not a media extractor or challenge bypass.
+function youtubeEmbedUrl(raw) {
+  try {
+    const u = new URL(String(raw));
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    let id = "";
+    if (host === "youtu.be") id = u.pathname.split("/").filter(Boolean)[0] || "";
+    else if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      if (u.pathname === "/watch") id = u.searchParams.get("v") || "";
+      else if (/^\/(shorts|live|embed)\//.test(u.pathname)) id = u.pathname.split("/").filter(Boolean)[1] || "";
+    }
+    if (!id || !/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
+    const params = new URLSearchParams({
+      enablejsapi: "1",
+      playsinline: "1",
+      rel: "0",
+      origin: location.origin,
+      widget_referrer: location.origin
+    });
+    const start = u.searchParams.get("start") || u.searchParams.get("t");
+    if (start && /^\d+$/.test(String(start))) params.set("start", String(start));
+    if (u.searchParams.get("list")) params.set("list", u.searchParams.get("list"));
+    if (u.searchParams.get("index")) params.set("index", u.searchParams.get("index"));
+    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.toString()}`;
+  } catch { return null; }
+}
+
 // ---------------------------------------------------------------- state
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -300,13 +330,23 @@ function onFrameLoad(t) {
   }
   if (activeTab() === t) setLoading(false); else t.loading = false;
   clearTimeout(t.loadGuard);
-  if (["crawler", "combined", "auto"].includes(t.loadStrategy) && t.sessionId) {
+  if (["crawler", "combined"].includes(t.loadStrategy) && t.sessionId) {
     const session = state.session?.id === t.sessionId ? state.session : null;
     if (session) scheduleDeferredCrawler(t, t.url, session, true, 250);
   }
+  // AUTO on the Render Free profile stays proxy-first. The capability probe may
+  // still request Chromium for a page that truly needs it, but routine background
+  // crawling must never consume the guest session budget.
   renderTabsSoon(); updateIdentity();
   // Re-apply zoom and extensions each time the document changes.
   setTimeout(() => { if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {}); hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t); }, 120);
+}
+function clearRemoteSurface() {
+  const v = $("remoteSurface");
+  if (!v) return;
+  const img = $("remoteImg");
+  if (img) img.removeAttribute("src");
+  v.classList.remove("frame-active");
 }
 function ensureRemoteSurface() {
   let v = $("remoteSurface"); if (v) return v;
@@ -328,7 +368,9 @@ function showFrameForTab(t) {
   const remote = isRemote(t);
   const f = remote ? null : (t.url || frameFor(t) ? getOrCreateFrame(t) : null);
   qsa("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", el === f));
-  const surf = ensureRemoteSurface(); surf.classList.toggle("frame-active", remote);
+  const surf = ensureRemoteSurface();
+  surf.classList.toggle("frame-active", remote);
+  if (!remote) clearRemoteSurface();
   if (remote) refreshRemote(t, true);
   setLoading(!!t.loading, 50, `Loading ${hostOf(t.url)}…`);
 }
@@ -419,10 +461,15 @@ export async function endSession(reason = "timer") {
     if (reason === "manual") toast("Session ended and deleted");
     else if (settings.autoRestartSession) toast("Session expired. A new one starts when you open a site");
     else {
+      const active = activeTab();
+      const hadPage = pageTabs.length > 0;
       $("sessionOverText").textContent = reason === "server"
         ? "The server reports this session has expired. Veyra deleted its cookies, tabs, Chromium context and VPN tunnel."
         : `Your ${fmtClock(s.limitMs)} are up. Veyra deleted the session on the server: cookies, tabs, Chromium context and VPN tunnel.`;
-      $("sessionOverlay").classList.remove("hidden"); $("sessionRestart").focus();
+      // After expiry the page tabs are already removed and a New Tab is restored.
+      // Keep that New Tab usable rather than covering it with a modal.
+      if (hadPage && active?.view === "page") { $("sessionOverlay").classList.remove("hidden"); $("sessionRestart").focus(); }
+      else toast(reason === "server" ? "Session expired" : "Session ended — deleted for privacy", { kind: "warn" });
     }
   } finally { state.sessionEnding = false; }
 }
@@ -486,7 +533,10 @@ function resolveStrategy(url) {
   const base = desiredStrategy(url);
   // Google search needs real JavaScript and rejects datacenter proxies:
   // go straight to Chromium (with Veyra web results as the fallback).
-  if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) return { key: "browser", proxy: false, crawler: false, browser: true, race: false, google: true };
+  if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
+    if (state.server.leanMode && String(settings.runtime) === "auto") return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
+    return { key: "browser", proxy: false, crawler: false, browser: true, race: false, google: true };
+  }
   if (!base.auto) return base;
   // Proxy-first: never wait for the capability probe before showing the page.
   // A cached verdict for this host picks the pipeline immediately; otherwise
@@ -534,6 +584,11 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
   t.loadStrategy = strategy.key;
   if (!state.tabs.includes(t) || t.url !== url) return;
+  if (strategy.googleSearchFallback) {
+    let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
+    showSearch(q, { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
+    return;
+  }
 
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
@@ -541,7 +596,21 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const useProxy = async () => {
     if (!loadFrame) return;
     t.browserMode = "FAST_PROXY";
-    const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id, previousUrl);
+    const f = getOrCreateFrame(t);
+    f.removeAttribute("srcdoc");
+    const ytEmbed = youtubeEmbedUrl(url);
+    if (ytEmbed) {
+      // Official YouTube player: avoids buffering/rewriting googlevideo media on Render.
+      // Playback remains subject to YouTube embedding rules and the user's network policy.
+      t.youtubeEmbed = true;
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      f.src = ytEmbed;
+    } else {
+      t.youtubeEmbed = false;
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      f.src = proxyUrl(url, "view", session.id, previousUrl);
+    }
     if (activeTab() === t) showFrameForTab(t);
   };
 
@@ -562,18 +631,33 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Combined Chromium path unavailable: ${e.message}`); });
 
   if (strategy.race) {
-    // Render the lightweight proxy immediately. Chromium starts in parallel,
-    // while crawler discovery is deferred so background work cannot steal the
-    // foreground network slots needed for first paint.
+    // On Render Free, Chromium + crawler + proxy at once can exceed the 512 MB
+    // process budget. Keep the combined mode, but stage the expensive browser
+    // lane after proxy first paint; non-lean plans may still race.
     await useProxy();
-    const browserPromise = raceChromium();
+    if (state.server.leanMode) {
+      scheduleDeferredCrawler(t, url, session, true, 150);
+      // Render Free cannot safely run a proxy, crawler and Chromium process at full
+      // strength simultaneously. Combined therefore stays adaptive on this plan:
+      // proxy/crawler start immediately and Chromium is only added when the
+      // capability probe identifies a page that really needs it.
+      t.combinedGraceTimer = setTimeout(() => {
+        t.combinedGraceTimer = null;
+        if (!state.tabs.includes(t) || t.url !== url || t.browserSessionId || t.renderWinner === "browser") return;
+        capability(url).then(mode => {
+          if (!state.tabs.includes(t) || t.url !== url || t.browserSessionId || t.renderWinner === "browser") return;
+          if (mode === "BROWSER_ENGINE") void raceChromium();
+        }).catch(() => {});
+      }, 1800);
+    } else {
+      void raceChromium();
+    }
     t.loadGuard = setTimeout(() => {
       if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
         // A successful iframe document-navigation will also clear this; this is only a last-resort UI guard.
         t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
       }
     }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
-    void browserPromise;
     return renderTabs();
   }
 
@@ -611,7 +695,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (strategy.probe) {
     capability(url).then(mode => {
       if (!state.tabs.includes(t) || t.url !== url) return;
-      if (mode === "ACCELERATED_PROXY") scheduleDeferredCrawler(t, url, session, true, 150);
+      if (mode === "ACCELERATED_PROXY" && !state.server.leanMode) scheduleDeferredCrawler(t, url, session, true, 150);
       // Still loading after the probe says "needs a real browser": race Chromium.
       else if (mode === "BROWSER_ENGINE" && t.loading && !state.server.leanMode) {
         t.loadStrategy = "combined"; t.renderWinner = "";
@@ -660,10 +744,13 @@ async function loadLinks(t) { if (!t?.jobId) return; try { const b = await api(`
 async function refreshRemote(t, loop = false) {
   if (!t?.browserSessionId || !state.tabs.includes(t)) return;
   clearTimeout(t.browserPoll);
+  const expectedId = t.browserSessionId;
   try {
-    const r = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`, { timeoutMs: 8000 });
+    const r = await api(`/api/browser/session/${encodeURIComponent(expectedId)}`, { timeoutMs: 8000 });
+    if (t.browserSessionId !== expectedId) return;
     const s = r.session; const prev = t.url;
-    t.url = s.canonicalUrl || t.url; t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
+    if (!t.youtubeEmbed) t.url = s.canonicalUrl || t.url;
+    t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
     if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
     if (activeTab() === t && t.view === "page") {
       const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
@@ -671,29 +758,50 @@ async function refreshRemote(t, loop = false) {
       if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "The site is asking for verification. Click inside the page to complete it.";
     }
     renderTabsSoon();
-  } catch (e) { if (e.code === "BROWSER_SESSION_NOT_FOUND") { t.browserSessionId = ""; return; } }
+  } catch (e) {
+    if (e.code === "BROWSER_SESSION_NOT_FOUND") {
+      if (t.browserSessionId !== expectedId) return;
+      t.browserSessionId = "";
+      t.browserMode = "FAST_PROXY";
+      t.browserStatus = "BROWSER_LOST";
+      clearRemoteSurface();
+      if (state.tabs.includes(t) && t.view === "page" && t.url && t.sessionId && state.session?.id === t.sessionId) {
+        const f = getOrCreateFrame(t);
+        f.removeAttribute("srcdoc");
+        f.src = proxyUrl(t.url, "view", t.sessionId);
+        t.renderWinner = "proxy";
+        if (activeTab() === t) showFrameForTab(t);
+      } else if (activeTab() === t) {
+        renderTabsSoon();
+        updateIdentity();
+      }
+      return;
+    }
+  }
   if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 3000 : 900);
 }
 async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
+  const browserUrl = youtubeEmbedUrl(url) || url;
   if (t.browserSessionId) {
     try {
-      const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url, fastStart: !!background }, timeoutMs: 45000 });
-      t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url;
+      const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url: browserUrl, fastStart: !!background }, timeoutMs: 45000 });
+      t.browserMode = "BROWSER_ENGINE"; t.youtubeEmbed = !!youtubeEmbedUrl(url); t.url = url || b.session.canonicalUrl || url;
       if (!background) { t.loading = false; if (activeTab() === t) showFrameForTab(t); }
       else if (!t.renderWinner) t.browserStatus = b.session.status || "ready";
       return;
     } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
-  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
-  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url;
+  const b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = !!youtubeEmbedUrl(url); t.url = url || b.session.canonicalUrl || url;
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
   else if (!t.renderWinner) { t.browserStatus = b.session.status || "ready"; }
 }
 async function stopBrowserSession(t) {
-  if (!t?.browserSessionId) { if (t) t.browserMode = "FAST_PROXY"; return; }
-  const id = t.browserSessionId; t.browserSessionId = ""; t.browserMode = "FAST_PROXY"; clearTimeout(t.browserPoll);
+  if (!t?.browserSessionId) { if (t) t.browserMode = "FAST_PROXY"; if (activeTab() === t) clearRemoteSurface(); return; }
+  const id = t.browserSessionId; t.browserSessionId = ""; t.browserMode = "FAST_PROXY"; t.browserStatus = ""; clearTimeout(t.browserPoll);
+  if (activeTab() === t) clearRemoteSurface();
   try { await api(`/api/browser/session/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch {}
 }
 async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); await refreshRemote(t, true); return true; } catch { return false; } }

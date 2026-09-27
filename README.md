@@ -1,7 +1,7 @@
-# Veyra Browser — frontend v8.16.0
+# Veyra Browser — frontend v8.16.2
 
 This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
-It needs the Veyra server **v8.16.0 or newer**, which provides the auth, session time limit and admin-gating endpoints.
+It needs the Veyra server **v8.16.2 or newer**, which provides the auth, session time limit and admin-gating endpoints.
 
 ## Page loading strategies
 
@@ -65,3 +65,8 @@ Proxy HTML is returned immediately, critical rewritten assets are preloaded, inl
 ## Fast loading pipeline
 
 The proxy returns the document first. Veyra adds bounded preload hints for high-value CSS/JS/fonts/images, warms literal assets found in inline code, and starts the crawler after the first usable page surface. The browsing crawler is page-scoped rather than a site-wide crawl.
+
+
+### Render Free engine behavior
+
+On the 512 MB Render Free profile, **Combined** remains proxy/crawler-first and only starts Chromium after a capability probe identifies a target that genuinely needs a browser. This keeps the browser responsive and prevents a single page from starting three high-memory paths simultaneously. Non-Free profiles may use the full parallel combined pipeline.
