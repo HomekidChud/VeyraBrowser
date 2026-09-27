@@ -133,7 +133,7 @@ function vpnSection() {
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
-    ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. The crawler now performs a fast, bounded page warm-up instead of crawling the whole site during your browsing session.", [["auto", "Automatic"], ["proxy", "Fast proxy"], ["crawler", "Fast proxy + page accelerator"], ["browser", "Chromium"], ["combined", "All combined (fastest adaptive)"]])}
+    ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. The crawler accelerates the current page only: the proxy paints first, critical assets start early, then bounded discovery warms additional required assets without crawling the whole site during your session.", [["auto", "Automatic"], ["proxy", "Fast proxy"], ["crawler", "Fast proxy + page accelerator"], ["browser", "Chromium"], ["combined", "All combined (fastest adaptive)"]])}
     ${toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
     ${toggle("autoStopPrevious", "Stop the previous crawl when navigating", "Saves server resources.")}
     ${toggle("confirmCloseWithCrawl", "Confirm before closing a tab that is still crawling", "")}

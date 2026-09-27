@@ -41,7 +41,7 @@ const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.sc
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", loadStrategy: "auto", renderWinner: "", loadGuard: null,
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "",
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -109,7 +109,7 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
 }
 function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
 function teardownTab(t) {
-  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll);
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
   if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
   if (t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   rejectTab(t.id); frameFor(t)?.remove();
@@ -280,6 +280,10 @@ function onFrameLoad(t) {
   }
   if (activeTab() === t) setLoading(false); else t.loading = false;
   clearTimeout(t.loadGuard);
+  if (["crawler", "combined", "auto"].includes(t.loadStrategy) && t.sessionId) {
+    const session = state.session?.id === t.sessionId ? state.session : null;
+    if (session) scheduleDeferredCrawler(t, t.url, session, true, 250);
+  }
   renderTabsSoon(); updateIdentity();
   // Re-apply zoom and extensions each time the document changes.
   setTimeout(() => { if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {}); hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t); }, 120);
@@ -309,7 +313,7 @@ function showFrameForTab(t) {
   setLoading(!!t.loading, 50, `Loading ${hostOf(t.url)}…`);
 }
 
-// ---------------------------------------------------------------- sessions (2-minute limit)
+// ---------------------------------------------------------------- sessions (server-defined limit; guests/admins may differ)
 // Render's free plan sleeps when idle and takes 30–60 s to wake. Instead of failing,
 // keep the user informed and poll /health until the server answers.
 const WAKE_CODES = new Set(["API_TIMEOUT", "API_NETWORK_ERROR"]);
@@ -452,6 +456,15 @@ async function resolveStrategy(url) {
   if (detected === "BROWSER_ENGINE") return { ...base, browser: true };
   return base;
 }
+function scheduleDeferredCrawler(t, url, session, enabled = true, delayMs = 450) {
+  if (!enabled || !session?.id) return;
+  if (t.jobId || t.crawlerStartTimer) return;
+  t.crawlerStartTimer = setTimeout(() => {
+    t.crawlerStartTimer = null;
+    if (!state.tabs.includes(t) || t.url !== url || t.jobId) return;
+    void openCrawl(t, url, session, true);
+  }, Math.max(150, Number(delayMs) || 450));
+}
 function openCrawl(t, url, session, enabled = true) {
   if (!enabled) return Promise.resolve(null);
   const engineMode = t.loadStrategy || settings.runtime || "auto";
@@ -465,7 +478,7 @@ function openCrawl(t, url, session, enabled = true) {
 }
 async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
-  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard);
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
   Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
@@ -475,14 +488,14 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   try { session = await ensureSession(); }
   catch (e) { t.loading = false; if (activeTab() === t) setLoading(false); return renderError(t, "server", e); }
   if (!state.tabs.includes(t) || t.url !== url) return;
+  t.sessionId = session.id;
   recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
   const strategy = await resolveStrategy(url);
   t.loadStrategy = strategy.key;
   if (!state.tabs.includes(t) || t.url !== url) return;
 
-  t.done = !strategy.crawler;
-  const crawlerPromise = openCrawl(t, url, session, strategy.crawler);
-  if (activeTab() === t) setLoading(true, 24, strategy.race ? "Racing proxy, crawler and Chromium…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Warming the crawler…" : "Loading through the fast proxy…");
+  t.done = true;
+  if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
   const useProxy = async () => {
     if (!loadFrame) return;
@@ -492,8 +505,9 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   };
 
   if (strategy.race) {
-    // Start both renderers concurrently. Whichever produces a usable surface first wins;
-    // the crawler continues in the background to warm resources/search state.
+    // Render the lightweight proxy immediately. Chromium starts in parallel,
+    // while crawler discovery is deferred so background work cannot steal the
+    // foreground network slots needed for first paint.
     await useProxy();
     const browserPromise = startBrowserSession(t, url, { background: true }).then(() => {
       if (!state.tabs.includes(t) || t.url !== url) return;
@@ -502,6 +516,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
         t.browserMode = "BROWSER_ENGINE";
         if (activeTab() === t) showFrameForTab(t);
         t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false);
+        if (["combined", "auto", "crawler"].includes(t.loadStrategy)) scheduleDeferredCrawler(t, url, session, true, 250);
         hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t);
         renderTabsSoon();
       } else if (t.renderWinner !== "browser") {
@@ -514,7 +529,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
         t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
       }
     }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
-    void crawlerPromise;
     void browserPromise;
     return renderTabs();
   }
@@ -541,7 +555,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   t.loadGuard = setTimeout(() => {
     if (t.loading && t.url === url && state.tabs.includes(t)) { t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon(); }
   }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
-  void crawlerPromise;
   renderTabs(); updateIdentity();
 }
 
@@ -983,7 +996,7 @@ async function renderVpnPanel() {
   box.innerHTML = `<div class="vpn-hero"><div class="vpn-orb ${v.connected ? "on" : ""}"><svg><use href="#i-vpn"/></svg></div><div><h2>${v.connected ? "Protected" : "Not connected"}</h2><p class="muted">${v.connected ? `Traffic in this session leaves through <b>${esc(cur?.name || "")}</b>${cur?.region ? ` · ${esc(cur.region)}` : ""}${cur?.health?.exitIp ? ` · exit ${esc(cur.health.exitIp)}` : ""}.` : !st.enabled ? "The VPN is turned off on this server." : !profiles.length ? "No VPN exits are configured on the server yet." : "Choose an exit below. Every tab in this session will use it."}</p></div><span class="spacer"></span>${v.connected ? `<button class="btn ghost" id="vpnRotate">Rotate exit</button><button class="btn danger" id="vpnOff">Disconnect</button>` : ""}</div>
     <div class="s-section"><h2>Exits</h2><p class="muted">${st.killSwitch ? "Kill switch is on: if a tunnel drops, requests are blocked instead of leaking through the server's own IP." : "Kill switch is off on this server."}${st.failover ? " Failover moves you to a healthy exit automatically." : ""}</p>
     <div class="vpn-list">${profiles.map(p => `<div class="vpn-row ${cur?.id === p.id ? "on" : ""}"><span class="pill ${p.health?.healthy === false ? "err" : p.health?.healthy ? "ok" : ""}">${esc(p.protocol || p.type)}</span><div class="n"><b>${esc(p.name)}</b><small>${esc([p.region, p.country, p.provider].filter(Boolean).join(" · ") || "Server exit")}${p.health?.latencyMs ? ` · ${p.health.latencyMs} ms` : ""}</small></div>${cur?.id === p.id ? `<span class="pill ok">Connected</span>` : `<button class="btn ghost sm" data-connect="${esc(p.id)}" ${st.enabled ? "" : "disabled"}>Connect</button>`}<button class="btn ghost sm" data-test="${esc(p.id)}">Test</button></div>`).join("") || `<div class="empty"><span>Set VPN_PROFILES_JSON, WIREGUARD_CONFIG or VPN_PROXY_SERVER on Render to add exits.</span></div>`}</div></div>
-    <div class="s-section"><h2>Automatic connection</h2><div class="s-card"><div class="s-row"><div class="s-label"><b>Connect new sessions automatically</b><span>Uses the chosen exit as soon as a session starts.</span></div><div class="s-ctl"><select class="input" id="vpnAuto"><option value="">Off</option>${profiles.map(p => `<option value="${esc(p.id)}" ${settings.vpnAutoProfile === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div></div></div></div>`;
+    <div class="s-section"><h2>Automatic connection</h2><div class="s-card"><div class="s-row"><div class="s-label"><b>Connect new sessions automatically</b><span>Uses the chosen exit as soon as a session starts.</span></div><div class="s-ctl"><select class="input" id="vpnAuto"><option value="">Off</option>${profiles.map(p => `<option value="${esc(p.id)}" ${settings.vpnAutoProfile === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div></div><div class="s-row"><div class="s-label"><b>Automatic exit rotation</b><span>When enabled on the server, Veyra can periodically move the session to another configured exit. A new public IP depends on the VPN provider.</span></div><div class="s-ctl"><span class="pill ${st.rotation?.enabled ? "ok" : ""}">${st.rotation?.enabled ? `Every ${fmtClock(st.rotation.intervalMs)}` : "Server controlled"}</span></div></div></div></div>`;
   box.onclick = async e => { const b = e.target.closest("button"); if (!b) return; b.disabled = true;
     try {
       if (b.dataset.connect) await connectVpn(b.dataset.connect);

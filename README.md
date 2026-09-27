@@ -1,7 +1,7 @@
-# Veyra Browser — frontend v8.14.2
+# Veyra Browser — frontend v8.14.6
 
 This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
-It needs the Veyra server **v8.14.2 or newer**, which provides the auth, session time limit and admin-gating endpoints.
+It needs the Veyra server **v8.14.6 or newer**, which provides the auth, session time limit and admin-gating endpoints.
 
 ## Page loading strategies
 
@@ -16,7 +16,7 @@ It needs the Veyra server **v8.14.2 or newer**, which provides the auth, session
 - **Homepage** (`/`): hero, live server stats, features, how it works, Explore, FAQ, and sign in / sign up.
 - **Accounts**: sign up, sign in, sign out, sign out everywhere, change password, rename, delete account.
   Settings, bookmarks, extensions, shortcuts and notes sync to your account.
-- **Session limits**: each session has a server-enforced timer (2:00 by default).
+- **Session limits**: each session has a server-enforced timer. Guest sessions default to 2:00; signed-in administrators receive a fixed 10:00 session.
   - A live countdown shows in the toolbar, with warnings 30s and 10s before the end.
   - When time runs out, the server deletes the session (cookies, Chromium context, VPN tunnel) and an overlay offers a fresh session.
 - **Browser UI**:
@@ -57,3 +57,11 @@ The default backend is `https://veyraserver-xscy.onrender.com`. To point at anot
 ## Routing
 
 Deep links such as `/settings/shortcuts`, `/history` and `/dev` work on GitHub Pages. `404.html` redirects to `index.html?veyra_route=…`, and the app restores the route. Project-site subpaths are detected automatically.
+
+## Foreground-first page pipeline
+
+Proxy HTML is returned immediately, critical rewritten assets are preloaded, inline asset literals are warmed in the background, and browser-associated crawling starts only after the first usable page surface is available.
+
+## Fast loading pipeline
+
+The proxy returns the document first. Veyra adds bounded preload hints for high-value CSS/JS/fonts/images, warms literal assets found in inline code, and starts the crawler after the first usable page surface. The browsing crawler is page-scoped rather than a site-wide crawl.

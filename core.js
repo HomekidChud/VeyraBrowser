@@ -2,7 +2,7 @@
 const apiOverride = (() => { try { const q = new URLSearchParams(location.search).get("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
 export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.14.0";
+export const VERSION = "8.14.6";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -43,13 +43,13 @@ export const DEFAULT_SETTINGS = {
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 3,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 4,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
-// Migrate settings saved by older frontends. Version 3 adds explicit proxy/crawler/browser/combined modes.
+// Migrate settings saved by older frontends. Version 4 keeps the foreground-first page pipeline defaults.
 export function migrateSettings(obj) {
   if (!obj || typeof obj !== "object") return obj;
   const version = Number(obj.settingsVersion) || 0;
@@ -65,9 +65,13 @@ export function migrateSettings(obj) {
     else obj.runtime = "auto";
     obj.settingsVersion = 3;
   }
+  if (Number(obj.settingsVersion) < 4) {
+    obj.requestTimeoutMs = Math.max(Number(obj.requestTimeoutMs) || 0, 30000);
+    obj.settingsVersion = 4;
+  }
   return obj;
 }
-{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 3) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
+{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 4) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
 export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
