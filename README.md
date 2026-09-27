@@ -60,3 +60,7 @@ The toolbar's Reload control becomes a Stop control while a page is loading. The
 The frontend now distinguishes `FAST_PROXY` and `BROWSER_ENGINE` per tab. Capability detection happens before foreground navigation; browser-engine pages use an isolated backend Chromium session and a bounded remote viewport, while the crawler is started independently as background indexing work.
 
 `Ctrl+Shift+I` inspects the real Chromium DOM when a browser-engine session is active. Browser back/forward/reload use the real Playwright page history. Verification-required pages stay in the same browser session and expose a user-visible verification state rather than attempting to bypass the site's security controls.
+
+## v8.7.2 Google search navigation hardening
+
+Canonical proxy URL unwrapping is now recursive and malformed proxy links are rejected instead of falling back to the API origin.
