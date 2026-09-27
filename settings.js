@@ -133,8 +133,8 @@ function vpnSection() {
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
-    ${select("runtime", "Page engine", "Auto picks the lightweight proxy and switches to Chromium for sites that need it.", [["auto", "Automatic"], ["proxy", "Fast proxy only"], ["browser", "Chromium (remote browser)"]])}
-    ${toggle("browserFallback", "Fall back to Chromium when a page fails", "")}
+    ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. Combined races the proxy and Chromium while the crawler warms resources in the background.", [["auto", "Automatic"], ["proxy", "Fast proxy"], ["crawler", "Proxy + crawler"], ["browser", "Chromium"], ["combined", "All combined (fastest adaptive)"]])}
+    ${toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
     ${toggle("autoStopPrevious", "Stop the previous crawl when navigating", "Saves server resources.")}
     ${toggle("confirmCloseWithCrawl", "Confirm before closing a tab that is still crawling", "")}
     ${number("requestTimeoutMs", "Request timeout (ms)", "", 3000, 120000, 1000)}`);

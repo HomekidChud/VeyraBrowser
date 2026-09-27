@@ -2,7 +2,7 @@
 const apiOverride = (() => { try { const q = new URLSearchParams(location.search).get("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
 export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.13.0";
+export const VERSION = "8.14.0";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -43,24 +43,31 @@ export const DEFAULT_SETTINGS = {
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 2,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 3,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
-// Migrate settings saved by older frontends (v8.3 stored a 15 s timeout and fallback off,
-// which made slow Chromium starts on small Render plans show an error instead of the page).
+// Migrate settings saved by older frontends. Version 3 adds explicit proxy/crawler/browser/combined modes.
 export function migrateSettings(obj) {
   if (!obj || typeof obj !== "object") return obj;
-  if ((Number(obj.settingsVersion) || 0) < 2) {
+  const version = Number(obj.settingsVersion) || 0;
+  if (version < 2) {
     obj.browserFallback = true;
     obj.requestTimeoutMs = Math.max(Number(obj.requestTimeoutMs) || 0, 30000);
     obj.settingsVersion = 2;
   }
+  if (Number(obj.settingsVersion) < 3) {
+    const legacy = String(obj.runtime || "auto");
+    if (legacy === "browser") obj.runtime = "browser";
+    else if (legacy === "proxy") obj.runtime = "proxy";
+    else obj.runtime = "auto";
+    obj.settingsVersion = 3;
+  }
   return obj;
 }
-{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 2) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
+{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 3) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
 export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
@@ -91,8 +98,19 @@ export async function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
   const requestId = uid();
   const controller = new AbortController();
-  const timeoutMs = Number(options.timeoutMs || settings.requestTimeoutMs || 20000);
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs || settings.requestTimeoutMs || 30000));
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  const externalSignal = options.signal;
+  let detachExternal = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else {
+      const abortFromCaller = () => controller.abort();
+      externalSignal.addEventListener("abort", abortFromCaller, { once: true });
+      detachExternal = () => externalSignal.removeEventListener("abort", abortFromCaller);
+    }
+  }
   const start = performance.now();
   const headers = new Headers(options.headers || {});
   headers.set("X-Veyra-Request-ID", requestId);
@@ -117,8 +135,14 @@ export async function api(path, options = {}) {
   } catch (e) {
     if (e instanceof ApiError) throw e;
     netLog.push({ time: Date.now(), method, path, status: "ERR", ms: Math.round(performance.now() - start), requestId });
-    throw new ApiError(e?.name === "AbortError" ? `Request timed out after ${Math.round(timeoutMs / 1000)} s.` : (e?.message || String(e)), 0, e?.name === "AbortError" ? "API_TIMEOUT" : "API_NETWORK_ERROR", requestId);
-  } finally { clearTimeout(timer); }
+    const callerCancelled = externalSignal?.aborted && !timedOut;
+    throw new ApiError(
+      e?.name === "AbortError" && timedOut ? `Request timed out after ${Math.round(timeoutMs / 1000)} s.` : (callerCancelled ? "Request cancelled." : (e?.message || String(e))),
+      0,
+      e?.name === "AbortError" && timedOut ? "API_TIMEOUT" : callerCancelled ? "API_CANCELLED" : "API_NETWORK_ERROR",
+      requestId
+    );
+  } finally { clearTimeout(timer); detachExternal?.(); }
 }
 export function proxyUrl(url, mode = "view", sid = "") {
   const base = API + (mode === "resource" ? "/api/resource?url=" : mode === "download" ? "/api/download?url=" : "/api/view?url=") + encodeURIComponent(url);
@@ -141,8 +165,12 @@ export function toast(message, { kind = "", action = null, actionLabel = "", ms 
   setTimeout(() => el.remove(), ms);
 }
 // Promise-based modal prompt. fields: [{name,label,value,type,placeholder}]
-export function promptDialog({ title, fields = [], ok = "Save" }) {
+export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {
   const dlg = $("promptDialog"); $("promptTitle").textContent = title; $("promptOk").textContent = ok;
+  const titleEl = $("promptTitle");
+  let descEl = $("promptDescription");
+  if (!descEl) { descEl = document.createElement("p"); descEl.id = "promptDescription"; descEl.className = "muted"; titleEl.insertAdjacentElement("afterend", descEl); }
+  descEl.textContent = String(description || ""); descEl.classList.toggle("hidden", !description);
   $("promptFields").innerHTML = fields.map(f => f.type === "textarea"
     ? `<label class="field"><span>${esc(f.label)}</span><textarea name="${esc(f.name)}" rows="6" placeholder="${esc(f.placeholder || "")}">${esc(f.value || "")}</textarea></label>`
     : `<label class="field"><span>${esc(f.label)}</span><input name="${esc(f.name)}" type="${esc(f.type || "text")}" value="${esc(f.value || "")}" placeholder="${esc(f.placeholder || "")}" ${f.required ? "required" : ""}></label>`).join("");
@@ -152,9 +180,19 @@ export function promptDialog({ title, fields = [], ok = "Save" }) {
   });
 }
 export function confirmDialog(title, text, ok = "Confirm") {
-  return promptDialog({ title, fields: [], ok }).then(r => !!r).finally(() => {});
+  return promptDialog({ title, description: text, fields: [], ok }).then(r => !!r).finally(() => {});
 }
-export function copyText(text) { try { navigator.clipboard.writeText(String(text)); toast("Copied to clipboard"); } catch { toast("Copy failed", { kind: "err" }); } }
+export async function copyText(text) {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(String(text));
+    toast("Copied to clipboard");
+    return true;
+  } catch {
+    toast("Copy failed", { kind: "err" });
+    return false;
+  }
+}
 
 // Floating layers: only one open at a time.
 let openLayer = null;

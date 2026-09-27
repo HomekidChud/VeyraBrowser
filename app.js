@@ -41,7 +41,7 @@ const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.sc
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "",
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", loadStrategy: "auto", renderWinner: "", loadGuard: null,
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -273,7 +273,13 @@ function getOrCreateFrame(t) {
 }
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page") return;
+  if (t.loadStrategy === "combined" && !t.renderWinner) {
+    t.renderWinner = "proxy";
+    t.browserMode = "FAST_PROXY";
+    if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+  }
   if (activeTab() === t) setLoading(false); else t.loading = false;
+  clearTimeout(t.loadGuard);
   renderTabsSoon(); updateIdentity();
   // Re-apply zoom and extensions each time the document changes.
   setTimeout(() => { if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {}); hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t); }, 120);
@@ -424,52 +430,121 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
   await loadInTab(t, url, { loadFrame: true, record });
   if (push && activeTab() === t) syncRoute();
 }
-async function capability(url) {
+async async function capability(url) {
   if (settings.runtime === "proxy") return "FAST_PROXY";
-  if (settings.runtime === "browser") return "BROWSER_ENGINE";
+  if (settings.runtime === "crawler") return "FAST_PROXY";
+  if (settings.runtime === "browser" || settings.runtime === "combined") return "BROWSER_ENGINE";
   const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
-  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 8000 }); const m = r?.mode || "FAST_PROXY"; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
+  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
+}
+function desiredStrategy(url) {
+  const r = String(settings.runtime || "auto");
+  if (r === "proxy") return { key: "proxy", proxy: true, crawler: false, browser: false, race: false };
+  if (r === "crawler") return { key: "crawler", proxy: true, crawler: true, browser: false, race: false };
+  if (r === "browser") return { key: "browser", proxy: false, crawler: false, browser: true, race: false };
+  if (r === "combined") return { key: "combined", proxy: true, crawler: true, browser: true, race: true };
+  return { key: "auto", proxy: true, crawler: true, browser: false, race: false, auto: true };
+}
+async function resolveStrategy(url) {
+  const base = desiredStrategy(url);
+  if (!base.auto) return base;
+  const detected = await capability(url);
+  if (detected === "BROWSER_ENGINE") return { ...base, browser: true };
+  return base;
+}
+function openCrawl(t, url, session, enabled = true) {
+  if (!enabled) return Promise.resolve(null);
+  const engineMode = t.loadStrategy || settings.runtime || "auto";
+  return api("/api/open", { json: { url, sessionId: session.id, engineMode } }).then(b => {
+    if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return null; }
+    t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); return b;
+  }).catch(e => {
+    if (e.code !== "SESSION_EXPIRED") addLog("debug", `Background index skipped: ${e.message}`);
+    return null;
+  });
 }
 async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
-  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll);
-  Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true });
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard);
+  Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
-  if (active) { renderActive({ push: false }); setLoading(true, 12, "Starting a clean session…"); }
+  if (active) { renderActive({ push: false }); setLoading(true, 10, "Starting a clean session…"); }
   let session;
   try { session = await ensureSession(); }
   catch (e) { t.loading = false; if (activeTab() === t) setLoading(false); return renderError(t, "server", e); }
   if (!state.tabs.includes(t) || t.url !== url) return;
   recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
-  if (activeTab() === t) setLoading(true, 22, "Choosing the page engine…");
-  const mode = await capability(url);
+  const strategy = await resolveStrategy(url);
+  t.loadStrategy = strategy.key;
   if (!state.tabs.includes(t) || t.url !== url) return;
-  if (mode === "FAST_PROXY" && t.browserSessionId) await stopBrowserSession(t);
-  // Background crawl/index job (tied to the session so it stops when the session ends).
-  api("/api/open", { json: { url, sessionId: session.id } }).then(b => { if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return; } t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Background index skipped: ${e.message}`); });
-  if (mode === "BROWSER_ENGINE") {
-    try { await startBrowserSession(t, url); renderTabs(); return; }
-    catch (e) {
+
+  t.done = !strategy.crawler;
+  const crawlerPromise = openCrawl(t, url, session, strategy.crawler);
+  if (activeTab() === t) setLoading(true, 24, strategy.race ? "Racing proxy, crawler and Chromium…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Warming the crawler…" : "Loading through the fast proxy…");
+
+  const useProxy = async () => {
+    if (!loadFrame) return;
+    t.browserMode = "FAST_PROXY";
+    const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id);
+    if (activeTab() === t) showFrameForTab(t);
+  };
+
+  if (strategy.race) {
+    // Start both renderers concurrently. Whichever produces a usable surface first wins;
+    // the crawler continues in the background to warm resources/search state.
+    await useProxy();
+    const browserPromise = startBrowserSession(t, url, { background: true }).then(() => {
+      if (!state.tabs.includes(t) || t.url !== url) return;
+      if (!t.renderWinner) {
+        t.renderWinner = "browser";
+        t.browserMode = "BROWSER_ENGINE";
+        if (activeTab() === t) showFrameForTab(t);
+        t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false);
+        hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t);
+        renderTabsSoon();
+      } else if (t.renderWinner !== "browser") {
+        stopBrowserSession(t).catch(() => {});
+      }
+    }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Combined Chromium path unavailable: ${e.message}`); });
+    t.loadGuard = setTimeout(() => {
+      if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
+        // A successful iframe document-navigation will also clear this; this is only a last-resort UI guard.
+        t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+      }
+    }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
+    void crawlerPromise;
+    void browserPromise;
+    return renderTabs();
+  }
+
+  const shouldBrowser = strategy.browser;
+  if (shouldBrowser) {
+    try {
+      await startBrowserSession(t, url);
+      t.renderWinner = "browser";
+      renderTabs();
+      return;
+    } catch (e) {
       if (e.code === "SESSION_EXPIRED") return;
       if (!state.tabs.includes(t) || t.url !== url) return;
       addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
       if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
       t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
-      // Capacity/timeout/network problems always fall back; only a forced "browser" runtime shows the error.
       if (settings.runtime === "browser" && !settings.browserFallback) return renderError(t, "server", e);
-      state.capabilityCache.set(hostOf(url), "FAST_PROXY");
     }
   }
-  t.browserMode = "FAST_PROXY";
-  if (activeTab() === t) setLoading(true, 45, `Fetching ${hostOf(url)}…`);
-  if (loadFrame) { const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id); }
-  clearTimeout(t.loadGuard);
-  t.loadGuard = setTimeout(() => { if (t.loading && t.url === url && state.tabs.includes(t)) { t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon(); } }, 25000);
-  if (activeTab() === t) showFrameForTab(t);
+
+  t.renderWinner = "proxy";
+  await useProxy();
+  t.loadGuard = setTimeout(() => {
+    if (t.loading && t.url === url && state.tabs.includes(t)) { t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon(); }
+  }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
+  void crawlerPromise;
   renderTabs(); updateIdentity();
 }
+
 export function recordHistory(kind, url, title, sid = state.session?.id) {
   if (!url) return; const prev = state.history[0];
   if (prev && prev.url === url) { prev.time = new Date().toISOString(); if (title) prev.title = title; saveHistory(); return; }
@@ -519,19 +594,28 @@ async function refreshRemote(t, loop = false) {
   } catch (e) { if (e.code === "BROWSER_SESSION_NOT_FOUND") { t.browserSessionId = ""; return; } }
   if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 3000 : 900);
 }
-async function startBrowserSession(t, url) {
+async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
   if (t.browserSessionId) {
-    try { const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url } }); t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url; if (activeTab() === t) showFrameForTab(t); t.loading = false; return; }
-    catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
+    try {
+      const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url }, timeoutMs: 45000 });
+      t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url;
+      if (!background) { t.loading = false; if (activeTab() === t) showFrameForTab(t); }
+      else if (!t.renderWinner) t.browserStatus = b.session.status || "ready";
+      return;
+    } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
   const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid }, timeoutMs: 45000 });
-  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url; t.loading = false;
-  frameFor(t)?.remove();
-  if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
-  hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t);
+  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url;
+  if (!background) frameFor(t)?.remove();
+  if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
+  else if (!t.renderWinner) { t.browserStatus = b.session.status || "ready"; }
 }
-async function stopBrowserSession(t) { if (!t?.browserSessionId) return; const id = t.browserSessionId; t.browserSessionId = ""; clearTimeout(t.browserPoll); try { await api(`/api/browser/session/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch {} }
+async function stopBrowserSession(t) {
+  if (!t?.browserSessionId) { if (t) t.browserMode = "FAST_PROXY"; return; }
+  const id = t.browserSessionId; t.browserSessionId = ""; t.browserMode = "FAST_PROXY"; clearTimeout(t.browserPoll);
+  try { await api(`/api/browser/session/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch {}
+}
 async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); await refreshRemote(t, true); return true; } catch { return false; } }
 
 // ---------------------------------------------------------------- toolbar actions
@@ -568,7 +652,7 @@ export async function stopLoad() {
   try { frameFor(t)?.contentWindow?.stop?.(); } catch {}
   setLoading(false); toast("Stopped loading");
 }
-export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
+export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
 export function pageCommand(type, payload = {}, t = activeTab()) { const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false; try { f.contentWindow.postMessage({ type, ...payload }, API_ORIGIN); return true; } catch { return false; } }
 export function printPage() { const t = activeTab(); if (t?.view !== "page" || !t.url) { window.print(); return; } if (isRemote(t)) { window.open(`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot`, "_blank", "noopener"); return; } if (!pageCommand("veyra:print")) toast("This page can't be printed yet", { kind: "warn" }); }
 export function setZoom(z, t = activeTab()) {
@@ -684,6 +768,8 @@ export async function startDownload(url, name = "") {
   state.downloads.unshift(item); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.();
   if (settings.downloadsOpenOnStart) toast(`Downloading ${item.name}`, { action: () => openInternal("downloads"), actionLabel: "Show" });
   const controller = new AbortController(); state.downloadControllers.set(item.id, controller);
+  const timeoutMs = Math.max(30000, Number(settings.requestTimeoutMs) || 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await rawFetch(proxyUrl(url, "download", session.id), { signal: controller.signal });
     if (!res.ok) { let m = `HTTP ${res.status}`; try { m = (await res.json()).error || m; } catch {} throw new Error(m); }
@@ -696,7 +782,7 @@ export async function startDownload(url, name = "") {
     const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: item.name }); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     item.status = "complete"; item.total = item.total || item.received;
   } catch (e) { item.status = e.name === "AbortError" ? "cancelled" : "failed"; item.error = e.message; if (e.name !== "AbortError") toast(`Download failed: ${e.message}`, { kind: "err" }); }
-  finally { state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.(); }
+  finally { clearTimeout(timeout); state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.(); }
 }
 let dlRaf = 0; function renderDownloadsSoon() { if (dlRaf) return; dlRaf = requestAnimationFrame(() => { dlRaf = 0; renderDownloads(); }); }
 function renderDownloads() {
@@ -942,7 +1028,7 @@ async function handleMessage(e) {
     if (String(d.source).startsWith("history.")) { t.url = target; if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
-      if (!same) { pushTabHistory(t, target); t.url = target; recordHistory("page", target, t.title); if (t.jobId && !t.done) stopJob(t.jobId); t.jobId = null; if (!settings.preserveLog) { t.console = []; t.network = []; } hooks.dt?.onNavigate(t); if (state.session) api("/api/open", { json: { url: target, sessionId: state.session.id } }).then(b => { t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(() => {}); }
+      if (!same) { pushTabHistory(t, target); t.url = target; recordHistory("page", target, t.title); if (t.jobId && !t.done) stopJob(t.jobId); t.jobId = null; if (!settings.preserveLog) { t.console = []; t.network = []; } hooks.dt?.onNavigate(t); if (state.session) openCrawl(t, target, state.session, ["auto","crawler","combined"].includes(settings.runtime || "auto")); }
       else { const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); } }
     } else { t.url = target; }
     // The page runtime reports "document-navigation" once the DOM is ready. Some sites
