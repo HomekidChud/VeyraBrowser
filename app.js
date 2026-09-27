@@ -41,7 +41,7 @@ const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.sc
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "",
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "",
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -276,7 +276,8 @@ function onFrameLoad(t) {
   if (t.loadStrategy === "combined" && !t.renderWinner) {
     t.renderWinner = "proxy";
     t.browserMode = "FAST_PROXY";
-    if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+    clearTimeout(t.combinedGraceTimer);
+    t.combinedGraceTimer = setTimeout(() => { t.combinedGraceTimer = null; if (state.tabs.includes(t) && t.renderWinner === "proxy" && t.browserSessionId) stopBrowserSession(t).catch(() => {}); }, 8000);
   }
   if (activeTab() === t) setLoading(false); else t.loading = false;
   clearTimeout(t.loadGuard);
@@ -453,7 +454,7 @@ async function resolveStrategy(url) {
   const base = desiredStrategy(url);
   if (!base.auto) return base;
   const detected = await capability(url);
-  if (detected === "BROWSER_ENGINE") return { ...base, browser: true };
+  if (detected === "BROWSER_ENGINE") return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
   return base;
 }
 function scheduleDeferredCrawler(t, url, session, enabled = true, delayMs = 450) {
@@ -478,7 +479,7 @@ function openCrawl(t, url, session, enabled = true) {
 }
 async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
-  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
   Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
@@ -513,6 +514,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (!t.renderWinner) {
         t.renderWinner = "browser";
+        clearTimeout(t.combinedGraceTimer); t.combinedGraceTimer = null;
         t.browserMode = "BROWSER_ENGINE";
         if (activeTab() === t) showFrameForTab(t);
         t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false);
@@ -543,7 +545,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
     } catch (e) {
       if (e.code === "SESSION_EXPIRED") return;
       if (!state.tabs.includes(t) || t.url !== url) return;
-      addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
+      if (e.code === "BROWSER_CAPACITY") addLog("warn", `Chromium is at capacity; using fast proxy: ${e.message}`);
+      else addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
       if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
       t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
       if (settings.runtime === "browser" && !settings.browserFallback) return renderError(t, "server", e);
@@ -611,14 +614,14 @@ async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
   if (t.browserSessionId) {
     try {
-      const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url }, timeoutMs: 45000 });
+      const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url, fastStart: !!background }, timeoutMs: 45000 });
       t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url;
       if (!background) { t.loading = false; if (activeTab() === t) showFrameForTab(t); }
       else if (!t.renderWinner) t.browserStatus = b.session.status || "ready";
       return;
     } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
-  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid }, timeoutMs: 45000 });
+  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
   t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url;
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }

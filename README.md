@@ -1,7 +1,7 @@
-# Veyra Browser — frontend v8.14.6
+# Veyra Browser — frontend v8.15.2
 
 This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
-It needs the Veyra server **v8.14.6 or newer**, which provides the auth, session time limit and admin-gating endpoints.
+It needs the Veyra server **v8.15.2 or newer**, which provides the auth, session time limit and admin-gating endpoints.
 
 ## Page loading strategies
 
@@ -58,7 +58,7 @@ The default backend is `https://veyraserver-xscy.onrender.com`. To point at anot
 
 Deep links such as `/settings/shortcuts`, `/history` and `/dev` work on GitHub Pages. `404.html` redirects to `index.html?veyra_route=…`, and the app restores the route. Project-site subpaths are detected automatically.
 
-## Foreground-first page pipeline
+## Content-complete adaptive pipeline
 
 Proxy HTML is returned immediately, critical rewritten assets are preloaded, inline asset literals are warmed in the background, and browser-associated crawling starts only after the first usable page surface is available.
 
