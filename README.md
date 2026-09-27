@@ -1,70 +1,51 @@
-# Veyra Browser — GitHub Pages frontend v8.3
+# Veyra Browser — frontend v8.13
 
-This project preserves the original static HTML/CSS/JavaScript architecture and upgrades the browser UI in place.
+This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
+It needs the Veyra server **v8.13.0 or newer**, which provides the auth, session time limit and admin-gating endpoints.
 
-The frontend calls the Render backend at:
+## What's in it
 
-`https://veyraserver-xscy.onrender.com`
+- **Homepage** (`/`): hero, live server stats, features, how it works, Explore, FAQ, and sign in / sign up.
+- **Accounts**: sign up, sign in, sign out, sign out everywhere, change password, rename, delete account.
+  Settings, bookmarks, extensions, shortcuts and notes sync to your account.
+- **Session limits**: each session has a server-enforced timer (2:00 by default).
+  - A live countdown shows in the toolbar, with warnings 30s and 10s before the end.
+  - When time runs out, the server deletes the session (cookies, Chromium context, VPN tunnel) and an overlay offers a fresh session.
+- **Browser UI**:
+  - Tabs, omnibox with suggestions, bookmarks bar, zoom, and the menu.
+  - Pages: history, downloads, find in page, print, VPN, calculator, Veyra Search, and a customisable new tab page.
+- **Settings** (`/settings/<section>`), laid out like Chrome's settings with section search:
+  - account, appearance (theme, accent, font size, zoom, compact), search engine, on startup, new tab page, privacy, sessions
+  - downloads and history, accessibility, keyboard shortcuts (rebind, reset, conflict handling), extensions, VPN, system, developer, reset, about
+  - admins also get a live server-config / Render plan editor
+- **Extensions**: Dark Reader, tracker and ad blocker, focus mode, readable text, link highlighter, grayscale, reader view, page stats, quick notes, default zoom, compact UI.
+- **DevTools** (Ctrl+Shift+I / Ctrl+Shift+C) inspect the live proxied page:
+  - Elements: DOM tree, live style and attribute editing, box model, element picker
+  - Console: eval, object previews, errors
+  - Sources, with a pretty-printer
+  - Network: type filters, headers, timing
+  - Application: storage and cookies
+  - Performance metrics
+- **Admin only**: `/dev` and `#console`. Guests are redirected, and the menu hides them. The server enforces this too.
 
-## v8.3 features
+## Shortcuts
 
-- Safe localStorage parsing and app-level crash recovery overlay.
-- Explicit canonical/original URL state separated from the backend proxy URL.
-- Multi-tab history remains canonical and tab-local.
-- Per-tab proxy session continuity: proxied pages can retain a bounded server-side cookie jar across Veyra navigation, forms and page API requests.
-- Veyra Search is first-class; normal text no longer redirects to Google unless the user explicitly selects external fallback mode in settings.
-- Veyra Search presents first-party index coverage, result counts, response time, domains, snippets, favicons, indexed dates, pagination, query suggestions, keyboard navigation, and local search operators.
-- Empty search results explain that Veyra does not fabricate pages and show how opening a site grows the index; Render `INDEX_SEEDS` can grow it automatically in the background.
-- Built-in safe calculator uses a parser rather than `eval()` or `Function()`.
-- Centralized API wrapper with request timeouts, JSON/error handling, request IDs, and network diagnostics.
-- Browser console/error/unhandled-rejection/resource diagnostics are bounded and forwarded to the backend without recursive logging.
-- Proxied pages communicate canonical navigation/title/favicon/session state through `postMessage`; the frontend never uses `iframe.location.href` to infer the original site URL.
-- Back/forward operate on canonical URLs and Veyra Search/calculator states.
-- Crawl status exposes logical crawler robots separately from actual network slots so the UI does not confuse a 1,000-robot logical fleet with 1,000 simultaneous outbound requests.
-- `/dev`, `/settings`, `#console`, search, calculator, tabs, bookmarks, source inspection, link inspection, crawl stop/export and backend health remain available.
-- Static-host `404.html` route fallback supports direct refresh of `/dev`, `/settings`, `/search`, and `/calculator`, including GitHub Pages project-site subpaths.
+| Action | Keys |
+| --- | --- |
+| New tab / close tab | Ctrl+T / Ctrl+W |
+| History / downloads | Ctrl+H / Ctrl+J |
+| Find / print | Ctrl+F / Ctrl+P |
+| VPN | Ctrl+Shift+V |
+| DevTools / inspect element | Ctrl+Shift+I / Ctrl+Shift+C |
+| View source resources | Ctrl+U |
+| Settings | Ctrl+, |
 
-## Deployment
+You can rebind all of these under Settings → Keyboard shortcuts.
 
-Upload the contents of this frontend directory to the existing GitHub Pages site. No frontend build step is required.
+## Backend URL
 
-For a GitHub Pages project site, the included `404.html` preserves the requested route and redirects it into the SPA using `veyra_route`, so direct refreshes of tool/search paths do not become permanent 404s.
+The default backend is `https://veyraserver-xscy.onrender.com`. To point at another server, open `?api=https://your-server` once; the choice is saved. Use `?api=reset` to go back to the default.
 
-If the Render API origin ever changes, define `window.VEYRA_API` before `app.js` or update the constant at the top of `app.js`.
+## Routing
 
-## Backend dependency
-
-Set the Render service CORS environment variable to the exact GitHub Pages origin:
-
-```text
-FRONTEND_ORIGIN=https://homekidchud.github.io
-```
-
-The frontend does not contain any search-provider API key.
-
-## Resource fidelity update
-
-The proxy frontend now keeps canonical website URLs separate from internal `/api/view` URLs, unwraps accidental proxy-shaped history URLs, preserves a per-tab proxy session across navigation/forms, and displays expanded crawl coverage for HTML, CSS, JS, data, assets, logical robots and actual network slots.
-
-The backend resource layer supports larger bounded image/media payloads, Range requests, source-origin referrer context, selected public-site request metadata, SVG references, `imagesrcset`, common lazy-loading attributes, JSON/XML/text capture, and preservation of upstream 2xx statuses such as 201/204 where applicable.
-
-
-## v8.5 browser features
-The Veyra frontend includes a custom inspect-element mode, custom downloads (Ctrl+J), local history (Ctrl+H), an extension store/developer mode with safe manifest imports, and a loading-state toolbar button that becomes Stop while a page is loading.
-
-## v8.5 browser features
-The toolbar's Reload control becomes a Stop control while a page is loading. The tools dropdown provides Inspect element, Find in page, Print, Downloads, History, Extensions, Calculator, Search and diagnostics. Keyboard shortcuts include Ctrl+J, Ctrl+H, Ctrl+Shift+I, Ctrl+F and Ctrl+P. The extension developer mode accepts local JSON manifests with CSS-only UI customization; arbitrary script, network and credential access is deliberately excluded.
-
-## v8.7 hybrid browser runtime
-
-The frontend now distinguishes `FAST_PROXY` and `BROWSER_ENGINE` per tab. Capability detection happens before foreground navigation; browser-engine pages use an isolated backend Chromium session and a bounded remote viewport, while the crawler is started independently as background indexing work.
-
-`Ctrl+Shift+I` inspects the real Chromium DOM when a browser-engine session is active. Browser back/forward/reload use the real Playwright page history. Verification-required pages stay in the same browser session and expose a user-visible verification state rather than attempting to bypass the site's security controls.
-
-## v8.7.2 Google search navigation hardening
-
-Canonical proxy URL unwrapping is now recursive and malformed proxy links are rejected instead of falling back to the API origin.
-
-
-## Veyra VPN
-Use the **VPN** tool to connect the active tab through a server-configured HTTP/HTTPS/SOCKS5 gateway. This is a Veyra session tunnel, not a device-wide VPN.
+Deep links such as `/settings/shortcuts`, `/history` and `/dev` work on GitHub Pages. `404.html` redirects to `index.html?veyra_route=…`, and the app restores the route. Project-site subpaths are detected automatically.

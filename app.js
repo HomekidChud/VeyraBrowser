@@ -1,1070 +1,1000 @@
-const API = window.VEYRA_API || "https://veyraserver-xscy.onrender.com";
-const $ = id => document.getElementById(id);
-const rawFetch = window.fetch.bind(window);
-const APP_BASE = new URL("./", document.baseURI).pathname.replace(/\/$/, "") || "";
+// Veyra browser shell: tabs, navigation, sessions, page runtime messages.
+import {
+  API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
+  settings, saveSettings, load, save, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION
+} from "./core.js";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
+import { initUI } from "./ui.js";
+import { initDevtools } from "./devtools.js";
 
-function safeJsonParse(raw, fallback) {
-  try { const value = JSON.parse(raw); return value == null ? fallback : value; }
-  catch { return fallback; }
-}
-function safeStorageGet(key, fallback = null) {
-  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
-}
-function safeStorageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
-
-const DEFAULT_SETTINGS = {
-  searchMode: "veyra",
-  searchEngine: "google",
-  homepage: "",
-  confirmCloseWithCrawl: false,
-  autoStopPrevious: true,
-  devRefreshMs: 1500,
-  consoleVerbosity: "all",
-  crawlerGlobalConcurrency: 128,
-  crawlerHostConcurrency: 8,
-  requestTimeoutMs: 15000,
-  browserFallback: false,
-  downloadsMax: 200,
-  historyMax: 500,
-  extensionDeveloperMode: false
+// ---------------------------------------------------------------- state
+const oldBookmarks = load("veyra-bookmarks", []);
+export const state = {
+  tabs: [], activeId: null, seq: 0, closed: [],
+  bookmarks: (Array.isArray(oldBookmarks) ? oldBookmarks : []).map(b => typeof b === "string" ? { id: uid(), url: b, title: hostOf(b) || b, time: Date.now() } : b).filter(b => b && b.url),
+  history: load("veyra-history", []).filter(x => x && typeof x === "object"),
+  downloads: load("veyra-downloads", []).filter(x => x && typeof x === "object"),
+  downloadControllers: new Map(),
+  session: null, sessionTimer: null, sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
+  vpn: { status: null, connected: false, profile: null }
 };
-let settings = { ...DEFAULT_SETTINGS, ...safeJsonParse(safeStorageGet("veyra-settings", "{}"), {}) };
-function saveSettings() { safeStorageSet("veyra-settings", JSON.stringify(settings)); }
-
-const bookmarkList = safeJsonParse(safeStorageGet("veyra-bookmarks", "[]"), []);
-const historyList = safeJsonParse(safeStorageGet("veyra-history", "[]"), []);
-const downloadList = safeJsonParse(safeStorageGet("veyra-downloads", "[]"), []);
-const extensionList = safeJsonParse(safeStorageGet("veyra-extensions", "[]"), []);
-const BUILTIN_EXTENSIONS = [
-  { id: "veyra-focus", name: "Focus Toolbar", version: "1.0.0", description: "Reduces visual browser chrome while you read.", author: "Veyra", enabled: false, builtin: true },
-  { id: "veyra-reading", name: "Reading Surface", version: "1.0.0", description: "Adds a softer reading surface to Veyra.", author: "Veyra", enabled: false, builtin: true },
-  { id: "veyra-compact", name: "Compact UI", version: "1.0.0", description: "Tightens Veyra toolbar and tab spacing.", author: "Veyra", enabled: false, builtin: true }
-];
-const state = {
-  tabs: [], activeId: null, tabSeq: 0,
-  logs: [], netLog: [], devTimer: null, devNetFilter: "all",
-  bookmarked: new Set(Array.isArray(bookmarkList) ? bookmarkList.filter(x => typeof x === "string") : []),
-  history: Array.isArray(historyList) ? historyList.filter(x => x && typeof x === "object").slice(0, 500) : [],
-  downloads: Array.isArray(downloadList) ? downloadList.filter(x => x && typeof x === "object").slice(0, 200) : [],
-  extensions: [...BUILTIN_EXTENSIONS, ...(Array.isArray(extensionList) ? extensionList.filter(x => x && typeof x === "object" && x.id && !BUILTIN_EXTENSIONS.some(b => b.id === x.id)) : [])],
-  clientLogQueue: [], clientLogTimer: null, searchSuggestTimer: null,
-  inspectMode: false, downloadControllers: new Map(),
-  booted: false
+const INTERNAL = {
+  newtab: { title: "New tab", icon: "i-home", path: "/browse" },
+  search: { title: "Veyra Search", icon: "i-search", path: "/search" },
+  calculator: { title: "Calculator", icon: "i-calc", path: "/calculator" },
+  downloads: { title: "Downloads", icon: "i-download", path: "/downloads" },
+  history: { title: "History", icon: "i-history", path: "/history" },
+  extensions: { title: "Extensions", icon: "i-puzzle", path: "/extensions" },
+  settings: { title: "Settings", icon: "i-settings", path: "/settings" },
+  vpn: { title: "Veyra VPN", icon: "i-vpn", path: "/vpn" },
+  resources: { title: "Page resources", icon: "i-file", path: "/resources" },
+  links: { title: "All links", icon: "i-link", path: "/links" },
+  console: { title: "Veyra console", icon: "i-terminal", path: "/console", admin: true },
+  dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true }
 };
-function saveHistory() { safeStorageSet("veyra-history", JSON.stringify(state.history.slice(0, settings.historyMax || 500))); }
-function saveDownloads() { safeStorageSet("veyra-downloads", JSON.stringify(state.downloads.slice(0, settings.downloadsMax || 200))); }
-function saveExtensions() { safeStorageSet("veyra-extensions", JSON.stringify(state.extensions)); }
-function recordHistory(kind, url, title = "") {
-  const value = String(url || ""); if (!value) return;
-  const previous = state.history[0];
-  const entry = { id: cryptoRandomId(), time: new Date().toISOString(), kind: String(kind || "page"), url: value, title: String(title || hostOf(value) || value).slice(0, 240) };
-  if (previous && previous.url === value && previous.kind === entry.kind) { previous.time = entry.time; previous.title = entry.title; saveHistory(); return; }
-  state.history.unshift(entry);
-  if (state.history.length > (settings.historyMax || 500)) state.history.length = settings.historyMax || 500;
-  saveHistory();
-}
-function activeExtensions() { return state.extensions.filter(x => x.enabled); }
-function applyExtensions() {
-  const browser = document.querySelector(".browser"); if (!browser) return;
-  const enabled = activeExtensions();
-  browser.classList.toggle("focus-extension", enabled.some(x => x.id === "veyra-focus"));
-  browser.classList.toggle("reading-extension", enabled.some(x => x.id === "veyra-reading"));
-  browser.classList.toggle("compact-extension", enabled.some(x => x.id === "veyra-compact"));
-  let style = document.getElementById("veyraExtensionStyles");
-  if (!style) { style = document.createElement("style"); style.id = "veyraExtensionStyles"; document.head.appendChild(style); }
-  const css = enabled.flatMap(x => Array.isArray(x.css) ? x.css : x.css ? [x.css] : []).filter(x => typeof x === "string").slice(0, 20);
-  style.textContent = css.join("\n/* --- extension boundary --- */\n").slice(0, 120000);
-}
-function showView(id) {
-  for (const x of ["homeView","browserView","searchView","calculatorView","downloadsView","historyView","extensionsView","toolView"]) $(x)?.classList.add("hidden");
-  $(id)?.classList.remove("hidden");
-}
+const saveHistory = () => save("veyra-history", state.history.slice(0, settings.historyMax || 1000));
+const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
+const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
 
-function makeTab() {
+// ---------------------------------------------------------------- tabs
+function makeTab(extra = {}) {
   return {
-    id: "t" + (++state.tabSeq), title: "New Tab", favicon: "", url: "", proxyUrl: "", jobId: null, done: false,
-    history: [], histIndex: -1, view: "home", searchQuery: "", searchOffset: 0, searchData: null, proxySessionId: "",
-    browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserScreenshot: null, browserStatus: "", vpnProfileId: "", vpnConnected: false,
-    consolePageUrl: "", remoteLogIds: new Set(), resources: [], links: [], selected: -1, poll: null
+    id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "",
+    resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
+    searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
 }
-function activeTab() { return state.tabs.find(t => t.id === state.activeId); }
+export const activeTab = () => state.tabs.find(t => t.id === state.activeId) || null;
+const tabById = id => state.tabs.find(t => t.id === id) || null;
 
-// --- Per-tab frame isolation -------------------------------------------------
-// Each tab owns its own <iframe>, kept alive in the DOM and just hidden/shown
-// on tab switch. This avoids the old design (one shared #pageFrame reused by
-// every tab) which meant switching tabs briefly showed the *previous* tab's
-// leftover document while the new URL loaded. Each frame now remembers its
-// own last-rendered page, exactly like a real browser tab.
-function frameIdFor(tabId) { return "frame-" + tabId; }
-function getFrame(tabId) { return document.getElementById(frameIdFor(tabId)); }
-function getOrCreateFrame(t) {
-  if (!t) return null;
-  let frame = getFrame(t.id);
-  if (frame) return frame;
-  frame = document.createElement("iframe");
-  frame.id = frameIdFor(t.id);
-  frame.name = "veyraFrame_" + t.id;
-  frame.className = "tab-frame";
-  frame.title = "Veyra page view";
-  frame.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write");
-  frame.addEventListener("load", () => {
-    if (activeTab()?.id !== t.id) return;
-    if (t.url) { $("pageState").textContent = hostOf(t.url); setLoading(false); if (state.inspectMode) toggleInspect(true); }
-  });
-  frame.addEventListener("loadstart", () => { if (activeTab()?.id === t.id) setLoading(true, 60, "Rendering…"); });
-  const wrap = $("frameWrap"), loader = $("frameLoader");
-  if (wrap) wrap.insertBefore(frame, loader || wrap.firstChild);
-  return frame;
+function tabIconHtml(t) {
+  if (t.loading) return `<span class="spin"></span>`;
+  if (t.view !== "page") return `<svg><use href="#${INTERNAL[t.view]?.icon || "i-globe"}"/></svg>`;
+  if (t.favicon && state.session) return `<img src="${esc(proxyUrl(t.favicon, "resource", state.session.id))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'${esc(letterIcon(t.url).letter)}'}))">`;
+  const li = letterIcon(t.url); return `<b style="display:grid;place-items:center;width:16px;height:16px;border-radius:4px;background:${li.color};color:#fff;font-size:10px">${esc(li.letter)}</b>`;
 }
-function activeFrame() { const t = activeTab(); return t ? getOrCreateFrame(t) : null; }
-function ensureBrowserViewport() {
-  const wrap = $("frameWrap"); if (!wrap) return null;
-  let v = $("browserRemoteViewport");
-  if (!v) {
-    v = document.createElement("div"); v.id = "browserRemoteViewport"; v.className = "browser-remote-viewport hidden";
-    v.innerHTML = '<img id="browserRemoteImage" alt="Remote Chromium page"><div class="browser-remote-badge" id="browserRemoteBadge">BROWSER</div><div class="browser-verify" id="browserVerify"><b>Website verification required</b><span>The actual browser session is waiting for you.</span><div><button id="browserVerifyComplete">Complete verification</button><button id="browserVerifyRetry">Retry</button><button id="browserVerifyDirect">Open directly</button></div></div>';
-    wrap.insertBefore(v, wrap.firstChild);
-    const img = v.querySelector("#browserRemoteImage");
-    const sendPointer = async (type,e) => { const t=activeTab(); if(!t?.browserSessionId)return; const r=img.getBoundingClientRect(); const x=Math.max(0,Math.min(1365,(e.clientX-r.left)*1365/r.width)); const y=Math.max(0,Math.min(820,(e.clientY-r.top)*820/r.height)); try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type,x,y,button:e.button===2?'right':'left'})}); await refreshBrowserSurface(t,true);}catch(err){addLog("error",`Browser input failed: ${err.message}`)}};
-    img.addEventListener("click",e=>sendPointer("click",e)); img.addEventListener("dblclick",e=>sendPointer("dblclick",e)); img.addEventListener("contextmenu",e=>{e.preventDefault();sendPointer("click",e)});
-    img.addEventListener("mousemove",async e=>{ if(!state.inspectMode)return; const t=activeTab(); const r=img.getBoundingClientRect(); const x=Math.max(0,Math.min(1365,(e.clientX-r.left)*1365/r.width)); const y=Math.max(0,Math.min(820,(e.clientY-r.top)*820/r.height)); try{const q=await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/inspect`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({x,y})}); if(q.body.data)renderInspectData(q.body.data)}catch{}});
-    img.addEventListener("wheel",e=>{e.preventDefault();sendPointer("wheel",e)} ,{passive:false});
-    window.addEventListener("keydown",async e=>{ const t=activeTab(); if(!t?.browserSessionId || document.activeElement?.tagName==='INPUT' || document.activeElement?.tagName==='TEXTAREA') return; const mod=e.ctrlKey||e.metaKey; if(mod||e.altKey) return; try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:"key",key:e.key.length===1?e.key:e.key})}); await refreshBrowserSurface(t,true);}catch{} });
-    v.querySelector("#browserVerifyComplete").onclick=()=>v.querySelector("#browserVerify")?.classList.add("hidden");
-    v.querySelector("#browserVerifyRetry").onclick=()=>refreshBrowserSurface(activeTab(),true);
-    v.querySelector("#browserVerifyDirect").onclick=()=>{const t=activeTab();if(t?.url)window.open(t.url,"_blank","noopener")};
+export function renderTabs() {
+  const list = $("tabsList"); if (!list) return;
+  const ordered = [...state.tabs.filter(t => t.pinned), ...state.tabs.filter(t => !t.pinned)];
+  if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
+  list.innerHTML = state.tabs.map(t => `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""}" role="tab" aria-selected="${t.id === state.activeId}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
+    <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
+    <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`).join("");
+  list.querySelectorAll(".tab").forEach(el => {
+    el.onmousedown = e => { if (e.button === 1) { e.preventDefault(); closeTab(el.dataset.tab); } };
+    el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); };
+    el.oncontextmenu = e => { e.preventDefault(); tabContextMenu(el.dataset.tab, e.clientX, e.clientY); };
+    el.ondragstart = e => { e.dataTransfer.setData("text/veyra-tab", el.dataset.tab); el.classList.add("dragging"); };
+    el.ondragend = () => el.classList.remove("dragging");
+    el.ondragover = e => e.preventDefault();
+    el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); moveTab(from, el.dataset.tab); };
+  });
+  list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
+  list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  document.title = (activeTab()?.title && activeTab().view !== "newtab" ? activeTab().title + " · " : "") + "Veyra";
+}
+function moveTab(fromId, toId) { if (!fromId || fromId === toId) return; const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId); if (a < 0 || b < 0) return; const [t] = state.tabs.splice(a, 1); state.tabs.splice(b, 0, t); renderTabs(); }
+function tabContextMenu(id, x, y) {
+  const t = tabById(id); if (!t) return; const i = state.tabs.indexOf(t);
+  ctxMenu(x, y, [
+    { label: "New tab to the right", action: () => newTab({ index: i + 1 }) },
+    "-",
+    { label: "Reload", kbd: "Ctrl+R", action: () => { switchTab(id); reload(); } },
+    { label: "Duplicate", action: () => duplicateTab(t) },
+    { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; renderTabs(); } },
+    { label: "Copy address", disabled: !t.url, action: () => copyText(t.url) },
+    "-",
+    { label: "Close", kbd: "Ctrl+W", action: () => closeTab(id) },
+    { label: "Close other tabs", disabled: state.tabs.length < 2, action: () => state.tabs.filter(x => x.id !== id && !x.pinned).forEach(x => closeTab(x.id, { silent: true })) },
+    { label: "Close tabs to the right", disabled: i === state.tabs.length - 1, action: () => state.tabs.slice(i + 1).forEach(x => closeTab(x.id, { silent: true })) },
+    { label: "Reopen closed tab", kbd: "Ctrl+Shift+T", disabled: !state.closed.length, action: reopenClosedTab }
+  ]);
+}
+export function switchTab(id) {
+  const t = tabById(id); if (!t) return;
+  state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
+}
+export function newTab({ url = "", view = "", index = -1, background = false, section = "" } = {}) {
+  const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
+  if (!background) state.activeId = t.id;
+  renderTabs();
+  if (url) go(url, { tab: t });
+  else if (view) openInternal(view, { tab: t, section });
+  else if (settings.homepage) go(settings.homepage, { tab: t });
+  else { t.view = "newtab"; if (!background) renderActive({ push: true }); }
+  if (!background) setTimeout(() => { if (activeTab() === t && t.view === "newtab") $("ntpInput")?.focus(); }, 30);
+  return t;
+}
+function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
+function teardownTab(t) {
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll);
+  if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+  if (t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
+  rejectTab(t.id); frameFor(t)?.remove();
+}
+export function closeTab(id, { silent = false } = {}) {
+  const idx = state.tabs.findIndex(t => t.id === id); if (idx < 0) return;
+  const t = state.tabs[idx];
+  if (!silent && settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab is still being indexed. Close it anyway?")) return;
+  if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
+  else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section });
+  teardownTab(t); hooks.dt?.onTabClosed(t);
+  state.tabs.splice(idx, 1);
+  if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
+  else if (state.activeId === id) state.activeId = state.tabs[Math.min(idx, state.tabs.length - 1)].id;
+  renderTabs(); renderActive({ push: true, replace: true });
+}
+export function reopenClosedTab() { const c = state.closed.pop(); if (!c) return toast("No recently closed tabs"); if (c.url) newTab({ url: c.url, index: Math.min(c.index, state.tabs.length) }); else newTab({ view: c.view, section: c.section, index: Math.min(c.index, state.tabs.length) }); }
+export function cycleTab(delta) { if (state.tabs.length < 2) return; const i = state.tabs.findIndex(t => t.id === state.activeId); switchTab(state.tabs[(i + delta + state.tabs.length) % state.tabs.length].id); }
+export function selectTabIndex(n) { const t = n === 9 ? state.tabs[state.tabs.length - 1] : state.tabs[n - 1]; if (t) switchTab(t.id); }
+
+// ---------------------------------------------------------------- routing
+function routeUrl(path, query = "") { return `${APP_BASE}${path}${query}`; }
+function currentRoute() { const p = location.pathname.slice(APP_BASE.length) || "/"; return p.replace(/\/+$/, "") || "/"; }
+function routeForTab(t) {
+  if (!t) return ["/browse", ""];
+  if (t.view === "page") return ["/browse", t.url ? `?url=${encodeURIComponent(t.url)}` : ""];
+  if (t.view === "search") return ["/search", t.searchQuery ? `?q=${encodeURIComponent(t.searchQuery)}` : ""];
+  if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
+  if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
+  if (t.view === "console") return ["/browse", "#console"];
+  return [INTERNAL[t.view]?.path || "/browse", ""];
+}
+function syncRoute({ replace = false } = {}) {
+  const [p, q] = routeForTab(activeTab()); const next = routeUrl(p, q);
+  if (next === location.pathname + location.search + location.hash) return;
+  try { history[replace ? "replaceState" : "pushState"]({ veyra: true }, "", next); } catch {}
+}
+export function showLanding(on) {
+  $("landing").classList.toggle("hidden", !on); $("app").classList.toggle("hidden", on);
+  document.body.style.overflow = on ? "" : "hidden";
+  if (on) { closeFloating(); hooks.renderLanding?.(); document.title = "Veyra — browse through a clean session"; }
+}
+export function goRoute(path, { push = true } = {}) {
+  const url = new URL(path, location.origin + APP_BASE + "/");
+  const p = url.pathname.replace(/\/+$/, "") || "/";
+  if (push) try { history.pushState({ veyra: true }, "", APP_BASE + p + url.search + url.hash); } catch {}
+  applyRoute();
+}
+function applyRoute() {
+  const route = currentRoute(); const params = new URLSearchParams(location.search);
+  if (route === "/" && location.hash !== "#console") { showLanding(true); return; }
+  showLanding(false);
+  if (!state.tabs.length) { const t = makeTab(); state.tabs.push(t); state.activeId = t.id; renderTabs(); }
+  const t = activeTab();
+  const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
+  if (location.hash === "#console") return openInternal("console", { push: false });
+  const [, first, second] = route.split("/");
+  const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", console: "console", resources: "resources", links: "links" }[first];
+  if (!view) { goRoute("/browse", { push: false }); return; }
+  if (view === "newtab") {
+    const u = params.get("url"); const q = params.get("q");
+    if (u) { if (!(t.view === "page" && t.url === u)) go(u, { tab: reuse(t) ? t : null, push: false }); else renderActive({ push: false }); }
+    else if (q) go(q, { tab: reuse(t) ? t : null, push: false });
+    else renderActive({ push: false });
+    return;
   }
+  if (view === "search") { showSearch(params.get("q") || "", { push: false }); return; }
+  if (view === "calculator") { openInternal("calculator", { push: false, calc: params.get("q") || "" }); return; }
+  openInternal(view, { push: false, section: second || "" });
+}
+window.addEventListener("popstate", () => applyRoute());
+
+// ---------------------------------------------------------------- views
+export function openInternal(view, { tab = null, push = true, section = "", calc = "" } = {}) {
+  if (INTERNAL[view]?.admin && !isAdmin()) {
+    toast("That page is only available to Veyra administrators", { kind: "warn" });
+    if (currentRoute() === "/dev" || location.hash === "#console") { try { history.replaceState({}, "", routeUrl("/browse")); } catch {} }
+    renderActive({ push: false }); return;
+  }
+  let t = tab || activeTab();
+  // Like chrome://settings: reuse the tab if it's already on that page, otherwise
+  // open a new tab when the current one shows a website.
+  const existing = state.tabs.find(x => x.view === view && !["resources", "links", "calculator"].includes(view));
+  if (!tab && existing && existing !== t) { t = existing; state.activeId = t.id; }
+  else if (!tab && t && t.view === "page" && t.url) {
+    const src = t; t = makeTab({ sourceTabId: src.id }); state.tabs.splice(state.tabs.indexOf(src) + 1, 0, t); state.activeId = t.id;
+  }
+  if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
+  if (t.view === "page") teardownTab(t);
+  t.view = view; t.section = section || (view === "settings" ? t.section : ""); t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
+  if (view === "calculator" && calc) t.calcExpression = calc;
+  pushTabHistory(t, `veyra:${view}${section ? "/" + section : ""}`);
+  renderTabs(); renderActive({ push });
+}
+function pushTabHistory(t, entry) { if (t.history[t.histIndex] === entry) return; t.history = t.history.slice(0, t.histIndex + 1); t.history.push(entry); t.histIndex = t.history.length - 1; }
+
+export function renderActive({ push = true, replace = false } = {}) {
+  const t = activeTab(); if (!t) return;
+  qsa(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + t.view));
+  if (t.view === "page") showFrameForTab(t); else setLoading(false);
+  updateAddress(); updateNavButtons(); updateIdentity();
+  const r = {
+    newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
+    downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev
+  }[t.view]; r?.();
+  if (t.view !== "dev") clearInterval(state.devTimer);
+  if (!$("findBar").classList.contains("hidden") && t.view !== "page") closeFind();
+  $("readerView").classList.toggle("hidden", !(t.view === "page" && t.readerOpen));
+  hooks.renderSidePanel?.(t);
+  hooks.dt?.onTabChanged(t);
+  if (push) syncRoute({ replace });
+}
+function updateAddress() {
+  const t = activeTab(); const input = $("address"); if (!t || document.activeElement === input) return;
+  input.value = t.view === "page" ? (t.url || "") : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+}
+function updateNavButtons() {
+  const t = activeTab(); if (!t) return;
+  $("backBtn").disabled = !(t.histIndex > 0 || (isRemote(t)));
+  $("forwardBtn").disabled = !(t.histIndex < t.history.length - 1 || isRemote(t));
+}
+export function updateIdentity() {
+  const t = activeTab(); const chip = $("siteChip"), text = $("siteChipText"); if (!t) return;
+  chip.className = "site-chip";
+  let icon = "i-search", label = "";
+  if (t.view === "page" && t.url) {
+    const secure = /^https:/.test(t.url);
+    icon = state.vpn.connected ? "i-vpn" : secure ? "i-lock" : "i-info";
+    chip.classList.add(state.vpn.connected ? "vpn" : secure ? "secure" : "warn");
+    label = state.vpn.connected ? "VPN" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : "";
+  } else if (t.view !== "newtab") { icon = "i-shield"; label = "Veyra"; chip.classList.add("secure"); }
+  chip.innerHTML = `<svg><use href="#${icon}"/></svg><span id="siteChipText">${esc(label)}</span>`;
+  const bm = t.url && state.bookmarks.some(b => b.url === t.url);
+  $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
+  $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
+  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.browserMode === "BROWSER_ENGINE" ? "Chromium" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  $("statusRight").textContent = `${state.vpn.connected ? `VPN · ${state.vpn.profile?.name || "connected"} · ` : ""}${auth.user ? auth.user.email : "Guest"} · v${VERSION}`;
+  hooks.renderBookmarksBar?.();
+}
+
+export function setLoading(on, pct = 0, message = "Loading…") {
+  const t = activeTab(); const line = $("loadProgress"), box = $("frameLoader"), btn = $("reloadBtn");
+  if (t) t.loading = !!on && t.view === "page";
+  line.style.width = on ? `${Math.max(6, Math.min(100, pct))}%` : "0%";
+  box.classList.toggle("hidden", !on); $("frameLoaderText").textContent = message;
+  btn.innerHTML = `<svg><use href="#${on ? "i-stop" : "i-reload"}"/></svg>`; btn.title = on ? "Stop loading" : "Reload";
+  btn.dataset.loading = on ? "1" : "";
+  renderTabsSoon();
+}
+let tabsRaf = 0; function renderTabsSoon() { if (tabsRaf) return; tabsRaf = requestAnimationFrame(() => { tabsRaf = 0; renderTabs(); }); }
+
+// ---------------------------------------------------------------- frames
+function getOrCreateFrame(t) {
+  let f = frameFor(t); if (f) return f;
+  f = document.createElement("iframe"); f.id = "frame-" + t.id; f.name = "veyraFrame_" + t.id; f.className = "tab-frame"; f.title = "Page content";
+  f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
+  f.addEventListener("load", () => onFrameLoad(t));
+  $("frameWrap").insertBefore(f, $("frameLoader"));
+  return f;
+}
+function onFrameLoad(t) {
+  if (!state.tabs.includes(t) || t.view !== "page") return;
+  if (activeTab() === t) setLoading(false); else t.loading = false;
+  renderTabsSoon(); updateIdentity();
+  // Re-apply zoom and extensions each time the document changes.
+  setTimeout(() => { if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {}); hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t); }, 120);
+}
+function ensureRemoteSurface() {
+  let v = $("remoteSurface"); if (v) return v;
+  v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0;
+  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none" draggable="false">`;
+  $("frameWrap").insertBefore(v, $("frameLoader"));
+  const img = v.querySelector("img");
+  const pos = e => { const r = img.getBoundingClientRect(); return { x: Math.max(0, Math.min(1365, (e.clientX - r.left) * 1365 / r.width)), y: Math.max(0, Math.min(820, (e.clientY - r.top) * 820 / r.height)) }; };
+  const send = async (payload) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); refreshRemote(t, true); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
+  img.addEventListener("click", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; send({ type: "click", ...pos(e), button: "left" }); });
+  img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e) }));
+  img.addEventListener("contextmenu", e => { e.preventDefault(); send({ type: "click", ...pos(e), button: "right" }); });
+  img.addEventListener("wheel", e => { e.preventDefault(); send({ type: "wheel", ...pos(e), deltaY: e.deltaY, deltaX: e.deltaX }); }, { passive: false });
+  img.addEventListener("mousemove", e => hooks.dt?.hoverRemote(pos(e)));
+  v.addEventListener("keydown", e => { if (e.ctrlKey || e.metaKey || e.altKey || e.key === "F12") return; e.preventDefault(); send({ type: "key", key: e.key }); });
   return v;
 }
 function showFrameForTab(t) {
-  if (!t) return;
-  const wanted = getOrCreateFrame(t);
-  const remote = ensureBrowserViewport();
-  const browser = t.browserMode === "BROWSER_ENGINE" && !!t.browserSessionId;
-  document.querySelectorAll("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", !browser && el === wanted));
-  remote?.classList.toggle("hidden", !browser);
+  const remote = isRemote(t);
+  const f = remote ? null : (t.url || frameFor(t) ? getOrCreateFrame(t) : null);
+  qsa("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", el === f));
+  const surf = ensureRemoteSurface(); surf.classList.toggle("frame-active", remote);
+  if (remote) refreshRemote(t, true);
+  setLoading(!!t.loading, 50, `Loading ${hostOf(t.url)}…`);
 }
-function destroyFrame(tabId) { getFrame(tabId)?.remove(); }
-async function refreshBrowserSurface(t, force=false) {
-  if (!t?.browserSessionId || !state.tabs.includes(t)) return;
-  try {
-    const r = await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`);
-    const s = r.body.session; const previousUrl=t.url; t.url=s.canonicalUrl||t.url; t.browserStatus=s.status; t.title=s.title||hostOf(t.url);
-    if (t.url && previousUrl && t.url !== previousUrl) { t.history=t.history.slice(0,t.histIndex+1); t.history.push(t.url); t.histIndex=t.history.length-1; recordHistory('page',t.url,t.title); }
-    const img=$("browserRemoteImage"), v=$("browserRemoteViewport"); if(!img||!v)return;
-    if(force || !img.dataset.session) { img.dataset.session=t.browserSessionId; img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`; }
-    else if(force) img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
-    const verify=$("browserVerify"); verify?.classList.toggle("hidden", s.status!=="VERIFICATION_REQUIRED");
-    $("browserRemoteBadge").textContent=s.status==='VERIFICATION_REQUIRED'?"VERIFY":"BROWSER";
-    $("pageState").textContent=s.status==='VERIFICATION_REQUIRED'?"Website verification required":hostOf(t.url);
-    $("serverState").textContent=s.status==='VERIFICATION_REQUIRED'?"Verification":"Browser"; $("serverState").className = "server-pill" + (s.status==='VERIFICATION_REQUIRED'?" warn":" live");
-    updateIdentity(t.url); renderTabs();
-    if (state.inspectMode && t.browserSessionId) v?.classList.remove("hidden");
-    if (force) { clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700); }
-  } catch(e) { addLog("error",`Browser session error: ${e.message}`); }
+
+// ---------------------------------------------------------------- sessions (2-minute limit)
+export async function ensureSession() {
+  const s = state.session;
+  if (s && s.expiresAt - Date.now() > 800) return s;
+  if (s) await endSession("timer");
+  const body = await api("/api/session", { json: {} });
+  const limit = Number(body.timeLimitMs) || 0;
+  state.serverLimitMs = limit;
+  state.session = { id: body.sessionId, startedAt: Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
+  state.sessionWarned = {};
+  addLog("info", `Session ${body.sessionId.slice(0, 8)} started${limit ? ` (${fmtClock(limit)} limit)` : ""}.`);
+  startSessionTimer();
+  if (settings.blockTrackers) api(`/api/session/${state.session.id}/prefs`, { json: { blockTrackers: true } }).catch(() => {});
+  if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(() => {});
+  hooks.onSessionChanged?.();
+  return state.session;
 }
-async function startBrowserSession(t,url,jobId='') {
-  if (t.browserSessionId) {
-    try {
-      const {body}=await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
-      t.browserMode='BROWSER_ENGINE'; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
-      showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
-      await refreshBrowserSurface(t,true);
-      if(t.browserPoll)clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700);
-      return body.session;
-    } catch (e) {
-      if (e.code !== 'BROWSER_SESSION_NOT_FOUND') {
-        await stopBrowserSession(t);
-        throw e;
-      }
-      t.browserSessionId = '';
-    }
+function startSessionTimer() { clearInterval(state.sessionTimer); state.sessionTimer = setInterval(tickSession, 250); tickSession(); }
+export function sessionRemaining() { const s = state.session; return s ? Math.max(0, s.expiresAt - Date.now()) : 0; }
+function tickSession() {
+  const pill = $("sessionPill"), txt = $("sessionTime"); const s = state.session;
+  if (!s) { pill.className = "session-pill idle"; txt.textContent = state.serverLimitMs ? fmtClock(state.serverLimitMs) : "—"; pill.title = `No session yet. A ${fmtClock(state.serverLimitMs)} session starts when you open a website.`; return; }
+  if (s.expiresAt === Infinity) { pill.className = "session-pill live"; txt.textContent = "Live"; pill.title = "Session has no time limit"; return; }
+  const left = s.expiresAt - Date.now();
+  txt.textContent = fmtClock(left);
+  pill.className = "session-pill " + (left <= 10000 ? "crit" : left <= 30000 ? "warn" : "live");
+  pill.title = `Session ends in ${fmtClock(left)}. Everything in it is deleted when the timer hits 0:00.`;
+  if (settings.sessionWarnings) {
+    if (left <= 30000 && !state.sessionWarned[30]) { state.sessionWarned[30] = 1; toast("30 seconds left in this session", { kind: "warn" }); }
+    if (left <= 10000 && !state.sessionWarned[10]) { state.sessionWarned[10] = 1; toast("10 seconds left. The session will be deleted", { kind: "err" }); }
   }
-  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url,jobId,proxySessionId:t.proxySessionId||"",vpnProfileId:t.vpnProfileId||""})});
-  t.browserMode='BROWSER_ENGINE'; t.browserSessionId=body.session.id; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
-  showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
-  await refreshBrowserSurface(t,true);
-  if(t.browserPoll)clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700);
-  return body.session;
+  hooks.onSessionTick?.(left, s);
+  if (left <= 0) endSession("timer");
 }
-async function stopBrowserSession(t) { if(!t?.browserSessionId)return; try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`,{method:'DELETE'})}catch{} clearTimeout(t.browserPoll); t.browserPoll=null; t.browserSessionId=''; }
-
-function routeName() {
-  const p = location.pathname;
-  if (APP_BASE && p.startsWith(APP_BASE + "/")) return p.slice(APP_BASE.length) || "/";
-  if (APP_BASE && p === APP_BASE) return "/";
-  return p || "/";
-}
-function routeUrl(path, query = "") { return `${APP_BASE}${path === "/" ? "/" : path}${query}`; }
-function setRoute(path, query = "", mode = "push") {
-  const target = routeUrl(path, query);
-  if (location.pathname + location.search === target) return;
-  const fn = mode === "replace" ? history.replaceState : history.pushState;
-  try { fn.call(history, { veyraRoute: path }, "", target); } catch {}
-}
-function goRouteFromUrl() {
-  const route = routeName();
-  if (route === "/dev") setTool("devPanel", false);
-  else if (route === "/settings") setTool("settingsPanel", false);
-  else if (route === "/downloads") showDownloads(false);
-  else if (route === "/history") showHistory(false);
-  else if (route === "/extensions") showExtensions(false);
-  else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false);
-  else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false);
-  else if (location.hash === "#console") setTool("consolePanel", false);
-  else restoreTabView(activeTab());
-}
-window.addEventListener("popstate", goRouteFromUrl);
-window.addEventListener("hashchange", () => {
-  if (location.hash === "#console") setTool("consolePanel", false);
-  else if (location.hash === "") restoreTabView(activeTab());
-});
-
-function logNet(method, url, status, ms, requestId = "") {
-  let path = url;
-  try { const u = new URL(url); path = u.pathname + (u.search ? u.search.slice(0, 100) : ""); } catch {}
-  state.netLog.push({ time: new Date(), method, path, status, ms: Math.round(ms), requestId });
-  if (state.netLog.length > 300) state.netLog.splice(0, state.netLog.length - 300);
-  const panel = $("devPanel");
-  if (panel && !panel.classList.contains("hidden")) renderDevNet();
-}
-function queueClientLog(entry) {
-  state.clientLogQueue.push(entry);
-  if (state.clientLogQueue.length > 100) state.clientLogQueue.splice(0, state.clientLogQueue.length - 100);
-  clearTimeout(state.clientLogTimer);
-  state.clientLogTimer = setTimeout(flushClientLogs, 250);
-}
-async function flushClientLogs() {
-  if (!state.clientLogQueue.length) return;
-  const batch = state.clientLogQueue.splice(0, 25);
+export async function endSession(reason = "timer") {
+  const s = state.session; if (!s || state.sessionEnding) return;
+  state.sessionEnding = true;
   try {
-    await rawFetch(API + "/api/debug/client-log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ events: batch }), keepalive: true });
-  } catch {}
-}
-function addLog(level, msg, meta = {}) {
-  const entry = { time: new Date(), level: String(level || "info"), message: String(msg), ...meta };
-  state.logs.push(entry);
-  if (state.logs.length > 2000) state.logs.splice(0, state.logs.length - 2000);
-  if (state.logs.length <= 2000) queueClientLog({
-    time: entry.time.toISOString(), level: entry.level, message: entry.message,
-    url: location.href, pageUrl: activeTab()?.url || "", tabId: activeTab()?.id || "", jobId: activeTab()?.jobId || "",
-    ...meta
-  });
-  const panel = $("consolePanel");
-  if (panel && !panel.classList.contains("hidden")) renderConsole();
-}
-function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
-function pathOf(u) { try { const x = new URL(u); return (x.pathname || "/") + (x.search || "") + (x.hash || ""); } catch { return String(u || ""); } }
-function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "Veyra"; } }
-function formatUrlDisplay(u) { return String(u || "").replace(/^https?:\/\//, ""); }
-function proxyUrl(url, mode = "view", sid = "") {
-  const base = API + (mode === "resource" ? "/api/resource?url=" : "/api/view?url=") + encodeURIComponent(url);
-  return sid ? `${base}&sid=${encodeURIComponent(sid)}` : base;
-}
-
-class ApiError extends Error {
-  constructor(message, status = 0, code = "API_ERROR", requestId = "") { super(message); this.status = status; this.code = code; this.requestId = requestId; }
-}
-async function apiRequest(path, options = {}) {
-  const method = String(options.method || "GET").toUpperCase();
-  const requestId = cryptoRandomId();
-  const controller = new AbortController();
-  const timeoutMs = Number(options.timeoutMs || settings.requestTimeoutMs || 15000);
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const start = performance.now();
-  let response;
-  try {
-    const headers = new Headers(options.headers || {});
-    headers.set("X-Veyra-Request-ID", requestId);
-    response = await rawFetch(API + path, { ...options, method, headers, signal: controller.signal });
-    const responseRequestId = response.headers.get("X-Veyra-Request-ID") || requestId;
-    const contentType = response.headers.get("content-type") || "";
-    const text = await response.text();
-    logNet(method, API + path, response.status, performance.now() - start, responseRequestId);
-    let body = null;
-    if (text) body = /json/i.test(contentType) ? safeJsonParse(text, null) : text;
-    if (!response.ok) {
-      const message = body?.error || (typeof body === "string" ? body.slice(0, 500) : `HTTP ${response.status}`);
-      throw new ApiError(message, response.status, body?.code || "HTTP_ERROR", responseRequestId);
+    state.session = null; clearInterval(state.sessionTimer);
+    // Close every website tab: frames, crawl jobs, Chromium sessions.
+    const pageTabs = state.tabs.filter(t => t.view === "page");
+    for (const t of pageTabs) { teardownTab(t); hooks.dt?.onTabClosed(t); }
+    state.tabs = state.tabs.filter(t => t.view !== "page");
+    if (!state.tabs.length) state.tabs.push(makeTab());
+    if (!tabById(state.activeId)) state.activeId = state.tabs[0].id;
+    state.closed = state.closed.filter(c => !c.url);
+    if (settings.clearOnSessionEnd) { state.history = state.history.filter(h => h.sid !== s.id); saveHistory(); }
+    state.vpn.connected = false; state.vpn.profile = null;
+    try { navigator.sendBeacon?.(`${API}/api/session/${encodeURIComponent(s.id)}/close`, "") || api(`/api/session/${encodeURIComponent(s.id)}/close`, { method: "POST" }).catch(() => {}); } catch {}
+    addLog("info", `Session ${s.id.slice(0, 8)} ended (${reason}).`);
+    renderTabs(); renderActive({ push: true, replace: true }); tickSession(); hooks.onSessionChanged?.();
+    if (reason === "manual") toast("Session ended and deleted");
+    else if (settings.autoRestartSession) toast("Session expired. A new one starts when you open a site");
+    else {
+      $("sessionOverText").textContent = reason === "server"
+        ? "The server reports this session has expired. Veyra deleted its cookies, tabs, Chromium context and VPN tunnel."
+        : `Your ${fmtClock(s.limitMs)} are up. Veyra deleted the session on the server: cookies, tabs, Chromium context and VPN tunnel.`;
+      $("sessionOverlay").classList.remove("hidden"); $("sessionRestart").focus();
     }
-    return { body, response, requestId: responseRequestId };
-  } catch (e) {
-    const status = e instanceof ApiError ? e.status : 0;
-    logNet(method, API + path, status || "ERR", performance.now() - start, e?.requestId || requestId);
-    if (e instanceof ApiError) throw e;
-    const msg = e?.name === "AbortError" ? `Request timed out after ${timeoutMs} ms.` : e?.message || String(e);
-    throw new ApiError(msg, 0, e?.name === "AbortError" ? "API_TIMEOUT" : "API_NETWORK_ERROR", requestId);
-  } finally { clearTimeout(timer); }
+  } finally { state.sessionEnding = false; }
 }
-function cryptoRandomId() { try { return crypto.randomUUID(); } catch { return "v-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); } }
+hooks.onSessionExpired = reason => { if (state.session) endSession(reason); };
+window.addEventListener("pagehide", () => { const s = state.session; if (s) try { navigator.sendBeacon(`${API}/api/session/${encodeURIComponent(s.id)}/close`, ""); } catch {} });
 
-function setLoading(on, pct = 0, message = "Loading page…") {
-  const line = $("loadProgress"), box = $("frameLoader"), btn = $("reloadBtn");
-  if (!line || !box) return;
-  const active = !!on;
-  line.style.width = active ? `${Math.max(6, Math.min(100, pct))}%` : "0%";
-  box.classList.toggle("hidden", !active);
-  $("frameLoaderText").textContent = message;
-  if (btn) {
-    btn.dataset.loading = active ? "1" : "0";
-    btn.title = active ? "Stop loading (Esc)" : "Reload (Ctrl/Cmd+R)";
-    btn.innerHTML = `<svg><use href="#${active ? "i-stop" : "i-reload"}"/></svg>`;
-    btn.onclick = active ? stopCurrentLoad : reloadActive;
-  }
-}
-async function stopCurrentLoad() {
-  const t = activeTab();
-  try { if (t?.browserSessionId) await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/stop`, {method:"POST"}); } catch {}
-  try { if (t?.jobId && !t.done) await stopJob(t.jobId, true); } catch {}
-  if (t?.poll) { clearInterval(t.poll); t.poll = null; }
-  if (t) { t.done = true; t.loading = false; }
-  const frame = t ? getFrame(t.id) : null;
-  if (frame) { try { frame.contentWindow?.stop?.(); } catch {} frame.src = "about:blank"; }
-  $("pageState").textContent = "Stopped";
-  $("serverState").textContent = "Stopped";
-  $("serverState").className = "server-pill warn";
-  setLoading(false);
-  addLog("info", "Page loading stopped.");
-}
-function updateIdentity(url) {
-  const address = $("address");
-  if (!url) { address.value = stateSearchText(); return; }
-  try {
-    const u = new URL(url);
-    $("scheme").textContent = u.protocol.replace(":", "");
-    $("siteState").style.color = u.protocol === "https:" ? "#7aa6df" : "#cfad6b";
-  } catch { $("scheme").textContent = "web"; }
-  $("starBtn").classList.toggle("saved", state.bookmarked.has(url));
-  address.value = url;
-}
-function stateSearchText() { const t = activeTab(); return t?.view === "search" ? t.searchQuery : t?.view === "calculator" ? "Veyra Calculator" : ""; }
-
-function classifyInput(input) {
-  const v = String(input || "").trim();
-  if (!v) return null;
-  if (/^(?:javascript|data|blob|mailto|tel|about):/i.test(v)) return { kind: "unsupported", value: v };
+// ---------------------------------------------------------------- input classification + navigation
+function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
+export function classify(input) {
+  const v = String(input || "").trim(); if (!v) return null;
+  const internal = v.match(/^veyra:\/\/([a-z]+)(?:\/([a-z-]+))?/i);
+  if (internal) return INTERNAL[internal[1].toLowerCase()] ? { kind: "internal", view: internal[1].toLowerCase(), section: internal[2] || "" } : { kind: "search", query: v };
+  if (/^(?:javascript|data|blob|file|chrome|about):/i.test(v)) return { kind: "unsupported", value: v };
   if (/^https?:\/\//i.test(v)) return { kind: "url", url: v };
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:\/.*)?$/i.test(v)) return { kind: "url", url: "https://" + v };
-  if (looksLikeCalculation(v)) return { kind: "calculator", expression: v };
+  if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i.test(v)) return { kind: "url", url: "http://" + v };
+  if (!/\s/.test(v) && /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(v)) return { kind: "url", url: "https://" + v };
+  if (looksLikeCalc(v)) return { kind: "calc", expression: v };
   return { kind: "search", query: v };
 }
-function looksLikeCalculation(v) {
-  if (!/[0-9]/.test(v) || !/[+\-*/%()]/.test(v)) return false;
-  return /^[\d\s+\-*/%().]+$/.test(v);
+export async function go(input, { tab = null, push = true, newTab: inNew = false } = {}) {
+  const r = classify(input); if (!r) return;
+  if (inNew) { newTab({ url: input }); return; }
+  if (r.kind === "internal") { openInternal(r.view, { tab, section: r.section, push }); return; }
+  if (r.kind === "unsupported") { toast("Veyra only opens http and https addresses", { kind: "warn" }); return; }
+  if (r.kind === "calc") { openInternal("calculator", { tab, calc: r.expression, push }); return; }
+  if (r.kind === "search") {
+    const ext = engineUrl(r.query);
+    if (ext) return navigate(ext, { tab, push, record: { kind: "search", title: `${r.query} - ${engineName()}` } });
+    return showSearch(r.query, { tab, push });
+  }
+  let url; try { url = new URL(r.url).href; } catch { toast("That address isn't valid", { kind: "err" }); return; }
+  return navigate(url, { tab, push });
+}
+export async function navigate(url, { tab = null, push = true, pushHist = true, record = null } = {}) {
+  let t = tab || activeTab(); if (!t) return;
+  if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
+  state.activeId === t.id || (state.activeId = t.id);
+  if (pushHist) pushTabHistory(t, url);
+  await loadInTab(t, url, { loadFrame: true, record });
+  if (push && activeTab() === t) syncRoute();
+}
+async function capability(url) {
+  if (settings.runtime === "proxy") return "FAST_PROXY";
+  if (settings.runtime === "browser") return "BROWSER_ENGINE";
+  const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
+  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 8000 }); const m = r?.mode || "FAST_PROXY"; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
+}
+async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
+  if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
+  if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll);
+  Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true });
+  if (!settings.preserveLog) { t.console = []; t.network = []; }
+  rejectTab(t.id); hooks.dt?.onNavigate(t);
+  const active = activeTab() === t;
+  if (active) { renderActive({ push: false }); setLoading(true, 12, "Starting a clean session…"); }
+  let session;
+  try { session = await ensureSession(); }
+  catch (e) { t.loading = false; if (activeTab() === t) setLoading(false); return renderError(t, "server", e); }
+  if (!state.tabs.includes(t) || t.url !== url) return;
+  recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
+  if (activeTab() === t) setLoading(true, 22, "Choosing the page engine…");
+  const mode = await capability(url);
+  if (!state.tabs.includes(t) || t.url !== url) return;
+  if (mode === "FAST_PROXY" && t.browserSessionId) await stopBrowserSession(t);
+  // Background crawl/index job (tied to the session so it stops when the session ends).
+  api("/api/open", { json: { url, sessionId: session.id } }).then(b => { if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return; } t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Background index skipped: ${e.message}`); });
+  if (mode === "BROWSER_ENGINE") {
+    try { await startBrowserSession(t, url); renderTabs(); return; }
+    catch (e) { if (e.code === "SESSION_EXPIRED") return; addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`); t.browserMode = "FAST_PROXY"; t.browserSessionId = ""; if (!settings.browserFallback) return renderError(t, "server", e); }
+  }
+  t.browserMode = "FAST_PROXY";
+  if (activeTab() === t) setLoading(true, 45, `Fetching ${hostOf(url)}…`);
+  if (loadFrame) { const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id); }
+  if (activeTab() === t) showFrameForTab(t);
+  renderTabs(); updateIdentity();
+}
+export function recordHistory(kind, url, title, sid = state.session?.id) {
+  if (!url) return; const prev = state.history[0];
+  if (prev && prev.url === url) { prev.time = new Date().toISOString(); if (title) prev.title = title; saveHistory(); return; }
+  state.history.unshift({ id: uid(), time: new Date().toISOString(), kind, url, title: String(title || hostOf(url) || url).slice(0, 240), sid });
+  if (state.history.length > (settings.historyMax || 1000)) state.history.length = settings.historyMax || 1000;
+  saveHistory();
+}
+function renderError(t, kind, error) {
+  t.view = "page"; t.loading = false;
+  const titles = { server: "Veyra couldn't reach its server", unsupported: "This page can't be opened in Veyra", invalid: "That address isn't valid" };
+  const f = getOrCreateFrame(t);
+  f.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;background:#f6f7f9;color:#1b1f27}main{max-width:520px;padding:32px}h1{font-size:24px;margin:0 0 8px}p{color:#5b6372}code{font-size:12px;color:#8a93a3}button{margin-top:14px;height:38px;padding:0 18px;border-radius:99px;border:0;background:#3d6fd6;color:#fff;font-weight:600;cursor:pointer}</style><main><h1>${esc(titles[kind] || "The page could not be displayed")}</h1><p>${esc(error?.message || "Unknown error")}</p>${error?.requestId ? `<code>Request ${esc(error.requestId)}</code><br>` : ""}<button onclick="parent.postMessage({type:'veyra:local-retry'},'*')">Try again</button></main>`;
+  if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
+  addLog("error", `Open failed: ${error?.message}`, { requestId: error?.requestId });
 }
 
-// Safe calculator: recursive descent, no eval/Function.
-function tokenizeCalc(input) {
-  const tokens = []; let i = 0; const s = String(input || "");
-  while (i < s.length) {
-    if (/\s/.test(s[i])) { i++; continue; }
-    if (/[0-9.]/.test(s[i])) {
-      const start = i; let dots = 0;
-      while (i < s.length && /[0-9.]/.test(s[i])) { if (s[i] === ".") dots++; i++; }
-      const raw = s.slice(start, i); if (dots > 1 || raw === ".") throw new Error("Invalid number.");
-      tokens.push({ type: "number", value: Number(raw) }); continue;
-    }
-    if (/[+\-*/%()]/.test(s[i])) { tokens.push({ type: "op", value: s[i++] }); continue; }
-    throw new Error(`Unsupported character “${s[i]}”.`);
-  }
-  tokens.push({ type: "eof", value: "" }); return tokens;
+// Crawl job polling (resources, links and server logs for the dev console).
+function startPolling(t) { if (t.poll) clearInterval(t.poll); pollJob(t); t.poll = setInterval(() => pollJob(t), 1200); }
+async function pollJob(t) {
+  if (!state.tabs.includes(t) || !t.jobId) { if (t.poll) clearInterval(t.poll); return; }
+  try {
+    const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}`, { timeoutMs: 8000 });
+    for (const x of b.logs || []) { if (t.remoteLogIds.has(x.id)) continue; t.remoteLogIds.add(x.id); logs.push({ time: new Date(x.time).getTime(), level: x.level, message: `[${hostOf(t.url)}] ${x.message}` }); }
+    if (activeTab()?.view === "console") renderConsole();
+    if (b.done) { clearInterval(t.poll); t.poll = null; t.done = true; await Promise.all([loadResources(t), loadLinks(t)]); }
+  } catch (e) { if (e.status === 404 || e.code === "SESSION_EXPIRED") { clearInterval(t.poll); t.poll = null; } }
 }
-function evaluateCalc(input) {
-  const tokens = tokenizeCalc(input); let p = 0;
-  const peek = () => tokens[p]; const take = () => tokens[p++];
-  function primary() {
-    if (peek().value === "+") { take(); return primary(); }
-    if (peek().value === "-") { take(); return -primary(); }
-    if (peek().value === "(") { take(); const v = expression(0); if (take().value !== ")") throw new Error("Missing closing parenthesis."); return v; }
-    if (peek().type === "number") return take().value;
-    throw new Error("Expected a number or “(”.");
-  }
-  function expression(minPrec) {
-    let left = primary();
-    const next = tokens[p + 1];
-    if (peek().value === "%" && (!next || next.type === "eof" || next.value === ")")) { take(); left /= 100; }
-    const prec = { "+": 1, "-": 1, "*": 2, "/": 2, "%": 2 };
-    while (peek().type === "op" && prec[peek().value] != null && prec[peek().value] >= minPrec) {
-      const op = take().value; const right = expression(prec[op] + 1);
-      if (op === "+") left += right; else if (op === "-") left -= right; else if (op === "*") left *= right; else if (op === "/") { if (right === 0) throw new Error("Division by zero."); left /= right; } else left %= right;
-      if (!Number.isFinite(left)) throw new Error("Result is not finite.");
-    }
-    return left;
-  }
-  const value = expression(0); if (peek().type !== "eof") throw new Error("Unexpected operator or token."); return value;
-}
-function formatCalc(value) { return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(12))); }
+async function stopJob(id) { try { await api(`/api/crawl/${encodeURIComponent(id)}/stop`, { method: "POST" }); } catch {} }
+async function loadResources(t) { if (!t?.jobId) return; try { const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}/resources`); t.resources = b.resources || []; if (activeTab()?.view === "resources") renderResources(); } catch {} }
+async function loadLinks(t) { if (!t?.jobId) return; try { const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}/links?offset=0&limit=2000`); t.links = b.links || []; if (activeTab()?.view === "links") renderLinks(); } catch {} }
 
-function renderTabs() {
-  const list = $("tabsList"); if (!list) return;
-  list.innerHTML = state.tabs.map(t => `<div class="tab ${t.id === state.activeId ? "active" : ""}" data-tab="${esc(t.id)}">
-    <span class="tab-favicon">${t.favicon ? `<img src="${esc(proxyUrl(t.favicon, "resource"))}" alt="" onerror="this.remove()">` : `<svg><use href="#i-globe"/></svg>`}</span>
-    <span class="tab-title">${esc(t.title || "New Tab")}</span><button class="tab-close" data-close="${esc(t.id)}" title="Close tab">×</button></div>`).join("");
-  list.querySelectorAll(".tab[data-tab]").forEach(el => el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); });
-  list.querySelectorAll("[data-close]").forEach(btn => btn.onclick = e => { e.stopPropagation(); closeTab(btn.dataset.close); });
-}
-function switchTab(id) {
-  if (id === state.activeId || !state.tabs.some(t => t.id === id)) return;
-  state.activeId = id; renderTabs();
-  const t = activeTab();
-  if (t?.view === "search") showSearch(t.searchQuery, false);
-  else if (t?.view === "calculator") showCalculator(t.calcExpression || "", false);
-  else if (t?.view === "home") showHome(false);
-  else if (routeName() === "/dev" || routeName() === "/settings" || location.hash === "#console") goRouteFromUrl();
-  else restoreTabView(t);
-}
-function closeTab(id) {
-  const idx = state.tabs.findIndex(t => t.id === id); if (idx < 0) return;
-  const t = state.tabs[idx];
-  if (settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab has an active crawl running. Close it anyway?")) return;
-  if (t.poll) clearInterval(t.poll);
+// ---------------------------------------------------------------- Chromium engine
+async function refreshRemote(t, loop = false) {
+  if (!t?.browserSessionId || !state.tabs.includes(t)) return;
   clearTimeout(t.browserPoll);
-  if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
-  if (t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
-  destroyFrame(t.id);
-  state.tabs.splice(idx, 1);
-  if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
-  else if (state.activeId === id) state.activeId = state.tabs[Math.max(0, idx - 1)].id;
-  renderTabs(); restoreTabView(activeTab());
+  try {
+    const r = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`, { timeoutMs: 8000 });
+    const s = r.session; const prev = t.url;
+    t.url = s.canonicalUrl || t.url; t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
+    if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
+    if (activeTab() === t && t.view === "page") {
+      const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
+      setLoading(false); updateAddress(); updateIdentity();
+      if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "The site is asking for verification. Click inside the page to complete it.";
+    }
+    renderTabsSoon();
+  } catch (e) { if (e.code === "BROWSER_SESSION_NOT_FOUND") { t.browserSessionId = ""; return; } }
+  if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 3000 : 900);
 }
-function newTabAction() { const t = makeTab(); state.tabs.push(t); state.activeId = t.id; renderTabs(); settings.homepage ? openPage(settings.homepage) : showHome(); }
-function cycleTab(delta) { if (state.tabs.length < 2) return; const i = state.tabs.findIndex(t => t.id === state.activeId); switchTab(state.tabs[(i + delta + state.tabs.length) % state.tabs.length].id); }
-function showHome(pushRoute = true) {
-  const t = activeTab(); if (t) t.view = "home";
-  showView("homeView");
-  $("address").value = ""; $("scheme").textContent = "https"; $("pageState").textContent = "Ready"; setLoading(false);
-  if (pushRoute) { location.hash = ""; setRoute("/"); }
-  renderTabs();
+async function startBrowserSession(t, url) {
+  const sid = state.session?.id || "";
+  if (t.browserSessionId) {
+    try { const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url } }); t.browserMode = "BROWSER_ENGINE"; t.url = b.session.canonicalUrl || url; if (activeTab() === t) showFrameForTab(t); t.loading = false; return; }
+    catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
+  }
+  const b = await api("/api/browser/session", { json: { tabId: t.id, url, proxySessionId: sid } });
+  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.url = b.session.canonicalUrl || url; t.loading = false;
+  frameFor(t)?.remove();
+  if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
+  hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t);
 }
-function showBrowser() {
-  const t = activeTab(); if (t) t.view = "browser";
-  showView("browserView");
-  showFrameForTab(t);
-  setRoute("/", "", "replace");
+async function stopBrowserSession(t) { if (!t?.browserSessionId) return; const id = t.browserSessionId; t.browserSessionId = ""; clearTimeout(t.browserPoll); try { await api(`/api/browser/session/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch {} }
+async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); await refreshRemote(t, true); return true; } catch { return false; } }
+
+// ---------------------------------------------------------------- toolbar actions
+export async function back() {
+  const t = activeTab(); if (!t) return;
+  if (isRemote(t) && t.view === "page" && await remoteHistory(t, "back")) return;
+  if (t.histIndex <= 0) return; t.histIndex--; await restoreHistoryEntry(t);
 }
-function showSearch(query = "", pushRoute = true) {
-  const t = activeTab(); if (!t) return; t.view = "search"; t.searchQuery = String(query || "");
-  showView("searchView");
-  $("address").value = t.searchQuery; $("scheme").textContent = "search"; $("starBtn").classList.remove("saved");
-  $("searchInput").value = t.searchQuery;
-  if (pushRoute) setRoute("/search", t.searchQuery ? `?q=${encodeURIComponent(t.searchQuery)}` : "", "push");
-  renderSearch(t.searchData || null);
-  renderTabs();
-  if (t.searchQuery && !t.searchData) runSearch(t.searchQuery, false).catch(e => renderSearchError(e));
+export async function forward() {
+  const t = activeTab(); if (!t) return;
+  if (isRemote(t) && t.view === "page" && await remoteHistory(t, "forward")) return;
+  if (t.histIndex >= t.history.length - 1) return; t.histIndex++; await restoreHistoryEntry(t);
 }
-function showCalculator(expression = "", pushRoute = true) {
-  const t = activeTab(); if (!t) return; t.view = "calculator"; t.calcExpression = String(expression || "");
-  showView("calculatorView");
-  $("address").value = t.calcExpression || "Veyra Calculator"; $("scheme").textContent = "calc"; $("starBtn").classList.remove("saved"); $("calcInput").value = t.calcExpression;
-  if (pushRoute) setRoute("/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : "", "push");
-  renderCalculator(); renderTabs();
+async function restoreHistoryEntry(t) {
+  const e = t.history[t.histIndex]; if (!e) return;
+  if (e.startsWith("veyra:search:")) return showSearch(e.slice(13), { tab: t, pushHist: false });
+  if (e.startsWith("veyra:")) { const [view, section] = e.slice(6).split("/"); const idx = t.histIndex; openInternal(view, { tab: t, section }); t.histIndex = idx; t.history.length = Math.max(t.history.length, idx + 1); updateNavButtons(); return; }
+  await navigate(e, { tab: t, pushHist: false });
 }
-function showDownloads(pushRoute = true) {
-  const t = activeTab(); if (t) t.view = "downloads"; showView("downloadsView");
-  $("address").value = "Veyra Downloads"; $("scheme").textContent = "downloads"; $("starBtn").classList.remove("saved");
-  if (pushRoute) setRoute("/downloads"); renderDownloads(); renderTabs();
+export async function reload({ hard = false } = {}) {
+  const t = activeTab(); if (!t) return;
+  if ($("reloadBtn").dataset.loading === "1" && !hard) return stopLoad();
+  if (t.view === "page" && t.url) {
+    if (isRemote(t)) { if (await remoteHistory(t, "reload")) return; }
+    if (hard) state.capabilityCache.delete(hostOf(t.url));
+    return loadInTab(t, t.url, { loadFrame: true });
+  }
+  if (t.view === "search") return runSearch(t.searchQuery);
+  renderActive({ push: false });
 }
-function showHistory(pushRoute = true) {
-  const t = activeTab(); if (t) t.view = "history"; showView("historyView");
-  $("address").value = "Veyra History"; $("scheme").textContent = "history"; $("starBtn").classList.remove("saved");
-  if (pushRoute) setRoute("/history"); renderHistory(); renderTabs();
+export async function stopLoad() {
+  const t = activeTab(); if (!t) return;
+  if (t.browserSessionId) api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/stop`, { method: "POST" }).catch(() => {});
+  try { frameFor(t)?.contentWindow?.stop?.(); } catch {}
+  setLoading(false); toast("Stopped loading");
 }
-function showExtensions(pushRoute = true) {
-  const t = activeTab(); if (t) t.view = "extensions"; showView("extensionsView");
-  $("address").value = "Veyra Extensions"; $("scheme").textContent = "extensions"; $("starBtn").classList.remove("saved");
-  if (pushRoute) setRoute("/extensions"); renderExtensions(); renderTabs();
+export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
+export function pageCommand(type, payload = {}, t = activeTab()) { const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false; try { f.contentWindow.postMessage({ type, ...payload }, API_ORIGIN); return true; } catch { return false; } }
+export function printPage() { const t = activeTab(); if (t?.view !== "page" || !t.url) { window.print(); return; } if (isRemote(t)) { window.open(`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot`, "_blank", "noopener"); return; } if (!pageCommand("veyra:print")) toast("This page can't be printed yet", { kind: "warn" }); }
+export function setZoom(z, t = activeTab()) {
+  if (!t || t.view !== "page") { const s = Math.max(.8, Math.min(1.4, Number(z) || 1)); settings.fontScale = s; saveSettings(); document.documentElement.style.setProperty("--ui-scale", s); toast(`Veyra UI ${Math.round(s * 100)}%`); return; }
+  t.zoom = Math.round(Math.max(.25, Math.min(5, Number(z) || 1)) * 100) / 100;
+  dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(e => toast(e.message, { kind: "warn" }));
+  updateIdentity(); hooks.onZoom?.(t.zoom);
 }
-function toggleInspect(enabled = true) {
-  const frame = activeFrame(), drawer = $("inspectDrawer"); if (!drawer) return;
-  drawer.classList.toggle("hidden", !enabled); $("inspectHighlight")?.classList.toggle("hidden", !enabled);
-  state.inspectMode = !!enabled; closeMenu(); const t=activeTab();
-  if (t?.browserMode === "BROWSER_ENGINE" && t.browserSessionId) { ensureBrowserViewport()?.classList.toggle("hidden", false); addLog("info", enabled ? "Inspect mode enabled for real Chromium DOM." : "Inspect mode disabled."); return; }
-  if (frame?.contentWindow) frame.contentWindow.postMessage({ type: "veyra:inspect", enabled: !!enabled }, new URL(API).origin);
-  if (enabled) addLog("info", "Inspect mode enabled."); else addLog("info", "Inspect mode disabled.");
+const ZOOM_STEPS = [.25, .33, .5, .67, .75, .8, .9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
+export function zoomStep(dir) { const t = activeTab(); const cur = t?.view === "page" ? t.zoom : settings.fontScale || 1; if (dir === 0) return setZoom(1); const next = dir > 0 ? ZOOM_STEPS.find(z => z > cur + .001) : [...ZOOM_STEPS].reverse().find(z => z < cur - .001); setZoom(next ?? cur); }
+
+// ---------------------------------------------------------------- bookmarks
+export function toggleBookmark() {
+  const t = activeTab(); if (!t?.url) return;
+  const i = state.bookmarks.findIndex(b => b.url === t.url);
+  if (i >= 0) { const [b] = state.bookmarks.splice(i, 1); saveBookmarks(); toast("Bookmark removed", { action: () => { state.bookmarks.splice(i, 0, b); saveBookmarks(); updateIdentity(); }, actionLabel: "Undo" }); }
+  else { state.bookmarks.push({ id: uid(), url: t.url, title: t.title || hostOf(t.url), time: Date.now() }); saveBookmarks(); toast("Bookmarked"); }
+  updateIdentity();
 }
 
-function renderDownloads() {
-  const box = $("downloadsList"); if (!box) return;
-  if (!state.downloads.length) { box.innerHTML = '<div class="empty">No downloads yet.</div>'; return; }
-  box.innerHTML = state.downloads.map(d => `<article class="utility-item"><div class="utility-icon">↓</div><div class="utility-main"><b>${esc(d.name || "Download")}</b><span>${esc(d.url || "")} · ${esc(d.status || "queued")}${d.total ? ` · ${Math.round((d.received||0)/d.total*100)}%` : ""}</span></div><time>${esc(new Date(d.time || Date.now()).toLocaleString())}</time><div class="utility-actions"><button class="secondary tiny" data-redownload="${esc(d.url || "")}">Download again</button>${state.downloadControllers.has(d.id) ? `<button class="danger tiny" data-cancel-download="${esc(d.id)}">Cancel</button>` : ""}</div></article>`).join("");
-  box.querySelectorAll("[data-redownload]").forEach(b => b.onclick = () => startDownload(b.dataset.redownload, "Download"));
-  box.querySelectorAll("[data-cancel-download]").forEach(b => b.onclick = () => cancelDownload(b.dataset.cancelDownload));
+// ---------------------------------------------------------------- find in page
+export function openFind() {
+  const t = activeTab(); if (t?.view !== "page" || !t.url) { toast("Open a website to search inside it"); return; }
+  if (isRemote(t)) { toast("Find isn't available in Chromium tabs yet", { kind: "warn" }); return; }
+  $("findBar").classList.remove("hidden"); $("findInput").focus(); $("findInput").select(); if ($("findInput").value) findQuery($("findInput").value);
 }
+function findQuery(q, direction = "forward") { pageCommand("veyra:find", { query: q, direction }); if (!q) $("findCount").textContent = "0/0"; }
+export function closeFind() { $("findBar").classList.add("hidden"); pageCommand("veyra:find-close"); }
+
+// ---------------------------------------------------------------- Veyra Search
+export function showSearch(query = "", { tab = null, push = true, pushHist = true } = {}) {
+  let t = tab || activeTab(); if (!t) return;
+  if (t.view === "page") teardownTab(t);
+  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, loading: false, browserSessionId: "" });
+  if (pushHist) pushTabHistory(t, "veyra:search:" + query);
+  if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
+  renderTabs(); renderActive({ push });
+  if (query) runSearch(query);
+}
+async function runSearch(query, offset = 0) {
+  const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
+  $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
+  if (!offset) $("searchResults").innerHTML = Array.from({ length: 4 }, () => `<div class="result"><div class="skel" style="height:16px;width:55%;border-radius:4px;background:var(--surface-3)"></div><div style="height:10px"></div><div style="height:12px;width:85%;border-radius:4px;background:var(--surface-2)"></div></div>`).join("");
+  try {
+    const b = await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`);
+    if (offset && t.searchData) t.searchData.results.push(...(b.results || [])); else t.searchData = b;
+    renderSearch();
+  } catch (e) { $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
+}
+function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => w.length > 1 && !/:/.test(w)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "gi"), "<mark>$1</mark>") : s; }
+function renderSearch() {
+  const t = activeTab(); if (!t || t.view !== "search") return;
+  $("searchInput").value = t.searchQuery;
+  const d = t.searchData;
+  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
+  if (!d) return;
+  $("searchStat").textContent = `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
+  $("searchMeta").textContent = `${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}`;
+  $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
+    || `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>Veyra only returns pages it has actually indexed. Open a site to add it, or search the web instead.</span><button class="btn ghost sm" id="searchWeb">Search DuckDuckGo for it</button></div>`;
+  $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
+  $("searchWeb")?.addEventListener("click", () => navigate(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(t.searchQuery)}`));
+  const more = d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
+  $("searchMore").classList.toggle("hidden", !more); $("searchMore").onclick = () => runSearch(t.searchQuery, d.results.length);
+  loadIndexStats();
+}
+async function loadIndexStats() { try { const b = await api("/api/search/stats", { timeoutMs: 6000 }); $("searchCoverage").textContent = `Veyra Index: ${Number(b.documents || 0).toLocaleString()} pages · ${Number(b.domains || 0).toLocaleString()} domains`; } catch { $("searchCoverage").textContent = ""; } }
+let suggestTimer = 0;
+function loadSuggestions(q) { clearTimeout(suggestTimer); suggestTimer = setTimeout(async () => { if (!q.trim()) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160); }
+export async function omniSuggest(q) {
+  if (!settings.suggestions || !q.trim()) return [];
+  try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=5`, { timeoutMs: 3000 }); return b.suggestions || []; } catch { return []; }
+}
+
+// ---------------------------------------------------------------- calculator (no eval)
+function tokenize(s) {
+  const out = []; let i = 0; s = String(s).replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").replace(/,/g, "");
+  while (i < s.length) { const c = s[i]; if (/\s/.test(c)) { i++; continue; } if (/[0-9.]/.test(c)) { let j = i; while (j < s.length && /[0-9.]/.test(s[j])) j++; const raw = s.slice(i, j); if ((raw.match(/\./g) || []).length > 1 || raw === ".") throw new Error("Invalid number."); out.push({ t: "n", v: Number(raw) }); i = j; continue; } if ("+-*/%^()".includes(c)) { out.push({ t: "o", v: c }); i++; continue; } throw new Error(`Unsupported character “${c}”.`); }
+  out.push({ t: "e" }); return out;
+}
+export function evaluate(expr) {
+  const tk = tokenize(expr); let p = 0; const peek = () => tk[p], take = () => tk[p++];
+  const unary = () => { if (peek().v === "-") { take(); return -unary(); } if (peek().v === "+") { take(); return unary(); } return power(); };
+  const power = () => { let b = primary(); if (peek().v === "^") { take(); b = Math.pow(b, unary()); } return b; };
+  const primary = () => { const x = take(); if (x.t === "n") { if (peek().v === "%" && (tk[p + 1].t === "e" || ["+", "-", ")"].includes(tk[p + 1].v))) { take(); return x.v / 100; } return x.v; } if (x.v === "(") { const v = expr0(); if (take().v !== ")") throw new Error("Missing closing parenthesis."); return v; } throw new Error("Expected a number."); };
+  const term = () => { let v = unary(); while (["*", "/", "%"].includes(peek().v)) { const o = take().v, r = unary(); if (o === "/" && r === 0) throw new Error("Division by zero."); v = o === "*" ? v * r : o === "/" ? v / r : v % r; } return v; };
+  const expr0 = () => { let v = term(); while (["+", "-"].includes(peek().v)) { const o = take().v, r = term(); v = o === "+" ? v + r : v - r; } return v; };
+  const v = expr0(); if (peek().t !== "e") throw new Error("Unexpected token."); if (!Number.isFinite(v)) throw new Error("Result isn't finite."); return v;
+}
+const fmtNum = v => Number.isInteger(v) ? v.toLocaleString("en-GB") : String(Number(v.toPrecision(12)));
+function renderCalculator() {
+  const t = activeTab(); if (!t) return; const input = $("calcInput");
+  if (document.activeElement !== input) input.value = t.calcExpression || "";
+  const v = input.value.trim(); t.calcExpression = v;
+  if (!v) { $("calcResult").textContent = "0"; $("calcStatus").textContent = "Supports + − × ÷ % ^, parentheses and negative numbers."; return; }
+  try { $("calcResult").textContent = fmtNum(evaluate(v)); $("calcStatus").textContent = "Calculated on your device."; } catch (e) { $("calcResult").textContent = "—"; $("calcStatus").textContent = e.message; }
+}
+function setupCalculator() {
+  const keys = ["C", "(", ")", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "%", "0", ".", "="];
+  $("calcKeys").innerHTML = keys.map(k => `<button class="${"÷×−+%()".includes(k) ? "op" : k === "=" ? "eq" : ""}" data-k="${k}">${k}</button>`).join("");
+  $("calcKeys").onclick = e => { const k = e.target.closest("[data-k]")?.dataset.k; if (!k) return; const input = $("calcInput");
+    if (k === "C") input.value = ""; else if (k === "=") { try { input.value = String(evaluate(input.value)); } catch {} } else input.value += k;
+    activeTab().calcExpression = input.value; renderCalculator(); input.focus(); };
+  $("calcInput").oninput = () => { activeTab().calcExpression = $("calcInput").value; renderCalculator(); syncRoute({ replace: true }); };
+  $("calcInput").onkeydown = e => { if (e.key === "Enter") { try { $("calcInput").value = String(evaluate($("calcInput").value)); renderCalculator(); } catch {} } };
+}
+
+// ---------------------------------------------------------------- downloads
+export async function startDownload(url, name = "") {
+  if (!/^https?:\/\//i.test(url || "")) return;
+  let session; try { session = await ensureSession(); } catch (e) { toast(e.message, { kind: "err" }); return; }
+  const item = { id: uid(), time: new Date().toISOString(), url, name: name || decodeURIComponent(pathOf(url).split("/").pop().split("?")[0] || hostOf(url)) || "download", status: "starting", received: 0, total: 0 };
+  state.downloads.unshift(item); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.();
+  if (settings.downloadsOpenOnStart) toast(`Downloading ${item.name}`, { action: () => openInternal("downloads"), actionLabel: "Show" });
+  const controller = new AbortController(); state.downloadControllers.set(item.id, controller);
+  try {
+    const res = await rawFetch(proxyUrl(url, "download", session.id), { signal: controller.signal });
+    if (!res.ok) { let m = `HTTP ${res.status}`; try { m = (await res.json()).error || m; } catch {} throw new Error(m); }
+    item.total = Number(res.headers.get("content-length") || 0);
+    const cd = res.headers.get("content-disposition") || ""; const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i); if (m) try { item.name = decodeURIComponent(m[1]); } catch {}
+    const reader = res.body?.getReader(); const chunks = [];
+    if (reader) for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); item.received += value.byteLength; item.status = "downloading"; renderDownloadsSoon(); }
+    else { const buf = new Uint8Array(await res.arrayBuffer()); chunks.push(buf); item.received = buf.byteLength; }
+    const blob = new Blob(chunks, { type: res.headers.get("content-type") || "application/octet-stream" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: item.name }); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    item.status = "complete"; item.total = item.total || item.received;
+  } catch (e) { item.status = e.name === "AbortError" ? "cancelled" : "failed"; item.error = e.message; if (e.name !== "AbortError") toast(`Download failed: ${e.message}`, { kind: "err" }); }
+  finally { state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.(); }
+}
+let dlRaf = 0; function renderDownloadsSoon() { if (dlRaf) return; dlRaf = requestAnimationFrame(() => { dlRaf = 0; renderDownloads(); }); }
+function renderDownloads() {
+  const box = $("downloadsList"); if (!box || activeTab()?.view !== "downloads") return;
+  const q = $("downloadsFilter").value.toLowerCase();
+  const list = state.downloads.filter(d => !q || (d.name + d.url).toLowerCase().includes(q));
+  if (!list.length) { box.innerHTML = `<div class="empty"><svg><use href="#i-download"/></svg><b>${q ? "No matching downloads" : "No downloads yet"}</b><span>Files you save through Veyra show up here.</span></div>`; return; }
+  box.innerHTML = list.map(d => { const pct = d.total ? Math.round(d.received / d.total * 100) : 0; const live = state.downloadControllers.has(d.id);
+    return `<div class="row-item"><svg><use href="#i-file"/></svg><div class="ri-main"><b>${esc(d.name)}</b><span>${esc(displayUrl(d.url))}</span>${live ? `<div class="progress"><i style="width:${d.total ? pct : 30}%"></i></div>` : ""}</div>
+    <span class="pill ${d.status === "complete" ? "ok" : d.status === "failed" ? "err" : d.status === "cancelled" ? "" : "accent"}">${live ? (d.total ? pct + "%" : fmtBytes(d.received)) : esc(d.status)}${d.status === "complete" && d.total ? " · " + fmtBytes(d.total) : ""}</span>
+    <time>${esc(timeAgo(d.time))}</time>
+    ${live ? `<button class="btn ghost sm" data-cancel="${d.id}">Cancel</button>` : `<button class="icon-btn sm" title="Download again" data-again="${d.id}"><svg><use href="#i-reload"/></svg></button><button class="icon-btn sm" title="Remove from list" data-rm="${d.id}"><svg><use href="#i-x"/></svg></button>`}</div>`; }).join("");
+  box.onclick = e => { const b = e.target.closest("button"); if (!b) return; const d = state.downloads.find(x => x.id === (b.dataset.cancel || b.dataset.again || b.dataset.rm)); if (!d) return;
+    if (b.dataset.cancel) state.downloadControllers.get(d.id)?.abort(); else if (b.dataset.again) startDownload(d.url, d.name); else { state.downloads.splice(state.downloads.indexOf(d), 1); saveDownloads(); renderDownloads(); } };
+}
+
+// ---------------------------------------------------------------- history page
 function renderHistory() {
   const box = $("historyList"); if (!box) return;
-  if (!state.history.length) { box.innerHTML = '<div class="empty">No history yet.</div>'; return; }
-  box.innerHTML = state.history.map(h => `<article class="utility-item"><div class="utility-icon">${h.kind === "search" ? "⌕" : h.kind === "calculator" ? "∑" : "◌"}</div><div class="utility-main"><b>${esc(h.title || h.url)}</b><span>${esc(h.url)}</span></div><time>${esc(new Date(h.time || Date.now()).toLocaleString())}</time><button class="secondary tiny" data-history-url="${esc(h.url)}">Open</button></article>`).join("");
-  box.querySelectorAll("[data-history-url]").forEach(b => b.onclick = () => { const h = state.history.find(x => x.url === b.dataset.historyUrl); if (!h) return; if (h.kind === "search") showSearch(String(h.url).replace(/^search:/, "")); else if (h.kind === "calculator") showCalculator(String(h.url).replace(/^calc:/, "")); else openPage(h.url); });
-}
-const EXT_STORE = [
-  { id: "veyra-focus", name: "Focus Toolbar", version: "1.0.0", description: "Softens the Veyra browser chrome for reading." },
-  { id: "veyra-reading", name: "Reading Surface", version: "1.0.0", description: "Adds a calmer reading surface around proxied pages." },
-  { id: "veyra-compact", name: "Compact UI", version: "1.0.0", description: "Reduces toolbar and tab spacing." },
-  { id: "veyra-shortcuts", name: "Power Shortcuts", version: "1.0.0", description: "Adds built-in keyboard shortcut hints and navigation helpers." }
-];
-function renderExtensions() {
-  const box = $("extensionsGrid"), store = $("extensionStoreGrid"); if (!box || !store) return;
-  box.innerHTML = state.extensions.map(x => `<article class="extension-card"><div class="extension-icon">${esc((x.name || "V").slice(0,1).toUpperCase())}</div><div class="extension-main"><h3>${esc(x.name || x.id)}</h3><p>${esc(x.description || "Veyra extension")}</p><span>v${esc(x.version || "1.0.0")} · ${esc(x.author || "Developer")}</span></div><label class="extension-toggle"><input type="checkbox" data-ext-toggle="${esc(x.id)}" ${x.enabled ? "checked" : ""}><i></i></label></article>`).join("") || '<div class="empty">No extensions installed.</div>';
-  box.querySelectorAll("[data-ext-toggle]").forEach(i => i.onchange = () => toggleExtension(i.dataset.extToggle, i.checked));
-  store.innerHTML = EXT_STORE.map(x => { const installed = state.extensions.some(e => e.id === x.id); return `<article class="extension-card"><div class="extension-icon">${esc(x.name.slice(0,1))}</div><div class="extension-main"><h3>${esc(x.name)}</h3><p>${esc(x.description)}</p><span>v${esc(x.version)} · Veyra Store</span></div><button class="secondary tiny" data-store-install="${esc(x.id)}">${installed ? "Installed" : "Add"}</button></article>`; }).join("");
-  store.querySelectorAll("[data-store-install]").forEach(b => b.onclick = () => installStoreExtension(b.dataset.storeInstall));
-  $("extensionDeveloperMode").checked = !!settings.extensionDeveloperMode; $("extensionDevCard").classList.toggle("hidden", !settings.extensionDeveloperMode);
-}
-function toggleExtension(id, enabled) { const x = state.extensions.find(e => e.id === id); if (!x) return; x.enabled = !!enabled; saveExtensions(); applyExtensions(); renderExtensions(); addLog("info", `${x.name} ${enabled ? "enabled" : "disabled"}.`); }
-function installStoreExtension(id) { const store = EXT_STORE.find(x => x.id === id); if (!store) return; let x = state.extensions.find(e => e.id === id); if (!x) { x = { ...store, author: "Veyra Store", builtin: true, enabled: false }; state.extensions.push(x); } x.enabled = true; saveExtensions(); applyExtensions(); renderExtensions(); addLog("info", `${x.name} installed and enabled.`); }
-async function startDownload(url, name = "Download") {
-  if (!url || !/^https?:\/\//i.test(url)) return;
-  const t = activeTab(); const sid = t?.proxySessionId || "";
-  const item = { id: cryptoRandomId(), time: new Date().toISOString(), url, name, status: "starting", received: 0, total: 0 };
-  state.downloads.unshift(item);
-  if (state.downloads.length > (settings.downloadsMax || 200)) state.downloads.length = settings.downloadsMax || 200;
-  saveDownloads(); renderDownloads();
-  const controller = new AbortController(); state.downloadControllers.set(item.id, controller);
-  const q = `${API}/api/download?url=${encodeURIComponent(url)}${sid ? `&sid=${encodeURIComponent(sid)}` : ""}`;
-  try {
-    const response = await rawFetch(q, { headers: { "X-Veyra-Request-ID": cryptoRandomId() }, signal: controller.signal });
-    if (!response.ok) { let msg = `HTTP ${response.status}`; try { const j = await response.json(); msg = j.error || msg; } catch {} throw new Error(msg); }
-    item.total = Number(response.headers.get("content-length") || 0);
-    const disposition = response.headers.get("content-disposition") || "";
-    const m = disposition.match(/filename(?:\*|)=(?:UTF-8''|)?["']?([^"';]+)["']?/i); if (m && m[1]) item.name = decodeURIComponent(m[1]);
-    const reader = response.body?.getReader(); const chunks = [];
-    if (reader) { for (;;) { const part = await reader.read(); if (part.done) break; chunks.push(part.value); item.received += part.value.byteLength; item.status = item.total ? `${Math.floor(item.received / item.total * 100)}%` : `${Math.round(item.received / 1024)} KB`; renderDownloads(); } }
-    else chunks.push(new Uint8Array(await response.arrayBuffer()));
-    const blob = new Blob(chunks, { type: response.headers.get("content-type") || "application/octet-stream" });
-    const objectUrl = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = objectUrl; a.download = item.name || name || "download"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(objectUrl), 20000);
-    item.status = "complete";
-    addLog("info", `Download complete: ${item.name}`);
-  } catch (e) { item.status = e?.name === "AbortError" ? "cancelled" : `error: ${e.message}`; addLog("error", `Download failed: ${e.message}`); }
-  finally { state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); }
-}
-function cancelDownload(id) { const c = state.downloadControllers.get(id); if (c) c.abort(); }
-
-
-async function renderVpnPanel() {
-  const box=$("vpnPanel"); if(!box)return;
-  try{const {body}=await apiRequest('/api/vpn/status'); const t=activeTab(); const profiles=Array.isArray(body.profiles)?body.profiles:[]; const current=t?.vpnProfileId||'';
-    box.innerHTML=`<div class="panel-head"><div><span class="eyebrow">VEYRA VPN</span><b>Private network tunnel</b></div><span class="server-pill ${body.enabled&&body.configured?'live':'warn'}">${!body.enabled?'Disabled':body.configured?`${profiles.length} profile${profiles.length===1?'':'s'}`:'Not configured'}</span></div><div class="vpn-card"><p>Connect the active Veyra tab through a server-side HTTP/HTTPS/SOCKS5 gateway. Credentials stay on Render. This is a Veyra tunnel, not an operating-system-wide VPN.</p>${profiles.length?`<label class="setting-row"><span>Profile</span><select id="vpnProfileSelect">${profiles.map(p=>`<option value="${esc(p.id)}" ${p.id===current?'selected':''}>${esc(p.name)}${p.region?` · ${esc(p.region)}`:''}</option>`).join('')}</select></label>`:'<div class="empty">No VPN gateway is configured on Render.</div>'}<div class="vpn-status">${t?.vpnConnected&&current?`Connected · ${esc((profiles.find(p=>p.id===current)||{}).name||current)}`:'Disconnected'}</div><div class="settings-actions"><button class="secondary tiny" id="vpnConnectBtn" ${!profiles.length||!body.enabled?'disabled':''}>Connect</button><button class="secondary tiny" id="vpnTestBtn" ${!profiles.length||!body.enabled?'disabled':''}>Test gateway</button><button class="danger tiny" id="vpnDisconnectBtn" ${!t?.vpnConnected?'disabled':''}>Disconnect</button></div><div class="setting-help">Configure VPN_PROXY_SERVER or VPN_PROFILES_JSON on Render. Never put credentials in frontend JavaScript.</div></div>`;
-    $("vpnConnectBtn")?.addEventListener('click',async()=>{const tab=activeTab();if(!tab)return;tab.proxySessionId ||= cryptoRandomId();const profileId=$("vpnProfileSelect")?.value||'';try{const r=await apiRequest('/api/vpn/connect',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:tab.proxySessionId,profileId})});tab.vpnProfileId=r.body.profile?.id||profileId;tab.vpnConnected=true;if(tab.browserSessionId){const u=tab.url,j=tab.jobId||'';await stopBrowserSession(tab);try{await startBrowserSession(tab,u,j)}catch(e){tab.browserMode='FAST_PROXY';tab.browserSessionId='';addLog('warn',`VPN browser restart failed; using proxy: ${e.message}`);getOrCreateFrame(tab).src=proxyUrl(u,'view',tab.proxySessionId);showFrameForTab(tab)}}else if(tab.url&&tab.view==='browser'){getOrCreateFrame(tab).src=proxyUrl(tab.url,'view',tab.proxySessionId)}addLog('info',`Veyra VPN connected: ${r.body.profile?.name||tab.vpnProfileId}`);renderVpnPanel()}catch(e){addLog('error',`VPN connect failed: ${e.message}`)}});
-    $("vpnTestBtn")?.addEventListener('click',async()=>{const profileId=$("vpnProfileSelect")?.value||'';try{const r=await apiRequest('/api/vpn/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profileId})});addLog('info',`VPN gateway test passed: HTTP ${r.body.status}`);alert(`Veyra VPN gateway responded (HTTP ${r.body.status}).`)}catch(e){addLog('error',`VPN gateway test failed: ${e.message}`);alert(`VPN gateway test failed: ${e.message}`)}});
-    $("vpnDisconnectBtn")?.addEventListener('click',async()=>{const tab=activeTab();if(!tab)return;try{await apiRequest('/api/vpn/disconnect',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:tab.proxySessionId||''})});tab.vpnConnected=false;tab.vpnProfileId='';if(tab.browserSessionId){const u=tab.url,j=tab.jobId||'';await stopBrowserSession(tab);try{await startBrowserSession(tab,u,j)}catch(e){tab.browserMode='FAST_PROXY';tab.browserSessionId='';addLog('warn',`VPN disconnect browser restart failed; using proxy: ${e.message}`);getOrCreateFrame(tab).src=proxyUrl(u,'view',tab.proxySessionId);showFrameForTab(tab)}}else if(tab.url&&tab.view==='browser'){getOrCreateFrame(tab).src=proxyUrl(tab.url,'view',tab.proxySessionId)}addLog('info','Veyra VPN disconnected.');renderVpnPanel()}catch(e){addLog('error',`VPN disconnect failed: ${e.message}`)}});
-  }catch(e){box.innerHTML=`<div class="panel-head"><div><span class="eyebrow">VEYRA VPN</span><b>Unavailable</b></div></div><div class="empty">${esc(e.message)}</div>`}
-}
-
-function setTool(panel, pushRoute = true) {
-  showView("toolView");
-  document.querySelectorAll(".tool-tab").forEach(x => x.classList.toggle("active", x.dataset.panel === panel));
-  ["sourcePanel", "linkPanel", "consolePanel", "devPanel", "settingsPanel", "vpnPanel"].forEach(id => $(id)?.classList.toggle("hidden", id !== panel));
-  if (panel === "sourcePanel") renderResources();
-  if (panel === "linkPanel") loadLinks();
-  if (panel === "consolePanel") { location.hash = "#console"; renderConsole(); }
-  if (panel === "devPanel") { if (pushRoute) setRoute("/dev"); refreshDev(); startDevAuto(); }
-  else if (state.devTimer) { clearInterval(state.devTimer); state.devTimer = null; }
-  if (panel === "settingsPanel") { if (pushRoute) setRoute("/settings"); renderSettingsForm(); }
-  if (panel === "vpnPanel") { if (pushRoute) setRoute("/vpn"); renderVpnPanel(); }
-  if (panel === "sourcePanel" || panel === "linkPanel") { if (pushRoute) { location.hash = ""; setRoute("/"); } }
-}
-function restoreTabView(t) {
-  if (!t) return;
-  if (t.view === "browser" && t.url) {
-    showBrowser(); updateIdentity(t.url);
-    if (t.browserMode === "BROWSER_ENGINE" && t.browserSessionId) { showFrameForTab(t); refreshBrowserSurface(t,true); }
-    else { const frame = getOrCreateFrame(t); const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId); if (frame.src !== wantedProxy) frame.src = wantedProxy; showFrameForTab(t); }
-    $("pageState").textContent = t.done ? "Ready" : (t.jobId ? "Loading…" : "Ready");
-    $("serverState").textContent = t.browserMode === "BROWSER_ENGINE" ? "Browser" : "Proxy";
-    $("serverState").className = "server-pill" + (t.browserMode === "BROWSER_ENGINE" ? " live" : "");
-    setLoading(!t.done && !!t.jobId && t.browserMode !== "BROWSER_ENGINE", 52, "Loading page…");
-  } else if (t.view === "search") showSearch(t.searchQuery, false);
-  else if (t.view === "calculator") showCalculator(t.calcExpression || "", false);
-  else if (t.view === "downloads") showDownloads(false);
-  else if (t.view === "history") showHistory(false);
-  else if (t.view === "extensions") showExtensions(false);
-  else showHome(false);
-}
-
-async function startJobForTab(t, url, loadFrame = true) {
-  if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
-  if (t.poll) clearInterval(t.poll);
-  if (t.browserPoll) clearTimeout(t.browserPoll);
-  t.resources = []; t.links = []; t.selected = -1; t.remoteLogIds = new Set(); t.done = false; t.jobId = null; t.url = url; t.title = hostOf(url); t.view = "browser"; t.browserMode = "FAST_PROXY";
-  showBrowser(); updateIdentity(url); setLoading(true, 16, "Choosing page runtime…");
-  $("pageState").textContent = "Choosing runtime…"; $("serverState").textContent = "Capability detection"; $("serverState").className = "server-pill warn";
-  let mode = "FAST_PROXY";
-  try { const cap = await apiRequest('/api/browser/capability',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}); mode = cap.body.mode || 'FAST_PROXY'; } catch(e) { addLog('debug',`Capability detection failed; using fast proxy: ${e.message}`); }
-
-  if (mode === "FAST_PROXY" && t.browserSessionId) await stopBrowserSession(t);
-
-  if (mode === "BROWSER_ENGINE") {
-    try {
-      let jobId = t.jobId || '';
-      try {
-        if (!jobId) {
-          const opened = await apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
-          jobId = opened.body?.jobId || '';
-        }
-        t.jobId = jobId || null;
-        if (t.jobId) startPolling(t);
-      } catch(e) { addLog('debug',`Background indexing skipped: ${e.message}`); }
-      await startBrowserSession(t,url,jobId); recordHistory("page",t.url,t.title); renderTabs();
-      return;
-    } catch(e) {
-      addLog('warn',`Browser engine unavailable; falling back to FAST_PROXY: ${e.message}`);
-      t.browserMode='FAST_PROXY'; t.browserSessionId='';
-      if (e.code === 'BROWSER_CAPACITY') addLog('info','Browser capacity is full; this tab is continuing with FAST_PROXY instead of failing the navigation.');
-      if (e.code === 'BROWSER_ENGINE_UNAVAILABLE') addLog('info','Chromium is unavailable; this tab is continuing with FAST_PROXY.');
-      // Do not recurse into navigateUrl here. We already know the canonical URL
-      // and can use the existing job (if one was created) or create exactly one.
-    }
+  const q = $("historyFilter").value.toLowerCase();
+  const list = state.history.filter(h => !q || (h.title + " " + h.url).toLowerCase().includes(q)).slice(0, 600);
+  if (!list.length) { box.innerHTML = `<div class="empty"><svg><use href="#i-history"/></svg><b>${q ? "Nothing matches" : "Your history is empty"}</b><span>${settings.clearOnSessionEnd ? "History from a session is removed when it ends. You can change this in Settings > Privacy." : "Pages you visit show up here."}</span></div>`; return; }
+  let lastDay = ""; let html = "";
+  for (const h of list) {
+    const day = new Date(h.time).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+    if (day !== lastDay) { html += `<div class="list-group">${esc(day)}</div>`; lastDay = day; }
+    const li = letterIcon(h.url);
+    html += `<div class="row-item"><time>${new Date(h.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><b style="display:grid;place-items:center;width:20px;height:20px;border-radius:5px;background:${li.color};color:#fff;font-size:11px;flex:none">${esc(li.letter)}</b><div class="ri-main" style="cursor:pointer" data-open="${esc(h.url)}"><b>${esc(h.title)}</b><span>${esc(displayUrl(h.url))}</span></div><button class="icon-btn sm" title="Remove" data-rm="${h.id}"><svg><use href="#i-x"/></svg></button></div>`;
   }
-
-  try {
-    let body;
-    if (t.jobId) {
-      body = { jobId: t.jobId, url: t.url, viewUrl: `/api/view?url=${encodeURIComponent(t.url)}` };
-    } else {
-      const opened = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
-      body = opened.body;
-      t.jobId = body.jobId;
-    }
-    t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
-    t.browserMode = "FAST_PROXY";
-    recordHistory("page", t.url, t.title);
-    if (activeTab() === t) { updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…"); if (loadFrame) getOrCreateFrame(t).src = proxyUrl(t.url, "view", t.proxySessionId); showFrameForTab(t); }
-    if (t.jobId) startPolling(t);
-    renderTabs();
-  } catch (e) { t.jobId = null; t.done = true; if (activeTab() === t) renderProxyError("server", e); addLog("error", `Open failed: ${e.message}`, { requestId: e.requestId, stack: e.stack || "" }); }
+  box.innerHTML = html;
+  box.onclick = e => { const o = e.target.closest("[data-open]"); if (o) { go(o.dataset.open.startsWith("veyra://search?q=") ? decodeURIComponent(o.dataset.open.split("q=")[1]) : o.dataset.open, { newTab: e.ctrlKey || e.metaKey }); return; } const r = e.target.closest("[data-rm]"); if (r) { state.history = state.history.filter(h => h.id !== r.dataset.rm); saveHistory(); renderHistory(); } };
 }
-async function navigateUrl(url, pushHistory = true, loadFrame = true) {
-  const parsed = new URL(url); const t = activeTab(); if (!t) return;
-  const canonical = parsed.href;
-  if (pushHistory) { t.history = t.history.slice(0, t.histIndex + 1); t.history.push(canonical); t.histIndex = t.history.length - 1; }
-  await startJobForTab(t, canonical, loadFrame); renderTabs();
-}
-async function openPage(input, pushHistory = true) {
-  const result = classifyInput(input); if (!result) return;
-  if (result.kind === "unsupported") { renderProxyError("unsupported", new Error("This address scheme is not proxied by Veyra.")); return; }
-  if (result.kind === "search") { const t = activeTab(); if (t && pushHistory) { t.history = t.history.slice(0, t.histIndex + 1); t.history.push(`search:${result.query}`); t.histIndex = t.history.length - 1; } showSearch(result.query); return; }
-  if (result.kind === "calculator") { const t = activeTab(); if (t && pushHistory) { t.history = t.history.slice(0, t.histIndex + 1); t.history.push(`calc:${result.expression}`); t.histIndex = t.history.length - 1; } showCalculator(result.expression); return; }
-  let url; try { url = new URL(result.url).href; } catch { renderProxyError("invalid", new Error("Invalid URL.")); return; }
-  if (!/^https?:$/.test(new URL(url).protocol)) { renderProxyError("unsupported", new Error("Only HTTP(S) websites are proxied.")); return; }
-  await navigateUrl(url, pushHistory, true);
+export function clearBrowsingData({ history = true, downloads = false, cookies = false, cache = false, since = 0 } = {}) {
+  const cutoff = since ? Date.now() - since : 0;
+  if (history) { state.history = cutoff ? state.history.filter(h => new Date(h.time).getTime() < cutoff) : []; saveHistory(); }
+  if (downloads) { state.downloads = cutoff ? state.downloads.filter(h => new Date(h.time).getTime() < cutoff) : []; saveDownloads(); }
+  if (cookies && state.session) api(`/api/session/${state.session.id}/cookies`, { method: "DELETE" }).catch(() => {});
+  if (cache) state.capabilityCache.clear();
+  if (activeTab()?.view === "history") renderHistory();
 }
 
-function startPolling(t) { if (t.poll) clearInterval(t.poll); pollJob(t); t.poll = setInterval(() => pollJob(t), 700); }
-async function pollJob(t) {
-  if (!state.tabs.includes(t) || !t.jobId) return;
-  try {
-    const { body: b } = await apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`);
-    if (!state.tabs.includes(t)) return; const isActive = activeTab() === t; const c = b.counts || {};
-    if (isActive) {
-      const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
-      const w = b.workers || {};
-      const rm = b.robotMesh?.summary || {};
-      $("crawlSummary").textContent = "";
-      $("backendHealth").textContent = "Backend: online";
-      $("serverState").textContent = b.browser?.available ? "Browser" : "Proxy";
-      $("serverState").className = "server-pill" + (b.browser?.available ? " live" : "");
-      const denom = Math.max(1, (c.processed || 0) + (c.queued || 0) + 4); $("loadProgress").style.width = b.done ? "100%" : `${Math.min(88, 42 + ((c.processed || 0) / denom) * 45)}%`;
-    }
-    for (const x of b.logs || []) { if (t.remoteLogIds.has(x.id)) continue; t.remoteLogIds.add(x.id); state.logs.push({ time: new Date(x.time), level: x.level, message: `[${hostOf(t.url)}] ${x.message}` }); }
-    if (state.logs.length > 2000) state.logs.splice(0, state.logs.length - 2000);
-    if (!$("consolePanel").classList.contains("hidden")) renderConsole();
-    if (b.done) {
-      clearInterval(t.poll); t.poll = null; t.done = true;
-      await Promise.all([loadResources(t), loadLinks(t)]);
-      if (isActive) { setLoading(false); $("pageState").textContent = "Ready"; }
-      if (b.status === "challenge") addLog("warn", `[${hostOf(t.url)}] Security verification stopped the crawl.`);
-    }
-  } catch (e) {
-    if (activeTab() === t) $("backendHealth").textContent = "Backend: error";
-    addLog("error", `Crawler status error: ${e.message}`, { requestId: e.requestId });
+// ---------------------------------------------------------------- resources & links
+function sourceTab() { const t = activeTab(); return tabById(t?.sourceTabId) || state.tabs.find(x => x.view === "page" && x.url) || null; }
+async function renderResources() {
+  const src = sourceTab(); const box = $("resourceList");
+  if (!src) { box.innerHTML = `<div class="empty">Open a website first, then choose View source resources.</div>`; $("sourceCode").innerHTML = ""; return; }
+  activeTab().title = `Resources · ${hostOf(src.url)}`; renderTabsSoon();
+  // Live list from the page itself (document, scripts, styles) + the crawler's captures.
+  let live = null; try { live = await dtCall(src, "sources.list", {}, 5000); } catch {}
+  const rows = [{ id: "doc", type: "html", url: src.url, label: "Document (live DOM)" }];
+  if (live) { live.scripts.forEach(s => rows.push({ id: `script:${s.index}`, type: "js", url: s.url, inline: s.inline, index: s.index, kind: "script", label: s.inline ? `inline script #${s.index + 1}` : "" })); live.styles.forEach(s => rows.push({ id: `style:${s.index}`, type: "css", url: s.url, inline: s.inline, index: s.index, kind: "style", label: s.inline ? `inline style #${s.index + 1}` : "" })); }
+  for (const r of src.resources || []) if (!rows.some(x => x.url === r.url)) rows.push({ id: `crawl:${r.id}`, type: String(r.type || "file").slice(0, 4), url: r.url, crawlId: r.id, meta: `${r.status} · ${r.bytesLabel || ""}` });
+  const q = $("resFilter").value.toLowerCase();
+  src._resRows = rows;
+  box.innerHTML = rows.filter(r => !q || (r.url + r.label + r.type).toLowerCase().includes(q)).map(r => `<button class="res-item ${src._resSel === r.id ? "on" : ""}" data-id="${esc(r.id)}"><span class="res-type">${esc(r.type)}</span><span class="n" title="${esc(r.url)}">${esc(r.label || pathOf(r.url) || r.url)}</span></button>`).join("") || `<div class="empty">No resources match.</div>`;
+  box.onclick = e => { const b = e.target.closest("[data-id]"); if (b) selectResource(src, b.dataset.id); };
+  if (!src._resSel) selectResource(src, "doc");
+}
+function highlightCode(text, type) {
+  const lines = String(text).split("\n").slice(0, 20000);
+  const hl = type === "html" ? s => esc(s).replace(/(&lt;\/?)([a-zA-Z][\w-]*)/g, '$1<span class="tk-t">$2</span>').replace(/([\w-:]+)=(&quot;.*?&quot;)/g, '<span class="tk-a">$1</span>=<span class="tk-s">$2</span>')
+    : type === "css" ? s => esc(s).replace(/([\w-]+)(\s*:)(?!\/\/)/g, '<span class="tk-a">$1</span>$2').replace(/(\/\*.*?\*\/)/g, '<span class="tk-c">$1</span>')
+    : type === "js" ? s => esc(s).replace(/\b(const|let|var|function|return|if|else|for|while|new|class|import|export|from|await|async|try|catch|throw|this|typeof|null|undefined|true|false)\b/g, '<span class="tk-k">$1</span>').replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;)/g, '<span class="tk-s">$1</span>').replace(/(\/\/.*)$/, '<span class="tk-c">$1</span>')
+    : esc;
+  return lines.map(l => `<span class="ln">${hl(l) || " "}</span>`).join("");
+}
+// Token-aware pretty printer: keeps strings, template literals, comments and regex literals intact,
+// and never breaks inside (...) so for(;;) headers stay on one line.
+export function prettyPrint(text, type) {
+  text = String(text || "");
+  if (type === "json") try { return JSON.stringify(JSON.parse(text), null, 2); } catch {}
+  if (type === "html") return text.replace(/>\s*</g, ">\n<");
+  if (type !== "js" && type !== "css") return text;
+  const js = type === "js"; const o = []; let ind = 0, paren = 0, i = 0, lastSig = ""; const parenStack = [];
+  const WORD = /[\w$]+/y, REST = /\s*([;,)\]]|else\b|catch\b|finally\b|while\b)/y;
+  const tail = () => o.length ? o[o.length - 1] : "";
+  const trimEnd = () => { while (o.length && /^\s*$/.test(tail())) o.pop(); if (o.length) o[o.length - 1] = tail().replace(/\s+$/, ""); };
+  const nl = () => { trimEnd(); o.push("\n" + "  ".repeat(ind)); };
+  const regexOk = () => !lastSig || /[(,=:[!&|?{};+\-*%<>~^]$/.test(lastSig) || /^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/.test(lastSig);
+  while (i < text.length) {
+    const c = text[i], n = text[i + 1];
+    if (c === "/" && n === "*") { const e = text.indexOf("*/", i + 2); const end = e < 0 ? text.length : e + 2; o.push(text.slice(i, end)); i = end; continue; }
+    if (js && c === "/" && n === "/") { const e = text.indexOf("\n", i); const end = e < 0 ? text.length : e; o.push(text.slice(i, end)); i = end; nl(); while (/\s/.test(text[i] || "")) i++; continue; }
+    if (c === '"' || c === "'" || (js && c === "`")) { let j = i + 1; while (j < text.length && text[j] !== c) { if (text[j] === "\\") j++; j++; } o.push(text.slice(i, j + 1)); lastSig = c; i = j + 1; continue; }
+    if (js && c === "/" && regexOk()) { let j = i + 1, cls = false; while (j < text.length && text[j] !== "\n") { const d = text[j]; if (d === "\\") { j += 2; continue; } if (d === "[") cls = true; else if (d === "]") cls = false; else if (d === "/" && !cls) break; j++; } j++; while (/[a-z]/i.test(text[j] || "")) j++; o.push(text.slice(i, j)); lastSig = "/re/"; i = j; continue; }
+    if (c === " " || c === "\t" || c === "\n" || c === "\r") { let hadNl = false; while (/\s/.test(text[i] || "")) { if (text[i] === "\n") hadNl = true; i++; } if (hadNl && paren === 0 && !/\n\s*$/.test(tail())) nl(); else if (!/\s$/.test(tail())) o.push(" "); continue; }
+    if (c === "(" || c === "[") { paren++; o.push(c); lastSig = c; i++; continue; }
+    if (c === ")" || c === "]") { paren = Math.max(0, paren - 1); o.push(c); lastSig = c; i++; continue; }
+    if (c === "{") { trimEnd(); if (/[\w)\]"'`]$/.test(tail())) o.push(" "); o.push("{"); ind++; parenStack.push(paren); paren = 0; nl(); lastSig = c; i++; continue; }
+    if (c === "}") { ind = Math.max(0, ind - 1); paren = parenStack.length ? parenStack.pop() : 0; nl(); o.push("}"); lastSig = c; i++; if (paren === 0) { REST.lastIndex = i; const rest = REST.exec(text); if (!rest) nl(); else if (/^[a-z]/.test(rest[1])) { o.push(" "); i += rest[0].length - rest[1].length; } } continue; }
+    if (c === ";") { o.push(";"); lastSig = c; i++; if (paren === 0) nl(); continue; }
+    WORD.lastIndex = i; const w = WORD.exec(text); if (w) { o.push(w[0]); lastSig = w[0]; i += w[0].length; continue; }
+    o.push(c); lastSig = c; i++;
   }
+  return o.join("").replace(/\n[ \t]*\n+/g, "\n").trim();
 }
-async function stopJob(id, silent = false) {
-  if (!id) return;
-  try { await apiRequest(`/api/crawl/${encodeURIComponent(id)}/stop`, { method: "POST" }); if (!silent) addLog("warn", `Stop requested for job ${id}.`); refreshDev(); }
-  catch (e) { if (!silent) addLog("error", `Stop failed: ${e.message}`, { requestId: e.requestId }); }
-}
-async function reloadActive() { const t = activeTab(); if (!t) return; if (t.browserSessionId) { try { setLoading(true,30,"Reloading…"); await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'reload'})}); await refreshBrowserSurface(t,true); setLoading(false); return; } catch(e) { addLog('warn',`Browser reload failed: ${e.message}`); } } if (t.view === "browser" && t.url) await navigateUrl(t.url, false, true); else if (t.view === "search") await runSearch(t.searchQuery, true); else if (t.view === "calculator") renderCalculator(); }
-
-async function loadResources(t = activeTab()) {
-  if (!t?.jobId) return;
-  try { const { body } = await apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}/resources`); t.resources = body.resources || []; if (activeTab() === t) renderResources(); }
-  catch (e) { addLog("error", `Source list failed: ${e.message}`, { requestId: e.requestId }); }
-}
-function renderResources() {
-  const t = activeTab(), box = $("resourceList"); if (!box || !t) return;
-  if (!t.resources.length) { box.innerHTML = '<div class="empty">No captured text resources yet.</div>'; return; }
-  const q = String($("sourceTitle").dataset.filter || "").toLowerCase(); const arr = t.resources.filter(r => !q || r.url.toLowerCase().includes(q) || String(r.type).includes(q));
-  box.innerHTML = arr.map(r => `<div class="resource ${r.id === t.selected ? "active" : ""}" data-id="${r.id}"><div class="rtype">${esc(r.type)} · ${esc(String(r.status))}</div><div class="rurl">${esc(pathOf(r.url))}</div><div class="rmeta">${esc(r.url)} · ${esc(r.bytesLabel || "")}${r.truncated ? " · truncated" : ""}</div></div>`).join("");
-  box.querySelectorAll(".resource").forEach(el => el.onclick = () => selectResource(Number(el.dataset.id)));
-}
-async function selectResource(id) {
-  const t = activeTab(); if (!t) return; t.selected = id; renderResources(); const r = t.resources.find(x => x.id === id); if (!r) return;
-  $("sourceTitle").textContent = `${String(r.type).toUpperCase()} — ${pathOf(r.url)}`; $("sourceMeta").textContent = `${r.url} · ${r.status} · ${r.bytesLabel || ""}`; $("sourceCode").textContent = "Loading source…";
-  try { const { body } = await apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}/source/${encodeURIComponent(id)}`); $("sourceCode").textContent = body.source || "[empty]"; }
-  catch (e) { $("sourceCode").textContent = `SOURCE ERROR\n\n${e.stack || e.message || e}`; addLog("error", `Source fetch failed: ${e.message}`, { requestId: e.requestId }); }
-}
-async function loadLinks(t = activeTab()) {
-  if (!t?.jobId) return;
+async function selectResource(src, id) {
+  src._resSel = id; qsa("#resourceList .res-item").forEach(b => b.classList.toggle("on", b.dataset.id === id));
+  const r = (src._resRows || []).find(x => x.id === id); if (!r) return;
+  $("sourceTitle").textContent = r.label || pathOf(r.url) || r.url; $("sourceMeta").textContent = r.url + (r.meta ? ` · ${r.meta}` : "");
+  $("sourceCode").innerHTML = `<span class="ln muted">Loading…</span>`;
+  let text = "";
   try {
-    const { body } = await apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}/links?offset=0&limit=2000`); t.links = body.links || [];
-    if (activeTab() !== t) return; $("linkCount").textContent = body.total ?? t.links.length;
-    $("linkBody").innerHTML = t.links.map(l => `<tr><td><button class="link-open" data-url="${esc(l.url)}">${esc(pathOf(l.url))}</button></td><td>${esc(l.url)}</td><td>${esc(l.type)}</td><td>${esc(pathOf(l.source))}</td><td>${l.captured ? "captured" : "discovered"}</td></tr>`).join("");
-    $("linkBody").querySelectorAll(".link-open").forEach(b => b.onclick = () => openPage(b.dataset.url));
-  } catch (e) { addLog("error", `Links failed: ${e.message}`, { requestId: e.requestId }); }
+    if (r.id === "doc") text = await dtCall(src, "sources.document", {}, 8000);
+    else if (r.inline) text = await dtCall(src, "sources.inline", { kind: r.kind, index: r.index }, 8000);
+    else if (r.crawlId != null && src.jobId) text = (await api(`/api/crawl/${encodeURIComponent(src.jobId)}/source/${encodeURIComponent(r.crawlId)}`)).source || "";
+    else if (state.session) { const res = await rawFetch(proxyUrl(r.url, "resource", state.session.id)); text = await res.text(); }
+    else text = "The session has ended, so this file can no longer be fetched.";
+  } catch (e) { text = `Couldn't load this resource: ${e.message}`; }
+  src._resText = text; src._resType = r.type;
+  $("sourceCode").innerHTML = highlightCode(text, r.type);
+}
+async function renderLinks() {
+  const src = sourceTab(); const body = $("linkBody");
+  if (!src) { body.innerHTML = `<tr><td colspan="4" class="muted">Open a website first, then choose View all links.</td></tr>`; return; }
+  activeTab().title = `Links · ${hostOf(src.url)}`; renderTabsSoon();
+  let live = []; try { live = await dtCall(src, "ext.links", {}, 5000) || []; } catch {}
+  const map = new Map();
+  for (const l of live) if (/^https?:/i.test(l.href)) map.set(l.href, { url: l.href, text: l.text, source: src.url, from: "page" });
+  for (const l of src.links || []) if (!map.has(l.url)) map.set(l.url, { url: l.url, text: l.type, source: l.source, from: "crawl" });
+  const q = $("linkFilter").value.toLowerCase(), scope = $("linkScope").value, host = hostOf(src.url);
+  const rows = [...map.values()].filter(l => (!q || (l.url + l.text).toLowerCase().includes(q)) && (scope === "all" || (scope === "internal") === (hostOf(l.url) === host)));
+  src._links = rows;
+  $("linkSummary").textContent = `${rows.length.toLocaleString()} links on ${host}${src.links?.length ? ` · ${src.links.length.toLocaleString()} found by the crawler` : ""}`;
+  body.innerHTML = rows.slice(0, 3000).map(l => `<tr><td><a href="${esc(l.url)}" data-open="${esc(l.url)}">${esc(displayUrl(l.url))}</a></td><td>${esc(l.text || "")}</td><td class="muted">${esc(pathOf(l.source || ""))}</td><td><button class="icon-btn sm" title="Open in new tab" data-new="${esc(l.url)}"><svg><use href="#i-external"/></svg></button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">No links match.</td></tr>`;
+  body.onclick = e => { const a = e.target.closest("[data-open]"); if (a) { e.preventDefault(); navigate(a.dataset.open); } const n = e.target.closest("[data-new]"); if (n) newTab({ url: n.dataset.new, background: true }); };
 }
 
-// Search UI.
-async function loadSearchSuggestions(query) {
-  const list = $("searchSuggestions");
-  if (!list) return;
-  clearTimeout(state.searchSuggestTimer);
-  const q = String(query || "").trim();
-  if (!q) { list.innerHTML = ""; return; }
-  state.searchSuggestTimer = setTimeout(async () => {
-    try {
-      const { body } = await apiRequest(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 5000 });
-      const suggestions = Array.isArray(body?.suggestions) ? body.suggestions : [];
-      list.innerHTML = suggestions.map(x => `<option value="${esc(x)}"></option>`).join("");
-    } catch {}
-  }, 140);
-}
-async function loadSearchIndexStats() {
-  try {
-    const { body } = await apiRequest("/api/search/stats", { timeoutMs: 5000 });
-    const text = `${Number(body.documents || 0).toLocaleString()} pages · ${Number(body.domains || 0).toLocaleString()} domains · ${Number(body.terms || 0).toLocaleString()} terms`;
-    $("searchCoverage").textContent = `Veyra Index: ${text}`;
-    return body;
-  } catch (e) {
-    $("searchCoverage").textContent = "Veyra Index: status unavailable";
-    return null;
-  }
-}
-async function runSearch(query, reload = false, offset = 0) {
-  const t = activeTab(); if (!t) return; t.searchQuery = String(query || "").trim(); t.searchData = offset && t.searchData ? t.searchData : null; t.searchOffset = offset;
-  if (t.view !== "search") showSearch(t.searchQuery, !reload); else { $("searchInput").value = t.searchQuery; $("address").value = t.searchQuery; renderSearch(t.searchData || null); }
-  if (!t.searchQuery) { t.searchData = null; renderSearch(null); await loadSearchIndexStats(); return; }
-  $("searchStat").textContent = "Searching Veyra…"; $("searchMeta").textContent = "Searching the local Veyra index.";
-  try {
-    const { body } = await apiRequest(`/api/search?q=${encodeURIComponent(t.searchQuery)}&offset=${offset}&limit=10`);
-    if (offset && t.searchData) t.searchData.results = [...t.searchData.results, ...(body.results || [])]; else t.searchData = { ...body };
-    t.searchOffset = offset; renderSearch(t.searchData); loadSearchSuggestions(t.searchQuery);
-  } catch (e) { renderSearchError(e); addLog("error", `Search failed: ${e.message}`, { requestId: e.requestId }); }
-}
-function renderSearch(data) {
-  const t = activeTab(); if (!t || t.view !== "search") return;
-  $("searchInput").value = t.searchQuery; $("address").value = t.searchQuery;
-  loadSearchSuggestions(t.searchQuery);
-  if (!data) {
-    $("searchStat").textContent = t.searchQuery ? "Ready" : "Search";
-    $("searchMeta").textContent = "Search words, phrases, domains, or use operators like site: and intitle:.";
-    $("searchResults").innerHTML = ""; $("searchMore").classList.add("hidden"); loadSearchIndexStats(); return;
-  }
-  const count = data.total == null ? `${data.results.length}+` : Number(data.total).toLocaleString();
-  $("searchStat").textContent = `${count} result${Number(data.total) === 1 ? "" : "s"}`;
-  const idx = data.indexStats || {};
-  const indexText = `${Number(idx.documents ?? data.indexSize ?? 0).toLocaleString()} indexed pages · ${Number(idx.domains ?? 0).toLocaleString()} domains`;
-  $("searchMeta").textContent = `${data.responseTimeMs ?? "—"} ms · ${data.provider === "local" ? "Veyra Index" : esc(data.provider || "Veyra")} · ${indexText}${data.cached ? " · cached" : ""}`;
-  $("searchCoverage").textContent = `Veyra Index: ${indexText} · ${Number(idx.terms || 0).toLocaleString()} searchable terms`;
-  $("searchResults").innerHTML = (data.results || []).map((r, i) => `<article class="search-result" tabindex="0" data-result="${i}" data-url="${esc(r.url)}"><div class="result-source"><span class="result-icon">${r.favicon ? `<img src="${esc(r.favicon)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span><div><b>${esc(r.title)}</b><div class="result-url">${esc(r.displayUrl || r.url)}</div><div class="result-domain">${esc(r.domain || hostOf(r.url))}${r.indexedAt ? ` · indexed ${new Date(r.indexedAt).toLocaleDateString()}` : ""}</div></div></div><p>${esc(r.snippet || "No description available.")}</p><div class="result-actions"><span class="result-source-label">Veyra Index</span><button class="result-open" data-url="${esc(r.url)}">Open in Veyra</button></div></article>`).join("") || `<div class="empty search-empty"><b>No indexed pages matched “${esc(t.searchQuery)}”.</b><p>Veyra does not fabricate results. Open a site and let its crawl complete, or configure INDEX_SEEDS on Render to grow Veyra's index automatically.</p><button class="secondary" id="searchOpenSite">Open a site to index</button></div>`;
-  $("searchResults").querySelectorAll(".result-open").forEach(b => b.onclick = e => { e.stopPropagation(); openPage(b.dataset.url); });
-  $("searchResults").querySelectorAll(".search-result").forEach(card => { card.onclick = e => { if (!e.target.closest("button")) openPage(card.dataset.url); }; });
-  $("searchResults").querySelector("#searchOpenSite")?.addEventListener("click", () => { $("address").focus(); $("address").select(); });
-  const more = data.total == null || data.results?.length < data.total; $("searchMore").classList.toggle("hidden", !more);
-  $("searchMore").onclick = () => runSearch(t.searchQuery, false, (t.searchData?.results || []).length);
-}
-function renderSearchError(e) {
-  $("searchStat").textContent = "Search error";
-  $("searchMeta").textContent = e.code === "SEARCH_EMPTY" ? "Enter a search query." : "Veyra's index or provider could not complete the request.";
-  $("searchResults").innerHTML = `<div class="error-card"><b>Veyra Search could not complete.</b><p>${esc(e.message || e)}</p><div class="error-actions"><button class="secondary" id="searchRetry">Retry</button><button class="secondary" id="searchOpenSite">Open a site to index</button><button class="secondary" id="searchCalc">Try Calculator</button></div></div>`;
-  $("searchRetry").onclick = () => runSearch(activeTab()?.searchQuery || "", false, 0);
-  $("searchCalc").onclick = () => showCalculator(activeTab()?.searchQuery || "");
-  $("searchOpenSite").onclick = () => { $("address").focus(); $("address").select(); };
-  $("searchMore").classList.add("hidden");
-  loadSearchIndexStats();
-}
-
-function renderCalculator() {
-  const t = activeTab(); if (!t || t.view !== "calculator") return;
-  const input = String($("calcInput").value || t.calcExpression || "").trim(); t.calcExpression = input; $("address").value = input || "Veyra Calculator";
-  if (!input) { $("calcResult").textContent = "0"; $("calcStatus").textContent = "Supports + − × ÷ % parentheses and negative numbers."; return; }
-  try { const value = evaluateCalc(input); $("calcResult").textContent = formatCalc(value); $("calcStatus").textContent = "Calculated locally. No remote page was requested."; }
-  catch (e) { $("calcResult").textContent = "—"; $("calcStatus").textContent = e.message || "Invalid expression."; }
-}
-function calcButtonInsert(value) { const input = $("calcInput"); const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? start; input.value = input.value.slice(0, start) + value + input.value.slice(end); input.focus(); input.selectionStart = input.selectionEnd = start + value.length; renderCalculator(); }
-
-// Console / dev.
+// ---------------------------------------------------------------- admin: Veyra console + /dev
 function renderConsole() {
-  const filter = $("consoleFilter")?.value || "all"; const order = { error: 0, warn: 1, info: 2, debug: 3 }; const min = order[settings.consoleVerbosity] ?? 3;
-  const rows = state.logs.filter(x => (filter === "all" || x.level === filter) && (order[x.level] ?? 2) <= min);
-  $("consoleLog").innerHTML = rows.length ? rows.map(x => `<div class="log ${esc(x.level)}"><span class="time">${new Date(x.time).toLocaleTimeString([], { hour12:false })}</span><span class="level">${esc(x.level.toUpperCase())}</span><span class="msg">${esc(x.message)}</span></div>`).join("") : '<div class="empty">No matching logs.</div>';
+  if (!isAdmin()) return;
+  const f = $("consoleFilter").value, q = $("consoleSearch").value.toLowerCase();
+  const rows = logs.filter(x => (f === "all" || x.level === f) && (!q || x.message.toLowerCase().includes(q))).slice(-1500);
+  $("consoleLog").innerHTML = rows.map(x => `<div class="log-row ${esc(x.level)}"><time>${new Date(x.time).toLocaleTimeString([], { hour12: false })}</time><span class="lv">${esc(x.level)}</span><span class="msg">${esc(x.message)}</span></div>`).join("") || `<div class="empty">No log entries.</div>`;
   $("consoleLog").scrollTop = $("consoleLog").scrollHeight;
 }
-function fmtBytes(n) { n = Number(n) || 0; if (n < 1024) return `${n} B`; if (n < 1048576) return `${(n/1024).toFixed(1)} KB`; if (n < 1073741824) return `${(n/1048576).toFixed(2)} MB`; return `${(n/1073741824).toFixed(2)} GB`; }
-function devPct(a, b) { return b > 0 ? Math.max(0, Math.min(100, a / b * 100)) : 0; }
+hooks.onLog = debounceRaf(() => { if (activeTab()?.view === "console") renderConsole(); });
+function debounceRaf(fn) { let r = 0; return () => { if (r) return; r = requestAnimationFrame(() => { r = 0; fn(); }); }; }
+async function renderDev() {
+  if (!isAdmin()) return;
+  const box = $("devPanel");
+  if (!box.dataset.ready) {
+    box.dataset.ready = "1";
+    box.innerHTML = `<header class="page-head row"><div><h1>Veyra dev</h1><p class="muted">Server diagnostics. Admin only.</p></div><div class="head-actions"><label class="switch-row"><span>Auto refresh</span><input type="checkbox" class="switch" id="devAuto" checked></label><button class="btn ghost" id="devRefresh">Refresh</button></div></header>
+      <div class="dev-grid" id="devStats"></div>
+      <div class="s-section"><h2>Sessions</h2><div class="table-wrap"><table class="table"><thead><tr><th>Session</th><th>Age</th><th>Remaining</th><th>Requests</th><th>Cookies</th><th>User</th></tr></thead><tbody id="devSessions"></tbody></table></div></div>
+      <div class="s-section"><h2>Crawl jobs</h2><div class="table-wrap"><table class="table"><thead><tr><th>Job</th><th>Host</th><th>Status</th><th>Processed</th><th>Links</th><th></th></tr></thead><tbody id="devJobs"></tbody></table></div></div>
+      <div class="s-section"><h2>Recent server requests</h2><div class="table-wrap" style="max-height:340px"><table class="table"><thead><tr><th>Time</th><th>Method</th><th>Path</th><th>Status</th><th>ms</th></tr></thead><tbody id="devReqs"></tbody></table></div></div>
+      <div class="s-section"><h2>Runtime config</h2><pre class="json-view" id="devConfig"></pre></div>`;
+    $("devRefresh").onclick = renderDev; $("devAuto").onchange = renderDev;
+  }
+  clearInterval(state.devTimer);
+  if ($("devAuto").checked) state.devTimer = setInterval(() => { if (activeTab()?.view === "dev") refreshDev(); else clearInterval(state.devTimer); }, Math.max(1000, settings.devRefreshMs || 1500));
+  refreshDev();
+}
 async function refreshDev() {
-  const t = activeTab(); if (!t?.jobId) { renderDevEmpty(); return; }
+  const [sys, sess, jobs, reqs, cfg] = await Promise.allSettled([api("/api/debug/system"), api("/api/sessions"), api("/api/debug/jobs"), api("/api/debug/requests?limit=120"), api("/api/config")]);
+  if (sys.status === "rejected") { $("devStats").innerHTML = `<div class="stat-card"><span>Error</span><b>${esc(sys.reason.message)}</b></div>`; return; }
+  const s = sys.value, se = sess.value || {};
+  const cards = [["Uptime", `${Math.round(s.uptimeSec / 60)} min`], ["Memory (RSS)", fmtBytes(s.memory?.rss)], ["Heap", `${fmtBytes(s.memory?.heapUsed)} / ${fmtBytes(s.memory?.heapTotal)}`], ["Active jobs", s.jobs?.active ?? "—"], ["Sessions", se.size ?? se.active ?? (se.sessions || []).length ?? "—"], ["Session limit", se.timeLimitMs ? fmtClock(se.timeLimitMs) : "none"], ["Chromium sessions", se.browser?.sessions ?? s.browser?.sessions ?? 0], ["VPN connections", se.vpnConnections ?? 0], ["Search pages", Number(s.searchIndexEntries || 0).toLocaleString()], ["Proxy cache", s.proxyCacheEntries ?? 0], ["Node", s.nodeVersion], ["Role", s.processRole]];
+  $("devStats").innerHTML = cards.map(([a, b]) => `<div class="stat-card"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join("");
+  $("devSessions").innerHTML = (se.sessions || se.list || []).slice(0, 100).map(x => `<tr><td class="mono">${esc(String(x.id || x.sessionId || "").slice(0, 12))}</td><td>${x.ageMs != null ? fmtClock(x.ageMs) : esc(x.createdAt || "")}</td><td>${x.remainingMs != null ? fmtClock(x.remainingMs) : "—"}</td><td>${esc(x.requests ?? "")}</td><td>${esc(x.cookies ?? "")}</td><td>${esc(x.userId || "guest")}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No active sessions.</td></tr>`;
+  $("devJobs").innerHTML = (jobs.value?.jobs || []).map(j => `<tr><td class="mono">${esc(j.id.slice(0, 8))}</td><td>${esc(hostOf(j.url))}</td><td>${esc(j.status)}</td><td>${esc(j.counts?.processed ?? "")}</td><td>${esc(j.linkCount ?? "")}</td><td>${j.done ? "" : `<button class="btn ghost sm" data-stop="${esc(j.id)}">Stop</button>`}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">No jobs.</td></tr>`;
+  $("devJobs").onclick = e => { const b = e.target.closest("[data-stop]"); if (b) stopJob(b.dataset.stop).then(refreshDev); };
+  $("devReqs").innerHTML = (reqs.value?.requests || []).slice(0, 120).map(r => `<tr><td>${new Date(r.time || r.startedAt || Date.now()).toLocaleTimeString([], { hour12: false })}</td><td>${esc(r.method)}</td><td class="mono" style="max-width:520px">${esc(r.path || r.url)}</td><td>${esc(r.status)}</td><td>${esc(r.ms ?? r.durationMs ?? "")}</td></tr>`).join("");
+  $("devConfig").textContent = JSON.stringify(cfg.value?.config || cfg.value || {}, null, 2);
+}
+
+// ---------------------------------------------------------------- VPN (session wide)
+export async function refreshVpnStatus() {
   try {
-    const [jobR, robotsR, sysR, reqR] = await Promise.all([apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}`), apiRequest(`/api/crawl/${encodeURIComponent(t.jobId)}/robots?limit=48`), apiRequest("/api/debug/system"), apiRequest("/api/debug/requests?limit=200")]);
-    const j = jobR.body; const robotData = robotsR.body || {}; const s = sysR.body;
-    $("devJobGrid").innerHTML = [`Status|${j.statusText}`, `Root|${j.url}`, `Job|${j.id}`, `Processed|${j.counts.processed}`, `Queue|${j.counts.queued}`, `Active requests|${j.counts.active}`, `HTML/CSS/JS/Data/Assets|${j.counts.htmlPages} / ${j.counts.css} / ${j.counts.js} / ${j.counts.data || 0} / ${j.counts.assets || 0}`, `Logical robots|${j.workers?.logicalRobots || j.limits?.logicalRobots || 0}`, `Network slots|${j.workers?.networkSlots || j.limits?.maxActiveFetches || 0}`, `Available network slots|${j.workers?.availableNetworkSlots ?? "—"}`, `Bytes scanned|${fmtBytes(j.counts.bytesScanned)}`, `Bytes stored|${fmtBytes(j.counts.bytesStored)}`, `Retries|${j.counts.retries}`, `Challenges|${j.counts.challenges}`, `Host limit|${j.limits.perHostConcurrency}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
-    $("devBarResources").style.width = devPct(j.counts.processed, j.limits.maxResources) + "%"; $("devBarResourcesLabel").textContent = `${j.counts.processed} / ${j.limits.maxResources}`;
-    $("devBarScan").style.width = devPct(j.counts.bytesScanned, j.limits.maxScanBytes) + "%"; $("devBarScanLabel").textContent = `${fmtBytes(j.counts.bytesScanned)} / ${fmtBytes(j.limits.maxScanBytes)}`;
-    $("devBarHtml").style.width = devPct(j.workers.html.active, j.workers.html.max) + "%"; $("devBarHtmlLabel").textContent = `${j.workers.html.active} / ${j.workers.html.max}`;
-    $("devBarAsset").style.width = devPct(j.workers.asset.active, j.workers.asset.max) + "%"; $("devBarAssetLabel").textContent = `${j.workers.asset.active} / ${j.workers.asset.max}`;
-    $("devRawJson").textContent = JSON.stringify(j, null, 2);
-    const rm = robotData.summary || j.robotMesh?.summary || {};
-    $("robotMeshSummary").textContent = `${rm.logicalRobots || 0} robots · ${rm.activeRobots || 0} active · ${rm.multitaskingRobots || 0} multitasking · ${rm.helpAccepted || 0} help accepted`;
-    $("robotMeshGrid").innerHTML = [`Logical fleet|${rm.logicalRobots || 0}`, `Active robots|${rm.activeRobots || 0}`, `Multitasking|${rm.multitaskingRobots || 0}`, `Idle|${rm.idleRobots || 0}`, `Queued robot tasks|${rm.queuedRobotTasks || 0}`, `Global page queue|${rm.globalPageQueue || 0}`, `Global resource queue|${rm.globalResourceQueue || 0}`, `Network|${rm.networkActive || 0} / ${rm.networkLimit || 0}`, `Help requests|${rm.helpRequests || 0}`, `Accepted|${rm.helpAccepted || 0}`, `Declined|${rm.helpDeclined || 0}`, `Tasks shared|${rm.helpGiven || 0}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
-    $("robotMeshBody").innerHTML = (robotData.robots || []).map(r => `<tr><td class="mono">${esc(r.id)}</td><td>${esc(r.status)}</td><td>${r.activeTasks}</td><td>${r.queuedTasks}</td><td>${r.completed}</td><td>${r.helpRequests}</td><td>${r.helpAccepted}</td><td>${r.helpDeclined}</td><td>${r.helpGiven}</td><td>${esc(r.lastTask?.url || "—")}</td></tr>`).join("") || '<tr><td colspan="10" class="empty">No robot activity to display.</td></tr>';
-    const events = (robotData.events || []).slice().reverse().filter(e => String(e.type || "").startsWith("help-"));
-    $("robotHelpBody").innerHTML = events.map(e => {
-      const target = e.target || "—"; const requester = e.requester || "—";
-      const detail = e.task ? `${e.task.type || "task"}: ${e.task.url || ""}` : e.accepted != null ? (e.accepted ? "accepted" : "declined") : (e.candidates ? `${e.candidates.length} candidates inspected` : "");
-      return `<tr><td>${new Date(e.time).toLocaleTimeString([], {hour12:false})}</td><td>${esc(e.type)}</td><td class="mono">${esc(requester)}</td><td class="mono">${esc(target)}</td><td>${esc(detail)}</td></tr>`;
-    }).join("") || '<tr><td colspan="5" class="empty">No help negotiations yet.</td></tr>';
-    $("browserEngineGrid").innerHTML = [`Fetch slots|${s.network?.browserActive ?? 0} / ${s.network?.browserLimit ?? "—"}`, `Waiting browser requests|${s.network?.browserQueued ?? 0}`, `In-flight browser keys|${s.browser?.inFlight ?? 0}`, `Deduplicated|${s.browser?.deduped ?? 0}`, `Completed|${s.browser?.completed ?? 0}`, `Failed|${s.browser?.failed ?? 0}`, `Per-host limit|${s.network?.browserPerHost ?? "—"}`, `Sessions|${s.browser?.sessions ?? 0}`, `Proxy cache|${s.browser?.cacheEntries ?? s.proxyCacheEntries ?? 0}`, `Warm slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
-    await refreshDevJobs();
-    $("devSystemGrid").innerHTML = [`Uptime|${s.uptimeSec}s`, `Node|${s.nodeVersion}`, `Process role|${s.processRole}`, `RSS|${fmtBytes(s.memory.rss)}`, `Heap|${fmtBytes(s.memory.heapUsed)} / ${fmtBytes(s.memory.heapTotal)}`, `Active jobs|${s.jobs.active}`, `Crawler network slots|${s.network?.crawlerActive ?? 0} / ${s.network?.crawlerLimit ?? "—"}`, `Crawler logical robots|${s.network?.logicalRobots ?? "—"}`, `Crawler queued fetch waiters|${s.network?.crawlerQueued ?? 0}`, `Browser network slots|${s.network?.browserActive ?? 0} / ${s.network?.browserLimit ?? "—"}`, `Browser queued requests|${s.network?.browserQueued ?? 0}`, `Warm network slots|${s.network?.warmActive ?? 0} / ${s.network?.warmLimit ?? "—"}`, `Warm logical robots|${s.network?.warmLogicalRobots ?? "—"}`, `Search pages|${s.searchIndexEntries}`, `Search terms|${s.searchIndexTerms ?? "—"}`, `Search domains|${s.searchIndexDomains ?? "—"}`, `Proxy cache|${s.proxyCacheEntries}`, `Requests logged|${s.requestsLogged}`].map(x => { const [a,b]=x.split("|"); return `<div><span>${esc(a)}</span><b>${esc(b)}</b></div>`; }).join("");
-    renderServerRequests(reqR.body.requests || []);
-  } catch (e) { $("devJobGrid").innerHTML = `<div class="empty dev-error">Backend diagnostics failed: ${esc(e.message || e)}</div>`; }
+    const st = await api("/api/vpn/status", { timeoutMs: 8000 }); state.vpn.status = st;
+    if (state.session) { const si = await api(`/api/vpn/session?sid=${encodeURIComponent(state.session.id)}`, { timeoutMs: 8000 }); state.vpn.connected = !!si.connected; state.vpn.profile = si.profile || null; state.vpn.info = si; }
+    else { state.vpn.connected = false; state.vpn.profile = null; }
+  } catch (e) { state.vpn.error = e.message; }
+  $("vpnBtn").classList.toggle("on", state.vpn.connected); updateIdentity();
+  return state.vpn;
 }
-async function refreshDevJobs() {
-  try { const { body } = await apiRequest("/api/debug/jobs"); $("devJobsBody").innerHTML = (body.jobs || []).map(j => `<tr><td>${esc(j.id.slice(0,8))}</td><td>${esc(hostOf(j.url))}</td><td>${esc(j.status)}</td><td>${esc(String(j.counts.processed))}</td><td>${esc(String(j.linkCount))}</td><td>${j.done ? "" : `<button class="tiny secondary job-stop" data-job="${esc(j.id)}">Stop</button>`}</td></tr>`).join("") || '<tr><td colspan="6" class="empty">No jobs.</td></tr>'; $("devJobsBody").querySelectorAll(".job-stop").forEach(b => b.onclick = () => stopJob(b.dataset.job)); }
-  catch {}
+export async function connectVpn(profileId, { quiet = false } = {}) {
+  const s = await ensureSession();
+  const r = await api("/api/vpn/connect", { json: { sessionId: s.id, profileId } });
+  state.vpn.connected = true; state.vpn.profile = r.profile || null;
+  if (!quiet) toast(`VPN connected · ${r.profile?.name || profileId}`);
+  reloadPagesAfterVpn(); $("vpnBtn").classList.toggle("on", true); updateIdentity();
 }
-function renderServerRequests(rows) { state.serverNetLog = rows; }
-function renderDevNet() {
-  const body = $("devNetBody"); if (!body) return; const f = state.devNetFilter;
-  const rows = state.netLog.slice().reverse().filter(x => f === "all" ? true : f === "err" ? x.status === "ERR" || Number(x.status) >= 400 : Number(x.status) < 400).slice(0, 120);
-  body.innerHTML = rows.length ? rows.map(x => `<tr class="${x.status === "ERR" || Number(x.status) >= 400 ? "neterr" : ""}"><td>${new Date(x.time).toLocaleTimeString([], {hour12:false})}</td><td>${esc(x.method)}</td><td>${esc(x.path)}</td><td>${esc(String(x.status))}</td><td>${x.ms}</td><td>${esc(x.requestId || "")}</td></tr>`).join("") : '<tr><td colspan="6" class="empty">No requests yet.</td></tr>';
+export async function disconnectVpn() {
+  if (!state.session) return;
+  await api("/api/vpn/disconnect", { json: { sessionId: state.session.id } });
+  state.vpn.connected = false; state.vpn.profile = null; toast("VPN disconnected"); reloadPagesAfterVpn(); $("vpnBtn").classList.toggle("on", false); updateIdentity();
 }
-function renderDevEmpty() {
-  $("devJobGrid").innerHTML = '<div class="empty">No active crawl in this tab. Open a public website to start one.</div>';
-  ["devBarResources","devBarScan","devBarHtml","devBarAsset"].forEach(id => $(id).style.width = "0%");
-  $("devRawJson").textContent = "—";
-  if ($("robotMeshSummary")) $("robotMeshSummary").textContent = "Waiting for robot telemetry…";
-  if ($("robotMeshBody")) $("robotMeshBody").innerHTML = '<tr><td colspan="10" class="empty">No active crawl.</td></tr>';
-  if ($("robotHelpBody")) $("robotHelpBody").innerHTML = '<tr><td colspan="5" class="empty">No active crawl.</td></tr>';
-  if ($("browserEngineGrid")) $("browserEngineGrid").innerHTML = '<div class="empty">Open a page to see browser network scheduler activity.</div>';
-  refreshDevJobs();
+function reloadPagesAfterVpn() { for (const t of state.tabs) if (t.view === "page" && t.url) { if (isRemote(t)) { stopBrowserSession(t).then(() => loadInTab(t, t.url)); } else if (activeTab() === t) loadInTab(t, t.url); else t.needsReload = true; } }
+async function renderVpnPanel() {
+  const box = $("vpnPanel"); box.innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
+  const v = await refreshVpnStatus(); const st = v.status;
+  if (!st) { box.innerHTML = `<div class="empty"><svg><use href="#i-vpn"/></svg><b>Veyra VPN is unavailable</b><span>${esc(v.error || "")}</span></div>`; return; }
+  const profiles = st.profiles || [];
+  const cur = v.profile;
+  box.innerHTML = `<div class="vpn-hero"><div class="vpn-orb ${v.connected ? "on" : ""}"><svg><use href="#i-vpn"/></svg></div><div><h2>${v.connected ? "Protected" : "Not connected"}</h2><p class="muted">${v.connected ? `Traffic in this session leaves through <b>${esc(cur?.name || "")}</b>${cur?.region ? ` · ${esc(cur.region)}` : ""}${cur?.health?.exitIp ? ` · exit ${esc(cur.health.exitIp)}` : ""}.` : !st.enabled ? "The VPN is turned off on this server." : !profiles.length ? "No VPN exits are configured on the server yet." : "Choose an exit below. Every tab in this session will use it."}</p></div><span class="spacer"></span>${v.connected ? `<button class="btn ghost" id="vpnRotate">Rotate exit</button><button class="btn danger" id="vpnOff">Disconnect</button>` : ""}</div>
+    <div class="s-section"><h2>Exits</h2><p class="muted">${st.killSwitch ? "Kill switch is on: if a tunnel drops, requests are blocked instead of leaking through the server's own IP." : "Kill switch is off on this server."}${st.failover ? " Failover moves you to a healthy exit automatically." : ""}</p>
+    <div class="vpn-list">${profiles.map(p => `<div class="vpn-row ${cur?.id === p.id ? "on" : ""}"><span class="pill ${p.health?.healthy === false ? "err" : p.health?.healthy ? "ok" : ""}">${esc(p.protocol || p.type)}</span><div class="n"><b>${esc(p.name)}</b><small>${esc([p.region, p.country, p.provider].filter(Boolean).join(" · ") || "Server exit")}${p.health?.latencyMs ? ` · ${p.health.latencyMs} ms` : ""}</small></div>${cur?.id === p.id ? `<span class="pill ok">Connected</span>` : `<button class="btn ghost sm" data-connect="${esc(p.id)}" ${st.enabled ? "" : "disabled"}>Connect</button>`}<button class="btn ghost sm" data-test="${esc(p.id)}">Test</button></div>`).join("") || `<div class="empty"><span>Set VPN_PROFILES_JSON, WIREGUARD_CONFIG or VPN_PROXY_SERVER on Render to add exits.</span></div>`}</div></div>
+    <div class="s-section"><h2>Automatic connection</h2><div class="s-card"><div class="s-row"><div class="s-label"><b>Connect new sessions automatically</b><span>Uses the chosen exit as soon as a session starts.</span></div><div class="s-ctl"><select class="input" id="vpnAuto"><option value="">Off</option>${profiles.map(p => `<option value="${esc(p.id)}" ${settings.vpnAutoProfile === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div></div></div></div>`;
+  box.onclick = async e => { const b = e.target.closest("button"); if (!b) return; b.disabled = true;
+    try {
+      if (b.dataset.connect) await connectVpn(b.dataset.connect);
+      else if (b.dataset.test) { const r = await api("/api/vpn/test", { json: { profileId: b.dataset.test }, timeoutMs: 20000 }); toast(`Exit responded${r.exitIp ? ` · IP ${r.exitIp}` : ""}${r.latencyMs ? ` · ${r.latencyMs} ms` : ""}`); }
+      else if (b.id === "vpnOff") await disconnectVpn();
+      else if (b.id === "vpnRotate") { const r = await api("/api/vpn/rotate", { json: { sessionId: state.session.id } }); toast(`Now using ${r.profile?.name || "a new exit"}`); reloadPagesAfterVpn(); }
+    } catch (err) { toast(err.message, { kind: "err" }); }
+    renderVpnPanel(); };
+  $("vpnAuto").onchange = e => { settings.vpnAutoProfile = e.target.value; saveSettings(); toast(e.target.value ? "New sessions will connect automatically" : "Automatic VPN off"); };
 }
-function startDevAuto() { if (state.devTimer) clearInterval(state.devTimer); if ($("devAutoRefresh")?.checked) state.devTimer = setInterval(refreshDev, Math.max(500, Number(settings.devRefreshMs) || 1500)); }
+export { renderVpnPanel };
 
-async function health() {
-  try { await apiRequest("/health", { timeoutMs: 8000 }); $("backendHealth").textContent = "Backend: online"; }
-  catch (e) { $("backendHealth").textContent = "Backend: offline"; addLog("error", `Backend health check failed: ${e.message}`, { requestId: e.requestId }); }
+// ---------------------------------------------------------------- page messages
+function tabForSource(src) {
+  for (const t of state.tabs) { const f = frameFor(t); if (!f) continue; let w = src; for (let i = 0; i < 6 && w; i++) { if (w === f.contentWindow) return t; try { if (w === w.parent) break; w = w.parent; } catch { break; } } }
+  return null;
 }
-function saveBookmark() { const t = activeTab(); if (!t?.url) return; if (state.bookmarked.has(t.url)) state.bookmarked.delete(t.url); else state.bookmarked.add(t.url); safeStorageSet("veyra-bookmarks", JSON.stringify([...state.bookmarked])); updateIdentity(t.url); addLog("info", state.bookmarked.has(t.url) ? `Bookmarked ${t.url}` : "Removed bookmark."); }
-function toggleMenu() { $("menuPanel").classList.toggle("hidden"); }
-function closeMenu() { $("menuPanel").classList.add("hidden"); }
-
-function renderProxyError(kind, error) {
-  const t = activeTab(); if (t) t.view = "browser";
-  showBrowser(); setLoading(false);
-  const title = kind === "server" ? "Veyra could not reach the server" : kind === "unsupported" ? "This page cannot be proxied safely" : kind === "security" ? "This site requires its own security verification" : kind === "invalid" ? "That address is not valid" : "The page could not be displayed";
-  const detail = error?.message || "An unknown error occurred.";
-  const direct = t?.url ? `<a class="error-direct" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Open directly</a>` : "";
-  getOrCreateFrame(t).srcdoc = `<main class="veyra-frame-error"><div class="error-icon">V</div><div class="eyebrow">VEYRA BROWSER</div><h1>${esc(title)}</h1><p>${esc(detail)}</p><div class="error-actions"><button onclick="parent.postMessage({type:'veyra:retry'},'*')">Retry</button>${direct}</div></main>`;
-  $("pageState").textContent = title; $("serverState").textContent = kind === "security" ? "Challenge" : "Error"; $("serverState").className = "server-pill warn";
-}
-
-async function submitProxyForm(message) {
-  const frame = activeFrame(); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(message.url, "view", activeTab()?.proxySessionId || ""); form.target = frame.name; form.style.display = "none";
-  for (const [name, value] of message.entries || []) { const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input); }
-  document.body.appendChild(form); form.submit(); form.remove();
-}
-async function handlePageMessage(e) {
-  const d = e.data || {}; if (!d || typeof d !== "object" || !String(d.type || "").startsWith("veyra:")) return;
-  try { if (e.origin !== new URL(API).origin) return; } catch { return; }
-  const t = activeTab(); if (!t) return;
-  if (d.sessionId && /^[A-Za-z0-9_-]{16,80}$/.test(String(d.sessionId))) t.proxySessionId = String(d.sessionId);
-  if (d.type === "veyra:retry") { await reloadActive(); return; }
-  if (d.type === "veyra:open" && d.url) { const nt = makeTab(); nt.proxySessionId = d.sessionId || t.proxySessionId || ""; state.tabs.push(nt); state.activeId = nt.id; renderTabs(); await openPage(d.url); return; }
-  if (d.type === "veyra:unsupported") { addLog("warn", d.reason || "Unsupported page operation.", { pageUrl: d.pageUrl || t.url }); return; }
-  if (d.type === "veyra:page-console") { addLog(d.level || "info", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || ""}`, { pageUrl: d.pageUrl || t.url, tabId: t.id, jobId: t.jobId }); return; }
-  if (d.type === "veyra:page-error") { addLog("error", `[page:${hostOf(d.pageUrl || t.url)}] ${d.message || "Resource error"} @ ${d.url || "inline"}:${d.line || "?"}`, { pageUrl: d.pageUrl || t.url, line: d.line, column: d.column, stack: d.stack || "", tabId: t.id, jobId: t.jobId }); return; }
-  if (d.type === "veyra:inspect-state") { state.inspectMode = !!d.enabled; return; }
-  if (d.type === "veyra:inspect-hover" || d.type === "veyra:inspect-select") { renderInspectData(d); return; }
-  if (d.type === "veyra:find-result") { $("findCount") && ($("findCount").textContent = `${Number(d.matches || 0).toLocaleString()} ${Number(d.matches || 0) === 1 ? "match" : "matches"}`); return; }
-  if (d.type === "veyra:browser-network") { addLog(d.level || "debug", `[network:${hostOf(d.pageUrl || t.url)}] ${d.method || "GET"} ${d.url || ""} ${d.status || ""}`, { pageUrl: d.pageUrl || t.url }); return; }
-  if (d.type === "veyra:form" && d.url) { await submitProxyForm(d); return; }
+async function handleMessage(e) {
+  const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
+  if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
+  if (e.origin !== API_ORIGIN) return;
+  const t = tabForSource(e.source) || activeTab(); if (!t) return;
+  if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
+  if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
+  if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
+  if (d.type === "veyra:page-console" || d.type === "veyra:page-error") {
+    const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
+    t.console.push(entry); if (t.console.length > 2000) t.console.splice(0, t.console.length - 2000);
+    hooks.dt?.onConsole(t, entry);
+    if (entry.level === "error") addLog("warn", `[page:${hostOf(d.pageUrl || t.url)}] ${entry.message.slice(0, 400)}`);
+    return;
+  }
+  if (d.type === "veyra:browser-network") { t.network.push(d); if (t.network.length > 1500) t.network.splice(0, t.network.length - 1500); hooks.dt?.onNetwork(t, d); return; }
+  if (d.type === "veyra:find-result") { const n = Number(d.matches || 0); $("findCount").textContent = n ? `${n} match${n === 1 ? "" : "es"}` : "No matches"; return; }
+  if (d.type === "veyra:unsupported") { toast(d.reason || "That action isn't supported through the proxy", { kind: "warn" }); return; }
+  if (d.type === "veyra:open" && d.url) { const u = canonical(d.url); if (u) newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return; }
+  if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
+  if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
   if (d.type === "veyra:navigate" && d.url) {
-    const target = canonicalizePageMessageUrl(d.url); if (!target) return;
-    const same = t.url === target || t.url?.split("#")[0] === target.split("#")[0];
-    if (d.source === "history.pushState" || d.source === "history.replaceState") {
-      t.url = target; t.consolePageUrl = target; if (d.source.endsWith("pushState")) { t.history = t.history.slice(0, t.histIndex + 1); t.history.push(target); t.histIndex = t.history.length - 1; }
-      if (d.title) t.title = d.title; if (d.favicon) t.favicon = d.favicon; updateIdentity(t.url); renderTabs(); return;
-    }
-    if (d.title) t.title = d.title; if (d.favicon) t.favicon = d.favicon;
-    if (!same || t.view !== "browser") {
-      t.history = t.history.slice(0, t.histIndex + 1); t.history.push(target); t.histIndex = t.history.length - 1;
-      const currentFrameCanonical = parseProxyCanonical(activeFrame()?.src || "");
-      if (currentFrameCanonical === target) await startJobForTab(t, target, false); else await startJobForTab(t, target, true);
-      renderTabs();
-    } else { updateIdentity(target); renderTabs(); }
+    const target = canonical(d.url); if (!target) return;
+    if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
+    if (String(d.source).startsWith("history.")) { t.url = target; if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
+    else if (d.source === "document-navigation") {
+      const same = t.url && t.url.split("#")[0] === target.split("#")[0];
+      if (!same) { pushTabHistory(t, target); t.url = target; recordHistory("page", target, t.title); if (t.jobId && !t.done) stopJob(t.jobId); t.jobId = null; if (!settings.preserveLog) { t.console = []; t.network = []; } hooks.dt?.onNavigate(t); if (state.session) api("/api/open", { json: { url: target, sessionId: state.session.id } }).then(b => { t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); }).catch(() => {}); }
+      else { const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); } }
+    } else { t.url = target; }
+    if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
+    renderTabsSoon();
   }
 }
-function parseProxyCanonical(src) { try { const u = new URL(src); return u.searchParams.get("url") || ""; } catch { return ""; } }
-function canonicalizePageMessageUrl(value) {
+function canonical(value) {
   let raw = String(value || "").trim();
   for (let i = 0; i < 3; i++) {
-    try {
-      const u = new URL(raw);
-      if ((u.pathname === "/api/view" || u.pathname === "/api/resource" || u.pathname === "/api/download")) {
-        const embedded = u.searchParams.get("url") || u.searchParams.get("target") || u.searchParams.get("u");
-        if (embedded) { raw = embedded; continue; }
-      }
-      if (/^https?:$/i.test(u.protocol)) return u.href;
-      return "";
-    } catch {
-      try { const decoded = decodeURIComponent(raw); if (decoded !== raw && /^https?:\/\//i.test(decoded)) { raw = decoded; continue; } } catch {}
-      return "";
-    }
+    try { const u = new URL(raw, API); if (u.origin === API_ORIGIN && /^\/api\/(view|resource|download)$/.test(u.pathname)) { const inner = u.searchParams.get("url"); if (inner) { raw = inner; continue; } } return /^https?:$/.test(u.protocol) ? u.href : ""; }
+    catch { return ""; }
   }
-  try { const u = new URL(raw); return /^https?:$/i.test(u.protocol) ? u.href : ""; } catch { return ""; }
+  return "";
+}
+function submitForm(t, msg) {
+  if (!state.session) return;
+  const f = getOrCreateFrame(t); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id); form.target = f.name; form.style.display = "none";
+  for (const [n, v] of msg.entries || []) form.appendChild(Object.assign(document.createElement("input"), { type: "hidden", name: n, value: v }));
+  document.body.appendChild(form); form.submit(); form.remove(); if (activeTab() === t) setLoading(true, 50, "Submitting…");
+}
+function pushKeybindings(t) { const list = hooks.forwardableCombos?.(); if (list) pageCommand("veyra:keys", { combos: list }, t); }
+window.addEventListener("message", e => { handleMessage(e).catch(err => addLog("error", `Message handling failed: ${err.message}`)); });
+
+// ---------------------------------------------------------------- wiring
+function wire() {
+  $("newTabBtn").onclick = () => newTab();
+  $("backBtn").onclick = back; $("forwardBtn").onclick = forward; $("reloadBtn").onclick = () => reload(); $("homeBtn").onclick = goHome;
+  $("starBtn").onclick = toggleBookmark; $("zoomChip").onclick = () => setZoom(1);
+  $("downloadBtn").onclick = () => openInternal("downloads");
+  $("vpnBtn").onclick = () => hooks.openVpnPopover?.($("vpnBtn"));
+  $("sessionPill").onclick = () => hooks.openSessionPopover?.($("sessionPill"));
+  $("sessionRestart").onclick = async () => { $("sessionOverlay").classList.add("hidden"); try { await ensureSession(); toast("New session started"); } catch (e) { toast(e.message, { kind: "err" }); } const last = state.history.find(h => h.kind === "page"); if (last) { /* offer the last page again */ toast(`Open ${hostOf(last.url)} again?`, { action: () => go(last.url), actionLabel: "Open", ms: 6000 }); } };
+  $("sessionHome").onclick = () => { $("sessionOverlay").classList.add("hidden"); goHome(); };
+  $("searchForm").onsubmit = e => { e.preventDefault(); const q = $("searchInput").value.trim(); const t = activeTab(); pushTabHistory(t, "veyra:search:" + q); t.searchQuery = q; t.title = q ? `${q} - Veyra Search` : "Veyra Search"; renderTabs(); syncRoute(); runSearch(q); };
+  $("searchInput").oninput = e => loadSuggestions(e.target.value);
+  $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
+  $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();
+  $("resFilter").oninput = () => renderResources();
+  $("sourceCopy").onclick = () => copyText(sourceTab()?._resText || "");
+  $("sourcePretty").onclick = () => { const s = sourceTab(); if (!s?._resText) return; s._resText = prettyPrint(s._resText, s._resType); $("sourceCode").innerHTML = highlightCode(s._resText, s._resType); };
+  $("linkFilter").oninput = debounceRaf(renderLinks); $("linkScope").onchange = renderLinks; $("linkCopy").onclick = () => copyText((sourceTab()?._links || []).map(l => l.url).join("\n"));
+  $("consoleFilter").onchange = renderConsole; $("consoleSearch").oninput = renderConsole; $("clearConsole").onclick = () => { logs.length = 0; renderConsole(); };
+  $("copyConsole").onclick = () => copyText(logs.map(x => `[${new Date(x.time).toISOString()}] ${x.level.toUpperCase()} ${x.message}`).join("\n"));
+  $("findInput").oninput = e => findQuery(e.target.value);
+  $("findInput").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); findQuery(e.target.value, e.shiftKey ? "backward" : "forward"); } else if (e.key === "Escape") { e.preventDefault(); closeFind(); } };
+  $("findNext").onclick = () => findQuery($("findInput").value, "forward"); $("findPrev").onclick = () => findQuery($("findInput").value, "backward"); $("findClose").onclick = closeFind;
+  document.addEventListener("click", e => { const a = e.target.closest("[data-go]"); if (a) { e.preventDefault(); $("authDialog").open && $("authDialog").close(); goRoute(a.dataset.go); } const r = e.target.closest("a[data-route]"); if (r) { e.preventDefault(); goRoute(r.dataset.route); } });
+  setupCalculator();
+  window.addEventListener("error", e => addLog("error", `UI error: ${e.message}`));
+  window.addEventListener("unhandledrejection", e => addLog("error", `Unhandled: ${e.reason?.message || e.reason}`));
+  document.addEventListener("visibilitychange", () => { const t = activeTab(); if (!document.hidden && t?.needsReload && t.url) { t.needsReload = false; loadInTab(t, t.url); } });
 }
 
-function formatInspectCss(obj) { return Object.entries(obj || {}).map(([k,v]) => `${k}: ${v};`).join("\n"); }
-function renderInspectData(d) {
-  const drawer = $("inspectDrawer"), frame = activeFrame(), wrap = $("frameWrap"), hi = $("inspectHighlight"); if (!drawer || !d) return;
-  $("inspectTargetName").textContent = `<${d.tag || "element"}>${d.id ? "#"+d.id : ""}${d.classes ? "."+String(d.classes).trim().split(/\s+/).slice(0,3).join(".") : ""}`;
-  $("inspectOuterHtml").textContent = d.outerHTML || "[no markup available]";
-  const parent = d.parent ? `<div class="inspect-node muted"><span>↳ parent</span><code>${esc((d.parent.tag || "element") + (d.parent.id ? "#" + d.parent.id : ""))}</code><small>${esc(d.parent.path || "")}</small></div>` : "";
-  const children = Array.isArray(d.children) ? d.children.slice(0, 32).map(x => `<div class="inspect-node"><span>↳ child</span><code>${esc(x)}</code></div>`).join("") : "";
-  $("inspectTree").innerHTML = `<div class="inspect-path"><b>DOM path</b><code>${esc(d.path || "")}</code></div>${parent}<div class="inspect-node selected"><span>● selected</span><code>&lt;${esc(d.tag || "element")}&gt;${d.id ? "#"+esc(d.id) : ""}${d.classes ? "."+esc(String(d.classes).trim().split(/\s+/).slice(0,3).join(".")) : ""}</code></div><div class="inspect-attrs">${Object.entries(d.attrs || {}).map(([k,v]) => `<span><b>${esc(k)}</b> <code>${esc(v)}</code></span>`).join("") || "No attributes"}</div>${children ? `<div class="inspect-children"><b>Children (${Math.min(32, d.children.length)})</b>${children}</div>` : ""}`;
-  $("inspectStyles").textContent = formatInspectCss(d.styles);
-  $("inspectComputed").textContent = formatInspectCss(d.computed);
-  const r=d.rect||{}; $("inspectLayout").textContent = [`x: ${Math.round(r.x||0)}`,`y: ${Math.round(r.y||0)}`,`width: ${Math.round(r.width||0)}`,`height: ${Math.round(r.height||0)}`,`scrollWidth: ${d.scrollWidth||0}`,`scrollHeight: ${d.scrollHeight||0}`,`document: ${d.pageUrl||activeTab()?.url||""}`].join("\n");
-  if (hi && frame && wrap && r) { const fr=frame.getBoundingClientRect(), wr=wrap.getBoundingClientRect(); hi.style.left=`${Math.max(0,fr.left-wr.left+(r.x||0))}px`; hi.style.top=`${Math.max(0,fr.top-wr.top+(r.y||0))}px`; hi.style.width=`${Math.max(0,r.width||0)}px`; hi.style.height=`${Math.max(0,r.height||0)}px`; hi.classList.remove("hidden"); }
-}
-function clearInspectHighlight(){ $("inspectHighlight")?.classList.add("hidden"); }
-function setInspectTab(tab) { const map={elements:"inspectElementsPanel",styles:"inspectStylesPanel",computed:"inspectComputedPanel",layout:"inspectLayoutPanel"}; Object.entries(map).forEach(([k,id])=>$(id)?.classList.toggle("hidden",k!==tab)); document.querySelectorAll("[data-inspect-tab]").forEach(b=>b.classList.toggle("active",b.dataset.inspectTab===tab)); }
+// Public API used by ui.js and devtools.js
+export const B = {
+  state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
+  renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
+  ensureSession, endSession, sessionRemaining, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel,
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading
+};
+hooks.B = B;
 
-function renderSettingsForm() {
-  $("setSearchMode").value = settings.searchMode; $("setSearchEngine").value = settings.searchEngine; $("setHomepage").value = settings.homepage || ""; $("setConfirmClose").checked = !!settings.confirmCloseWithCrawl; $("setAutoStop").checked = settings.autoStopPrevious !== false;
-  $("setGlobalConcurrency").value = settings.crawlerGlobalConcurrency; $("setHostConcurrency").value = settings.crawlerHostConcurrency; $("setTimeout").value = settings.requestTimeoutMs; $("setBrowserFallback").checked = !!settings.browserFallback; $("setDevInterval").value = settings.devRefreshMs || 1500; $("setConsoleVerbosity").value = settings.consoleVerbosity || "all";
-}
-function wireSettingsForm() {
-  $("setSearchMode").onchange = e => { settings.searchMode = e.target.value; saveSettings(); addLog("info", `Search mode set to ${e.target.value}.`); };
-  $("setSearchEngine").onchange = e => { settings.searchEngine = e.target.value; saveSettings(); };
-  $("setHomepage").onchange = e => { settings.homepage = e.target.value.trim(); saveSettings(); };
-  $("setConfirmClose").onchange = e => { settings.confirmCloseWithCrawl = e.target.checked; saveSettings(); };
-  $("setAutoStop").onchange = e => { settings.autoStopPrevious = e.target.checked; saveSettings(); };
-  $("setGlobalConcurrency").onchange = e => { settings.crawlerGlobalConcurrency = Math.max(1, Math.min(256, Number(e.target.value) || 128)); saveSettings(); };
-  $("setHostConcurrency").onchange = e => { settings.crawlerHostConcurrency = Math.max(1, Math.min(32, Number(e.target.value) || 8)); saveSettings(); };
-  $("setTimeout").onchange = e => { settings.requestTimeoutMs = Math.max(1000, Number(e.target.value) || 15000); saveSettings(); };
-  $("setBrowserFallback").onchange = e => { settings.browserFallback = e.target.checked; saveSettings(); };
-  $("setDevInterval").onchange = e => { settings.devRefreshMs = Math.max(500, Number(e.target.value) || 1500); saveSettings(); startDevAuto(); };
-  $("setConsoleVerbosity").onchange = e => { settings.consoleVerbosity = e.target.value; saveSettings(); renderConsole(); };
-  $("settingsResetBtn").onclick = () => { settings = { ...DEFAULT_SETTINGS }; saveSettings(); renderSettingsForm(); addLog("info", "Settings reset to defaults."); };
-  $("settingsClearBookmarks").onclick = () => { state.bookmarked.clear(); safeStorageSet("veyra-bookmarks", "[]"); updateIdentity(activeTab()?.url || ""); addLog("info", "Bookmarks cleared."); };
-  $("settingsClearLogs").onclick = () => { state.logs = []; state.netLog = []; renderConsole(); renderDevNet(); addLog("info", "Console and network logs cleared."); };
-}
-
-function setupCalculator() {
-  $("calcInput").oninput = () => renderCalculator(); $("calcInput").onkeydown = e => { if (e.key === "Enter") renderCalculator(); };
-  document.querySelectorAll("[data-calc]").forEach(btn => btn.onclick = () => calcButtonInsert(btn.dataset.calc));
-  $("calcClear").onclick = () => { $("calcInput").value = ""; renderCalculator(); };
-  $("calcEquals").onclick = () => renderCalculator();
-}
-
-function setupConsoleCapture() {
-  const levels = ["log", "info", "debug", "warn", "error"];
-  for (const level of levels) {
-    const native = console[level].bind(console);
-    console[level] = (...args) => {
-      native(...args);
-      if (state.booted) addLog(level === "log" ? "info" : level, args.map(a => typeof a === "string" ? a : safeStringify(a)).join(" "));
-    };
+// On startup: open a page or restore last tabs (only for a bare /browse entry)
+function applyStartup(params) {
+  if (currentRoute() !== "/browse" || params.get("url") || params.get("q") || location.hash) return;
+  if (settings.startup === "url" && settings.startupUrl) { go(settings.startupUrl, { tab: activeTab(), push: false }); return; }
+  if (settings.startup === "continue") {
+    const urls = load("veyra-last-tabs", []).filter(u => /^https?:/.test(u)).slice(0, 8);
+    urls.forEach((u, i) => i === 0 ? go(u, { tab: activeTab(), push: false }) : newTab({ url: u, background: true }));
   }
 }
-function safeStringify(value) { try { return JSON.stringify(value); } catch { return String(value); } }
+setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs", state.tabs.filter(t => t.view === "page" && t.url).map(t => t.url)); }, 3000);
 
-function showFatal(error) {
-  const overlay = $("fatalOverlay"); if (!overlay) return;
-  overlay.classList.remove("hidden"); $("fatalMessage").textContent = String(error?.message || error || "Unknown error");
-}
-function pageCommand(type, payload = {}) {
-  const frame = activeFrame(); if (!frame?.contentWindow) return false;
-  try { frame.contentWindow.postMessage({ type, ...payload }, new URL(API).origin); return true; } catch { return false; }
-}
-function printCurrentPage() {
-  if (!activeTab()?.url) { addLog("warn", "No page to print."); return; }
-  if (!pageCommand("veyra:print")) addLog("warn", "The current page cannot be printed yet.");
-}
-function updateFindBar() {
-  const bar = $("findBar"), input = $("findInput"); if (!bar || !input) return;
-  bar.classList.remove("hidden"); input.focus(); input.select();
-  sendFindQuery(input.value);
-}
-function closeFindBar() { $("findBar")?.classList.add("hidden"); pageCommand("veyra:find-close"); $("address")?.focus(); }
-function sendFindQuery(query, direction = "forward") {
-  const q = String(query || "").slice(0, 200);
-  pageCommand("veyra:find", { query: q, direction });
-}
-function findInPage() { updateFindBar(); }
-function wireApp() {
-  $("address").onkeydown = e => { if (e.key === "Enter") openPage($("address").value); };
-  $("homeBrowse").onclick = () => openPage($("homeInput").value); $("homeInput").onkeydown = e => { if (e.key === "Enter") openPage($("homeInput").value); };
-  document.querySelectorAll(".shortcuts [data-url]").forEach(b => b.onclick = () => openPage(b.dataset.url)); document.querySelectorAll(".shortcuts [data-tool]").forEach(b => b.onclick = () => showCalculator());
-  $("homeBtn").onclick = () => showHome(); $("newTab").onclick = newTabAction; $("reloadBtn").onclick = reloadActive;
-  $("backBtn").onclick = async () => { const t=activeTab(); if(!t)return; if(t.browserSessionId){try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'back'})});await refreshBrowserSurface(t,true);return}catch{}} if(t.histIndex<=0)return; t.histIndex--; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
-  $("forwardBtn").onclick = async () => { const t=activeTab(); if(!t)return; if(t.browserSessionId){try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'forward'})});await refreshBrowserSurface(t,true);return}catch{}} if(t.histIndex>=t.history.length-1)return; t.histIndex++; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
-  $("starBtn").onclick = saveBookmark; $("toolsMenuBtn").onclick = toggleMenu; document.querySelectorAll(".tool-tab").forEach(x=>x.onclick=()=>setTool(x.dataset.panel));
-  $("backToPage").onclick = () => restoreTabView(activeTab()); $("menuBtn").onclick = toggleMenu;
-  $("menuInspect").onclick=()=>{ toggleInspect(!state.inspectMode); closeMenu(); }; $("menuFind").onclick=()=>{closeMenu();findInPage()}; $("menuPrint").onclick=()=>{closeMenu();printCurrentPage()}; $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")}; $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")}; $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")}; $("menuDev").onclick=()=>{closeMenu();setTool("devPanel")}; $("menuSettings").onclick=()=>{closeMenu();setTool("settingsPanel")}; $("menuVpn").onclick=()=>{closeMenu();setTool("vpnPanel")}; $("menuDownloads").onclick=()=>{closeMenu();showDownloads()}; $("menuHistory").onclick=()=>{closeMenu();showHistory()}; $("menuExtensions").onclick=()=>{closeMenu();showExtensions()}; $("menuCalculator").onclick=()=>{closeMenu();showCalculator()}; $("menuSearch").onclick=()=>{closeMenu();showSearch()}; $("menuHome").onclick=()=>{closeMenu();newTabAction()};
-  $("consoleFilter").onchange=renderConsole; $("clearConsole").onclick=()=>{state.logs=[];renderConsole();addLog("info","Console cleared.")};
-  $("copyConsole").onclick=async()=>{try{await navigator.clipboard.writeText(state.logs.map(x=>`[${new Date(x.time).toISOString()}] [${x.level.toUpperCase()}] ${x.message}`).join("\n"));addLog("info","Console copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
-  $("devRefreshBtn").onclick=refreshDev; $("devStopBtn").onclick=()=>{const t=activeTab();if(t?.jobId)stopJob(t.jobId);else addLog("warn","No active crawl to stop.")}; $("devAutoRefresh").onchange=startDevAuto; $("devNetFilter").onchange=e=>{state.devNetFilter=e.target.value;renderDevNet()}; $("devNetClear").onclick=()=>{state.netLog=[];renderDevNet()}; $("devCopyJsonBtn").onclick=async()=>{try{await navigator.clipboard.writeText($("devRawJson").textContent||"");addLog("info","Raw job JSON copied.")}catch(e){addLog("error",`Copy failed: ${e.message}`)}};
-  $("devExportBtn").onclick=()=>{const t=activeTab();if(!t?.jobId)return addLog("warn","No active crawl to export.");window.open(API+"/api/crawl/"+encodeURIComponent(t.jobId)+"/export","_blank","noopener")};
-  $("searchButton").onclick=()=>runSearch($("searchInput").value,false,0); $("searchInput").oninput=e=>loadSearchSuggestions(e.target.value); $("searchInput").onkeydown=e=>{if(e.key==="Enter")runSearch($("searchInput").value,false,0)}; $("homeInput").oninput=e=>loadSearchSuggestions(e.target.value);
-  $("downloadBtn").onclick=()=>{const t=activeTab();if(t?.url)startDownload(t.url,`${hostOf(t.url)}-page`);else showDownloads()};
-  $("clearDownloadsBtn").onclick=()=>{for(const c of state.downloadControllers.values())c.abort();state.downloads=[];saveDownloads();renderDownloads()}; $("clearHistoryBtn").onclick=()=>{state.history=[];saveHistory();renderHistory()};
-  $("findInput").oninput=e=>sendFindQuery(e.target.value); $("findInput").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();sendFindQuery(e.target.value,e.shiftKey?"backward":"forward")}else if(e.key==="Escape"){e.preventDefault();closeFindBar()}}; $("findNext").onclick=()=>sendFindQuery($("findInput").value,"forward"); $("findPrev").onclick=()=>sendFindQuery($("findInput").value,"backward"); $("findClose").onclick=closeFindBar;
-  $("extensionStoreBtn").onclick=()=>{$("extensionStore").classList.toggle("hidden");}; $("extensionDevBtn").onclick=()=>{settings.extensionDeveloperMode=!settings.extensionDeveloperMode;saveSettings();renderExtensions();if(settings.extensionDeveloperMode)$('extensionDevCard').scrollIntoView({behavior:'smooth',block:'nearest'});};
-  $("extensionDeveloperMode").onchange=e=>{settings.extensionDeveloperMode=e.target.checked;saveSettings();renderExtensions()}; $("loadExtensionBtn").onclick=()=>{if(!settings.extensionDeveloperMode){addLog("warn","Enable Developer mode first.");return;} $("extensionFile").click()};
-  $("extensionFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const data=safeJsonParse(await file.text(),null);const ext=validateExtensionManifest(data);const existing=state.extensions.find(x=>x.id===ext.id);if(existing)Object.assign(existing,ext,{enabled:existing.enabled});else state.extensions.push(ext);saveExtensions();applyExtensions();renderExtensions();addLog("info",`Loaded extension ${ext.name}.`)}catch(err){addLog("error",`Extension load failed: ${err.message}`)}finally{e.target.value=""}};
-  $("exportExtensionsBtn").onclick=()=>exportExtensions();
-  $("inspectCloseBtn").onclick=()=>toggleInspect(false); document.querySelectorAll("[data-inspect-tab]").forEach(b=>b.onclick=()=>setInspectTab(b.dataset.inspectTab));
-  $("fatalReload").onclick=()=>location.reload(); $("fatalConsole").onclick=()=>{$("fatalOverlay").classList.add("hidden");setTool("consolePanel")}; wireSettingsForm();setupCalculator();setupConsoleCapture();
-}
-function validateExtensionManifest(data){
-  if(!data||typeof data!=="object")throw new Error("Manifest must be a JSON object.");
-  const id=String(data.id||"").trim(); const name=String(data.name||"").trim(); const version=String(data.version||"1.0.0").trim();
-  if(!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(id))throw new Error("Invalid extension id."); if(!name||name.length>80)throw new Error("Invalid extension name.");
-  if(data.script||data.js||data.background||data.contentScript||data.permissions?.includes?.("network"))throw new Error("This Veyra extension format does not allow arbitrary script/network access.");
-  const css=Array.isArray(data.css)?data.css.filter(x=>typeof x==="string"):typeof data.css==="string"?[data.css]:[];
-  return {id,name,version,description:String(data.description||"").slice(0,500),author:String(data.author||"Developer").slice(0,80),css:css.map(x=>x.slice(0,20000)).slice(0,8),permissions:Array.isArray(data.permissions)?data.permissions.filter(x=>typeof x==="string").slice(0,12):[],enabled:false,builtin:false,developer:true};
-}
-function exportExtensions(){const blob=new Blob([JSON.stringify(state.extensions,null,2)],{type:"application/json"});const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download="veyra-extensions.json";a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
-
-
-window.addEventListener("message", e => handlePageMessage(e).catch(err => addLog("error", `Page message handling failed: ${err.message}`)));
-window.addEventListener("error", e => addLog("error", `Frontend error: ${e.message} @ ${e.filename || "inline"}:${e.lineno || "?"}`, { line: e.lineno, column: e.colno, stack: e.error?.stack || "" }));
-window.addEventListener("unhandledrejection", e => addLog("error", `Unhandled promise: ${e.reason?.message || e.reason || "Unknown rejection"}`, { stack: e.reason?.stack || "" }));
-document.addEventListener("click", e => { const menu = $("menuPanel"); if (menu && !menu.contains(e.target) && e.target !== $("menuBtn")) closeMenu(); });
-window.addEventListener("keydown", e => {
-  const mod = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "") ? e.metaKey : e.ctrlKey;
-  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) && !e.altKey && !mod; const key = e.key.toLowerCase();
-  if (mod && e.shiftKey && key === "v") { e.preventDefault(); setTool("vpnPanel"); return; } if (mod && key === "r") { e.preventDefault(); reloadActive(); return; } if ((mod && key === "t") || (e.altKey && key === "t")) { e.preventDefault(); newTabAction(); return; }
-  if ((mod && key === "w") || (e.altKey && key === "w")) { e.preventDefault(); closeTab(state.activeId); return; } if ((mod && key === "tab" && !e.shiftKey) || (e.altKey && key === "]")) { e.preventDefault(); cycleTab(1); return; }
-  if ((mod && key === "tab" && e.shiftKey) || (e.altKey && key === "[")) { e.preventDefault(); cycleTab(-1); return; } if ((mod && key === "l") || (!typing && key === "/")) { e.preventDefault(); $("address").focus(); $("address").select(); return; }
-  if (mod && key === "d") { e.preventDefault(); saveBookmark(); return; } if (mod && e.shiftKey && key === "d") { e.preventDefault(); setTool("devPanel"); return; } if (mod && key === ",") { e.preventDefault(); setTool("settingsPanel"); return; }
-  if (mod && key === "j") { e.preventDefault(); showDownloads(); return; } if (mod && key === "h") { e.preventDefault(); showHistory(); return; } if (mod && key === "f") { e.preventDefault(); findInPage(); return; } if (mod && key === "p") { e.preventDefault(); printCurrentPage(); return; } if (mod && e.shiftKey && key === "i") { e.preventDefault(); toggleInspect(!state.inspectMode); return; }
-  if (!typing && key === "escape") { if (state.inspectMode) { toggleInspect(false); return; } const t = activeTab(); if (t?.jobId && !t.done) stopCurrentLoad(); return; } if (e.altKey && key === "arrowleft") { e.preventDefault(); $("backBtn").click(); } if (e.altKey && key === "arrowright") { e.preventDefault(); $("forwardBtn").click(); }
-  if (activeTab()?.view === "search" && !typing && ["arrowdown", "arrowup", "enter"].includes(key)) { e.preventDefault(); const cards = [...document.querySelectorAll(".search-result")]; if (!cards.length) return; let i = cards.findIndex(x => x.classList.contains("keyboard-active")); if (key === "enter" && i >= 0) return openPage(cards[i].dataset.url); i = key === "arrowdown" ? Math.min(cards.length - 1, i + 1) : Math.max(0, i - 1); cards.forEach(x => x.classList.remove("keyboard-active")); cards[i].classList.add("keyboard-active"); cards[i].focus(); }
-});
-
-function boot() {
+async function boot() {
   try {
-    const firstTab = makeTab(); state.tabs.push(firstTab); state.activeId = firstTab.id; state.booted = true; renderTabs(); wireApp();
-    let route = routeName();
-    const routeParam = new URLSearchParams(location.search).get("veyra_route");
-    if (routeParam) { history.replaceState({ veyraRoute: routeParam }, "", routeUrl(routeParam)); route = routeName(); }
-    if (route === "/dev") setTool("devPanel", false); else if (route === "/settings") setTool("settingsPanel", false); else if (route === "/downloads") showDownloads(false); else if (route === "/history") showHistory(false); else if (route === "/extensions") showExtensions(false); else if (route === "/vpn") setTool("vpnPanel", false); else if (route === "/calculator") showCalculator(new URLSearchParams(location.search).get("q") || "", false); else if (route === "/search") showSearch(new URLSearchParams(location.search).get("q") || "", false); else if (location.hash === "#console") setTool("consolePanel", false); else if (settings.homepage) openPage(settings.homepage); else showHome(false);
-    applyExtensions(); renderExtensions(); health(); addLog("info", "Veyra Browser ready. Browser engine, inspect mode, downloads, history, extensions, Veyra Search, and diagnostics enabled.");
-  } catch (e) { showFatal(e); }
+    wire();
+    const params = new URLSearchParams(location.search);
+    const r = params.get("veyra_route"); if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
+    const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
+    initUI(B); initDevtools(B);
+    renderTabs(); tickSession();
+    applyRoute();
+    applyStartup(params);
+    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
+    addLog("info", `Veyra ${VERSION} ready · API ${API}`);
+  } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }
 boot();
