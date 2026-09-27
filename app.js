@@ -2,7 +2,7 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
 import { initUI } from "./ui.js";
@@ -17,7 +17,8 @@ export const state = {
   downloads: load("veyra-downloads", []).filter(x => x && typeof x === "object"),
   downloadControllers: new Map(),
   session: null, sessionTimer: null, sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
-  vpn: { status: null, connected: false, profile: null }
+  vpn: { status: null, connected: false, profile: null },
+  incognito: INCOGNITO, server: { leanMode: false, version: "", checked: false }, sessionPromise: null
 };
 const INTERNAL = {
   newtab: { title: "New tab", icon: "i-home", path: "/browse" },
@@ -73,7 +74,7 @@ export function renderTabs() {
   });
   list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  document.title = (activeTab()?.title && activeTab().view !== "newtab" ? activeTab().title + " · " : "") + "Veyra";
+  document.title = (activeTab()?.title && activeTab().view !== "newtab" ? activeTab().title + " · " : "") + (state.incognito ? "Veyra Incognito" : "Veyra");
 }
 function moveTab(fromId, toId) { if (!fromId || fromId === toId) return; const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId); if (a < 0 || b < 0) return; const [t] = state.tabs.splice(a, 1); state.tabs.splice(b, 0, t); renderTabs(); }
 function tabContextMenu(id, x, y) {
@@ -132,7 +133,15 @@ export function selectTabIndex(n) { const t = n === 9 ? state.tabs[state.tabs.le
 
 // ---------------------------------------------------------------- routing
 function routeUrl(path, query = "") { return `${APP_BASE}${path}${query}`; }
-function currentRoute() { const p = location.pathname.slice(APP_BASE.length) || "/"; return p.replace(/\/+$/, "") || "/"; }
+function currentRoute() {
+  const pathname = String(location.pathname || "/");
+  let p = pathname;
+  if (APP_BASE && (pathname === APP_BASE || pathname.startsWith(APP_BASE + "/"))) {
+    p = pathname.slice(APP_BASE.length) || "/";
+  }
+  if (!p.startsWith("/")) p = "/" + p;
+  return p.replace(/\/+$/, "") || "/";
+}
 function routeForTab(t) {
   if (!t) return ["/browse", ""];
   if (t.view === "page") return ["/browse", t.url ? `?url=${encodeURIComponent(t.url)}` : ""];
@@ -168,7 +177,17 @@ function applyRoute() {
   if (location.hash === "#console") return openInternal("console", { push: false });
   const [, first, second] = route.split("/");
   const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", console: "console", resources: "resources", links: "links" }[first];
-  if (!view) { goRoute("/browse", { push: false }); return; }
+  if (!view) {
+    // Unknown routes must be repaired without recursively calling goRoute()/applyRoute().
+    // A malformed/mismatched APP_BASE previously caused an infinite applyRoute loop.
+    const fallback = routeUrl("/browse");
+    try { history.replaceState({ veyra: true }, "", fallback); } catch {}
+    if (t.view === "page") teardownTab(t);
+    t.view = "newtab"; t.section = ""; t.url = ""; t.favicon = ""; t.loading = false;
+    t.browserSessionId = ""; t.jobId = null; t.done = true; t.browserMode = "FAST_PROXY";
+    renderTabs(); renderActive({ push: false });
+    return;
+  }
   if (view === "newtab") {
     const u = params.get("url"); const q = params.get("q");
     if (u) { if (!(t.view === "page" && t.url === u)) go(u, { tab: reuse(t) ? t : null, push: false }); else renderActive({ push: false }); }
@@ -199,7 +218,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
   }
   if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
   if (t.view === "page") teardownTab(t);
-  t.view = view; t.section = section || (view === "settings" ? t.section : ""); t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
+  t.view = view; t.section = view === "settings" ? String(section || "") : section || ""; t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
   if (view === "calculator" && calc) t.calcExpression = calc;
   pushTabHistory(t, `veyra:${view}${section ? "/" + section : ""}`);
   renderTabs(); renderActive({ push });
@@ -329,18 +348,28 @@ export async function wakeServer(maxMs = 100000) {
   return false;
 }
 async function createSessionWithWake() {
-  try { return await api("/api/session", { json: {}, timeoutMs: 20000 }); }
+  const json = state.incognito ? { incognito: true } : {};
+  try { return await api("/api/session", { json, timeoutMs: 20000 }); }
   catch (e) {
     if (!WAKE_CODES.has(e.code) && ![502, 503, 504].includes(e.status)) throw e;
     addLog("info", "Server is asleep or busy, waking it up…");
     if (!(await wakeServer())) throw new ApiError("The Veyra server didn't wake up in time. It may be redeploying; try again in a minute.", 0, "SERVER_ASLEEP");
-    return await api("/api/session", { json: {}, timeoutMs: 30000 });
+    return await api("/api/session", { json, timeoutMs: 30000 });
   }
 }
 export async function ensureSession() {
   const s = state.session;
   if (s && s.expiresAt - Date.now() > 800) return s;
-  if (s) await endSession("timer");
+  // Several tabs opening at once (restore, "open all bookmarks") must share one
+  // session instead of racing to create one each and orphaning the others.
+  if (state.sessionPromise) return state.sessionPromise;
+  state.sessionPromise = (async () => {
+    if (s) await endSession("timer");
+    return startNewSession();
+  })();
+  try { return await state.sessionPromise; } finally { state.sessionPromise = null; }
+}
+async function startNewSession() {
   const body = await createSessionWithWake();
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
@@ -440,7 +469,7 @@ async function capability(url) {
   if (settings.runtime === "crawler") return "FAST_PROXY";
   if (settings.runtime === "browser" || settings.runtime === "combined") return "BROWSER_ENGINE";
   const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
-  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
+  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; if (typeof r?.lean === "boolean") state.server.leanMode = r.lean; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
 }
 function desiredStrategy(url) {
   const r = String(settings.runtime || "auto");
@@ -450,12 +479,22 @@ function desiredStrategy(url) {
   if (r === "combined") return { key: "combined", proxy: true, crawler: true, browser: true, race: true };
   return { key: "auto", proxy: true, crawler: true, browser: false, race: false, auto: true };
 }
-async function resolveStrategy(url) {
+export function isGoogleSearchUrl(url) {
+  try { const u = new URL(url); return /(^|\.)google\.[a-z.]+$/i.test(u.hostname) && /^\/(search|webhp)?$/.test(u.pathname) && u.searchParams.has("q"); } catch { return false; }
+}
+function resolveStrategy(url) {
   const base = desiredStrategy(url);
+  // Google search needs real JavaScript and rejects datacenter proxies:
+  // go straight to Chromium (with Veyra web results as the fallback).
+  if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) return { key: "browser", proxy: false, crawler: false, browser: true, race: false, google: true };
   if (!base.auto) return base;
-  const detected = await capability(url);
-  if (detected === "BROWSER_ENGINE") return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
-  return base;
+  // Proxy-first: never wait for the capability probe before showing the page.
+  // A cached verdict for this host picks the pipeline immediately; otherwise
+  // the probe runs in parallel and can still escalate a slow page to Chromium.
+  const cached = state.capabilityCache.get(hostOf(url));
+  if (cached === "BROWSER_ENGINE") return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
+  if (cached === "ACCELERATED_PROXY") return { ...base, accelerate: true };
+  return { ...base, probe: !cached };
 }
 function scheduleDeferredCrawler(t, url, session, enabled = true, delayMs = 450) {
   if (!enabled || !session?.id) return;
@@ -477,7 +516,7 @@ function openCrawl(t, url, session, enabled = true) {
     return null;
   });
 }
-async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
+async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false } = {}) {
   const previousUrl = t.url;
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
@@ -492,7 +531,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   if (!state.tabs.includes(t) || t.url !== url) return;
   t.sessionId = session.id;
   recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
-  const strategy = await resolveStrategy(url);
+  const strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
   t.loadStrategy = strategy.key;
   if (!state.tabs.includes(t) || t.url !== url) return;
 
@@ -506,12 +545,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
     if (activeTab() === t) showFrameForTab(t);
   };
 
-  if (strategy.race) {
-    // Render the lightweight proxy immediately. Chromium starts in parallel,
-    // while crawler discovery is deferred so background work cannot steal the
-    // foreground network slots needed for first paint.
-    await useProxy();
-    const browserPromise = startBrowserSession(t, url, { background: true }).then(() => {
+  const raceChromium = () => startBrowserSession(t, url, { background: true }).then(() => {
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (!t.renderWinner) {
         t.renderWinner = "browser";
@@ -526,6 +560,13 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
         stopBrowserSession(t).catch(() => {});
       }
     }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Combined Chromium path unavailable: ${e.message}`); });
+
+  if (strategy.race) {
+    // Render the lightweight proxy immediately. Chromium starts in parallel,
+    // while crawler discovery is deferred so background work cannot steal the
+    // foreground network slots needed for first paint.
+    await useProxy();
+    const browserPromise = raceChromium();
     t.loadGuard = setTimeout(() => {
       if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
         // A successful iframe document-navigation will also clear this; this is only a last-resort UI guard.
@@ -546,6 +587,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
     } catch (e) {
       if (e.code === "SESSION_EXPIRED") return;
       if (!state.tabs.includes(t) || t.url !== url) return;
+      if (strategy.google) {
+        // Chromium unavailable (busy / disabled on this plan): show Veyra's own web results instead.
+        addLog("info", `Google via Chromium unavailable (${e.message}); showing Veyra web results.`);
+        if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+        t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
+        let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
+        showSearch(q, { tab: t, push: activeTab() === t, pushHist: false, source: "web", engine: "google" });
+        return;
+      }
       if (e.code === "BROWSER_CAPACITY") addLog("warn", `Chromium is at capacity; using fast proxy: ${e.message}`);
       else addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
       if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
@@ -556,6 +606,19 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
 
   t.renderWinner = "proxy";
   await useProxy();
+  // Lean (Render Free) mode: heavy pages get the page-accelerator crawler right away.
+  if (strategy.accelerate) scheduleDeferredCrawler(t, url, session, true, 150);
+  if (strategy.probe) {
+    capability(url).then(mode => {
+      if (!state.tabs.includes(t) || t.url !== url) return;
+      if (mode === "ACCELERATED_PROXY") scheduleDeferredCrawler(t, url, session, true, 150);
+      // Still loading after the probe says "needs a real browser": race Chromium.
+      else if (mode === "BROWSER_ENGINE" && t.loading && !state.server.leanMode) {
+        t.loadStrategy = "combined"; t.renderWinner = "";
+        void raceChromium();
+      }
+    }).catch(() => {});
+  }
   t.loadGuard = setTimeout(() => {
     if (t.loading && t.url === url && state.tabs.includes(t)) { t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon(); }
   }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
@@ -700,39 +763,54 @@ function findQuery(q, direction = "forward") { pageCommand("veyra:find", { query
 export function closeFind() { $("findBar").classList.add("hidden"); pageCommand("veyra:find-close"); }
 
 // ---------------------------------------------------------------- Veyra Search
-export function showSearch(query = "", { tab = null, push = true, pushHist = true } = {}) {
+export function showSearch(query = "", { tab = null, push = true, pushHist = true, source = "", engine = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view === "page") teardownTab(t);
-  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, loading: false, browserSessionId: "" });
+  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, loading: false, browserSessionId: "", searchSource: source || t.searchSource || settings.searchSource || "web", searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
   if (pushHist) pushTabHistory(t, "veyra:search:" + query);
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
   if (query) runSearch(query);
 }
+const PROVIDER_LABEL = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave", none: "no provider" };
 async function runSearch(query, offset = 0) {
   const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
+  const source = t.searchSource || "web";
+  renderSearchTabs(t);
   $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
   if (!offset) $("searchResults").innerHTML = Array.from({ length: 4 }, () => `<div class="result"><div class="skel" style="height:16px;width:55%;border-radius:4px;background:var(--surface-3)"></div><div style="height:10px"></div><div style="height:12px;width:85%;border-radius:4px;background:var(--surface-2)"></div></div>`).join("");
   try {
-    const b = await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`);
+    const b = source === "web"
+      ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent((navigator.language || "en").slice(0, 2))}`, { timeoutMs: 20000 })
+      : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`);
+    if (activeTab() !== t || t.searchQuery !== query) return;
+    b.source = source;
     if (offset && t.searchData) t.searchData.results.push(...(b.results || [])); else t.searchData = b;
     renderSearch();
   } catch (e) { $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
 }
 function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => w.length > 1 && !/:/.test(w)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "gi"), "<mark>$1</mark>") : s; }
+function renderSearchTabs(t) {
+  qsa("#searchTabs [data-src]").forEach(b => { const on = b.dataset.src === (t.searchSource || "web"); b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  $("searchOnGoogle").classList.toggle("hidden", !t.searchQuery);
+}
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
   $("searchInput").value = t.searchQuery;
+  renderSearchTabs(t);
   const d = t.searchData;
-  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
+  const web = (t.searchSource || "web") === "web";
+  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Private web results: Google (when configured), DuckDuckGo or Bing, fetched by the Veyra server." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
   if (!d) return;
-  $("searchStat").textContent = `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
-  $("searchMeta").textContent = `${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}`;
+  $("searchStat").textContent = web ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
+  $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
   $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
-    || `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>Veyra only returns pages it has actually indexed. Open a site to add it, or search the web instead.</span><button class="btn ghost sm" id="searchWeb">Search DuckDuckGo for it</button></div>`;
+    || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>Every provider came back empty or asked for a verification. Try again, or open the search on Google in real Chromium.</span><button class="btn ghost sm" id="searchWebGoogle">Open on Google</button></div>`
+      : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
   $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
-  $("searchWeb")?.addEventListener("click", () => navigate(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(t.searchQuery)}`));
-  const more = d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
+  $("searchWeb")?.addEventListener("click", () => { t.searchSource = "web"; t.searchData = null; runSearch(t.searchQuery); });
+  $("searchWebGoogle")?.addEventListener("click", () => navigate(`https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`));
+  const more = web ? (d.results?.length || 0) >= 8 && (d.results?.length || 0) < 60 : d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
   $("searchMore").classList.toggle("hidden", !more); $("searchMore").onclick = () => runSearch(t.searchQuery, d.results.length);
   loadIndexStats();
 }
@@ -1039,6 +1117,17 @@ async function handleMessage(e) {
   if (d.type === "veyra:open" && d.url) { const u = canonical(d.url); if (u) newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return; }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
+  if (d.type === "veyra:challenge" && d.url) {
+    // A Cloudflare/captcha page was detected by the proxy. Hand the tab over to
+    // the real Chromium engine so the user can complete the site's own check.
+    const u = canonical(d.url); if (!u || t.view !== "page") return;
+    t.challengeTried ||= new Set();
+    if (!d.manual && (!d.auto || settings.challengeHandoff === false || t.challengeTried.has(u))) { if (!d.manual) toast("This site wants a security check. Use \u201cVerify in real Chromium\u201d to complete it", { kind: "warn", ms: 5000 }); return; }
+    t.challengeTried.add(u);
+    toast("Security check detected, opening it in real Chromium", { ms: 3000 });
+    loadInTab(t, u, { forceBrowser: true });
+    return;
+  }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
     if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
@@ -1084,6 +1173,12 @@ function wire() {
   $("sessionHome").onclick = () => { $("sessionOverlay").classList.add("hidden"); goHome(); };
   $("searchForm").onsubmit = e => { e.preventDefault(); const q = $("searchInput").value.trim(); const t = activeTab(); pushTabHistory(t, "veyra:search:" + q); t.searchQuery = q; t.title = q ? `${q} - Veyra Search` : "Veyra Search"; renderTabs(); syncRoute(); runSearch(q); };
   $("searchInput").oninput = e => loadSuggestions(e.target.value);
+  $("searchTabs").addEventListener("click", e => {
+    const b = e.target.closest("[data-src]"); const t = activeTab(); if (!b || !t || t.view !== "search") return;
+    t.searchSource = b.dataset.src; settings.searchSource = b.dataset.src; saveSettings(); t.searchData = null;
+    if (t.searchQuery) runSearch(t.searchQuery); else renderSearch();
+  });
+  $("searchOnGoogle").onclick = () => { const t = activeTab(); if (t?.searchQuery) navigate(`https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`, { tab: t }); };
   $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
   $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();
   $("resFilter").oninput = () => renderResources();
@@ -1126,7 +1221,9 @@ async function boot() {
   try {
     wire();
     const params = new URLSearchParams(location.search);
-    const r = params.get("veyra_route"); if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
+    const r = params.get("veyra_route");
+    if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
+    if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B);
     renderTabs(); tickSession();

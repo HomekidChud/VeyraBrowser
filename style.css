@@ -777,3 +777,44 @@ textarea.el-edit{display:block;width:calc(100% - 20px);min-height:90px;margin:2p
 .feature.wide{grid-column:1/-1;display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:0 22px}
 .feature.wide svg{margin:0}.feature.wide h3{margin:0}
 @media (max-width:900px){.feature.wide{grid-template-columns:1fr;gap:0}.feature.wide svg{margin-bottom:18px}.feature.wide h3{margin-bottom:8px}}
+
+/* ================================================================ 8.16: settings overview */
+.s-home-head{margin:0 0 22px}
+.s-home-head h1{font:800 1.9rem/1.1 var(--font-display);margin:0 0 6px;letter-spacing:-.02em}
+.s-home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.s-home-card{display:flex;align-items:center;gap:14px;padding:16px;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);color:var(--text);text-align:left;cursor:pointer;transition:border-color var(--t),background var(--t),transform var(--t)}
+.s-home-card:hover{border-color:color-mix(in oklab,var(--accent) 45%,var(--line));background:var(--surface-2)}
+.s-home-card:active{transform:scale(.99)}
+.s-home-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.s-home-ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:none}
+.s-home-ic svg{width:19px;height:19px}
+.s-home-txt{flex:1;min-width:0;display:grid;gap:2px}
+.s-home-txt b{font-weight:700}
+.s-home-txt small{color:var(--muted);font-size:.86em;line-height:1.35}
+.s-home-go{width:16px;height:16px;color:var(--muted);flex:none}
+.s-crumbs{display:flex;align-items:center;gap:8px;margin:0 0 18px;color:var(--muted);font-size:.92em}
+.s-crumbs span:last-child{color:var(--text);font-weight:600}
+.linkish{border:0;background:none;padding:0;color:var(--accent);font:inherit;cursor:pointer}
+.linkish:hover{text-decoration:underline}
+
+/* ================================================================ 8.16: web search tabs */
+.search-tabs{display:flex;align-items:center;gap:4px;margin:16px 0 0;border-bottom:1px solid var(--line)}
+.search-tabs [data-src]{border:0;background:none;color:var(--text-2);font-weight:600;padding:10px 14px;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer}
+.search-tabs [data-src]:hover{color:var(--text)}
+.search-tabs [data-src].on{color:var(--accent);border-bottom-color:var(--accent)}
+.search-tabs-spacer{flex:1}
+.search-tabs .btn svg{width:15px;height:15px}
+
+/* ================================================================ 8.16: incognito */
+.avatar.incog{width:auto;padding:0 12px 0 8px;border-radius:999px;background:#2b2440;color:#d9ccff;gap:6px}
+.avatar.incog #avatarText{display:flex;align-items:center;gap:6px}
+.avatar.incog svg{width:17px;height:17px}
+.incog-label{font-size:.85em;font-weight:700}
+body.incognito{--accent:#b69cff}
+/* Incognito always uses a dark violet palette, whatever the theme, so the window is unmistakable. */
+body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233;--surface-3:#312a3f;--line:#322b40;--line-2:#3e3550;--text:#ece8f5;--text-2:#b9b0cb;--muted:#8d839f;--accent-ink:#150f22;--accent-soft:color-mix(in oklab,#b69cff 18%,transparent);--shadow:0 12px 40px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35);color-scheme:dark}
+.ntp-incognito{display:flex;gap:16px;align-items:flex-start;max-width:640px;margin:0 auto 26px;padding:18px 20px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line-2);text-align:left}
+.ntp-incognito b{font:800 1.1rem/1.2 var(--font-display)}
+.ntp-incognito p{margin:6px 0 0;color:var(--text-2);font-size:.92em;line-height:1.5}
+.ntp-incog-ic{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);flex:none}
+.ntp-incog-ic svg{width:24px;height:24px}

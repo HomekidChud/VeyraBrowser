@@ -1,20 +1,53 @@
 // Veyra core: config, storage, settings, API client, small UI helpers.
-const apiOverride = (() => { try { const q = new URLSearchParams(location.search).get("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
+// GitHub Pages deep links arrive as /?veyra_route=/browse%3Fincognito%3D1 (via 404.html),
+// so flags may sit inside the veyra_route query rather than location.search.
+export function bootParam(name) {
+  try {
+    const top = new URLSearchParams(location.search);
+    if (top.has(name)) return top.get(name);
+    const r = top.get("veyra_route"); if (!r || !r.includes("?")) return null;
+    return new URLSearchParams(r.slice(r.indexOf("?") + 1).split("#")[0]).get(name);
+  } catch { return null; }
+}
+const apiOverride = (() => { try { const q = bootParam("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
 export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.15.4";
+export const VERSION = "8.16.0";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const rawFetch = window.fetch.bind(window);
-export const APP_BASE = String(window.VEYRA_BASE || new URL("./", document.baseURI).pathname).replace(/\/$/, "") || "";
+export const APP_BASE = (() => {
+  const raw = String(window.VEYRA_BASE || new URL("./", document.baseURI).pathname || "").trim().replace(/\\+/g, "/");
+  if (!raw || raw === "/") return "";
+  const withSlash = raw.startsWith("/") ? raw : "/" + raw;
+  return withSlash.replace(/\/$/, "");
+})();
 
 // Cross-module hooks (filled in by app.js) so modules don't import each other in cycles.
 export const hooks = {};
 
 export function safeJsonParse(raw, fallback) { try { const v = JSON.parse(raw); return v == null ? fallback : v; } catch { return fallback; } }
-export function load(key, fallback) { try { const raw = localStorage.getItem(key); return raw == null ? fallback : safeJsonParse(raw, fallback); } catch { return fallback; } }
-export function save(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+// Incognito window: opened with ?incognito=1 (kept for reloads in this tab's
+// sessionStorage). History, downloads, last tabs, notes and the signed-in
+// account live only in memory, so closing the window leaves nothing behind.
+export const INCOGNITO = (() => {
+  try {
+    const q = bootParam("incognito");
+    if (q === "1") sessionStorage.setItem("veyra-incognito", "1");
+    else if (q === "0") sessionStorage.removeItem("veyra-incognito");
+    return sessionStorage.getItem("veyra-incognito") === "1";
+  } catch { return false; }
+})();
+const EPHEMERAL_KEYS = new Set(["veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes"]);
+const memoryStore = new Map();
+const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS.has(key);
+export function load(key, fallback) {
+  if (ephemeral(key)) return memoryStore.has(key) ? safeJsonParse(memoryStore.get(key), fallback) : fallback;
+  try { const raw = localStorage.getItem(key); return raw == null ? fallback : safeJsonParse(raw, fallback); } catch { return fallback; }
+}
+export function save(key, value) { if (ephemeral(key)) { memoryStore.set(key, JSON.stringify(value)); return; } try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+export function remove(key) { if (ephemeral(key)) { memoryStore.delete(key); return; } try { localStorage.removeItem(key); } catch {} }
 export function esc(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
 export function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } }
 export function pathOf(u) { try { const x = new URL(u); return (x.pathname || "/") + (x.search || "") + (x.hash || ""); } catch { return String(u || ""); } }
@@ -46,7 +79,8 @@ export const DEFAULT_SETTINGS = {
   runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 4,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
-  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1
+  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
+  challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
 // Migrate settings saved by older frontends. Version 4 keeps the foreground-first page pipeline defaults.
@@ -80,7 +114,9 @@ export const SEARCH_ENGINES = {
   duckduckgo: { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=%s" },
   bing: { name: "Bing", url: "https://www.bing.com/search?q=%s" },
   brave: { name: "Brave Search", url: "https://search.brave.com/search?q=%s" },
-  google: { name: "Google", url: "https://www.google.com/search?q=%s" },
+  // Google needs JavaScript and blocks datacenter proxies, so Veyra opens it in
+  // the real Chromium engine and falls back to Veyra's web results page.
+  google: { name: "Google", url: "https://www.google.com/search?q=%s", engine: "browser" },
   wikipedia: { name: "Wikipedia", url: "https://en.wikipedia.org/w/index.php?search=%s" },
   custom: { name: "Custom", url: "" }
 };
@@ -92,7 +128,7 @@ export function engineUrl(q) {
 
 // ---------------------------------------------------------------- auth token
 export const auth = { token: load("veyra-auth", null)?.token || "", user: load("veyra-auth", null)?.user || null, admin: false, config: null };
-export function setAuth(token, user) { auth.token = token || ""; auth.user = user || null; if (token) save("veyra-auth", { token, user }); else { try { localStorage.removeItem("veyra-auth"); } catch {} } hooks.onAuthChanged?.(); }
+export function setAuth(token, user) { auth.token = token || ""; auth.user = user || null; if (token) save("veyra-auth", { token, user }); else remove("veyra-auth"); hooks.onAuthChanged?.(); }
 export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin"); }
 
 // ---------------------------------------------------------------- API client

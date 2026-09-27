@@ -1,7 +1,7 @@
 // Veyra UI chrome: landing + auth, new tab page, omnibox, menus, popovers, shortcuts, sync.
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
-  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings
+  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js";
 import { initExtensions } from "./extensions.js";
 import { initSettings } from "./settings.js";
@@ -26,8 +26,21 @@ matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => s
 
 // ================================================================ shortcuts
 // Each command has default combos. "Mod" is Cmd on macOS and Ctrl elsewhere.
+export function openIncognitoWindow() {
+  const w = window.open(`${APP_BASE}/browse?incognito=1`, "_blank", "noopener");
+  if (!w) toast("Your browser blocked the incognito window. Allow pop-ups for Veyra, or open /incognito", { kind: "warn", ms: 6000 });
+}
+export function exitIncognito() {
+  try { sessionStorage.removeItem("veyra-incognito"); } catch {}
+  B.endSession?.("manual").catch?.(() => {});
+  window.close();
+  // window.close() only works for windows Veyra opened; otherwise go back to a normal window.
+  setTimeout(() => location.replace(`${APP_BASE}/browse?incognito=0`), 150);
+}
+hooks.openIncognitoWindow = () => openIncognitoWindow();
 export const COMMANDS = [
   { id: "newTab", label: "New tab", group: "Tabs", keys: ["Mod+T", "Alt+T"], run: () => B.newTab() },
+  { id: "newIncognito", label: "New incognito window", group: "Tabs", keys: ["Mod+Shift+N", "Alt+Shift+N"], run: () => openIncognitoWindow() },
   { id: "closeTab", label: "Close tab", group: "Tabs", keys: ["Mod+W", "Alt+W"], run: () => B.closeTab(B.state.activeId) },
   { id: "reopenTab", label: "Reopen closed tab", group: "Tabs", keys: ["Mod+Shift+T"], run: () => B.reopenClosedTab() },
   { id: "nextTab", label: "Next tab", group: "Tabs", keys: ["Mod+Tab", "Mod+PageDown"], run: () => B.cycleTab(1) },
@@ -186,9 +199,9 @@ export async function signOut({ everywhere = false } = {}) {
   const v = B.activeTab()?.view; if (v === "dev" || v === "console") B.goHome();
 }
 function onAuthChanged() {
-  const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user);
-  $("avatarText").innerHTML = auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
-  a.title = auth.user ? `${auth.user.name || ""} ${auth.user.email}`.trim() : "Sign in";
+  const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user && !INCOGNITO); a.classList.toggle("incog", INCOGNITO);
+  $("avatarText").innerHTML = INCOGNITO ? `<svg><use href="#i-incognito"/></svg><span class="incog-label">Incognito</span>` : auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
+  a.title = INCOGNITO ? "You're incognito" : auth.user ? `${auth.user.name || ""} ${auth.user.email}`.trim() : "Sign in";
   renderLandActions(); B.updateIdentity();
   if (B.activeTab()?.view === "settings") hooks.renderSettings?.(B.activeTab().section);
   if (B.activeTab()?.view === "newtab") renderNewTab();
@@ -232,6 +245,8 @@ const DEFAULT_TILES = [
 const tiles = () => Array.isArray(settings.ntpTiles) ? settings.ntpTiles : DEFAULT_TILES;
 function renderNewTab() {
   const now = new Date(); const h = now.getHours();
+  const incog = $("ntpIncognito");
+  if (incog) incog.classList.toggle("hidden", !INCOGNITO);
   $("ntpClock").textContent = settings.ntpClock ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
   const name = auth.user?.name ? `, ${auth.user.name.split(" ")[0]}` : "";
   $("ntpGreeting").textContent = settings.ntpClock ? `${h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"}${name}` : "";
@@ -346,6 +361,8 @@ function openMainMenu() {
   const zoom = onPage ? t.zoom : settings.fontScale || 1;
   const items = [
     menuItem("i-tab", "New tab", "newTab", () => B.newTab()),
+    menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
+    ...(INCOGNITO ? [menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     "-",
     menuItem("i-history", "History", "history", () => B.openInternal("history")),
@@ -424,6 +441,10 @@ async function openVpnPop() {
   p.onclick = async e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.go) { closeFloating(); return; } b.disabled = true; try { if (b.dataset.c) await B.connectVpn(b.dataset.c); else if ("off" in b.dataset) await B.disconnectVpn(); closeFloating(); } catch (err) { toast(err.message, { kind: "err" }); b.disabled = false; } };
 }
 function openProfilePop() {
+  if (INCOGNITO) {
+    pop(`<h4>You're incognito</h4><p class="pop-sub">History, downloads, notes and sign-in stay in this window's memory only. The server marks your session incognito: it isn't logged by site and pages aren't kept in the shared cache.</p><div style="display:flex;gap:8px"><button class="btn primary sm" id="ppExitIncog">Exit incognito</button><button class="btn ghost sm" id="ppNewIncog">New incognito window</button></div>`, $("profileBtn"), p => { p.querySelector("#ppExitIncog").onclick = () => { closeFloating(); exitIncognito(); }; p.querySelector("#ppNewIncog").onclick = () => { closeFloating(); openIncognitoWindow(); }; });
+    return;
+  }
   if (!auth.user) {
     pop(`<h4>You're browsing as a guest</h4><p class="pop-sub">Sign in to sync settings, bookmarks, shortcuts, new tab tiles and extensions.</p><div style="display:flex;gap:8px"><button class="btn primary sm" id="ppIn">Sign in</button><button class="btn ghost sm" id="ppUp">Create account</button></div>`, $("profileBtn"), p => { p.querySelector("#ppIn").onclick = () => { closeFloating(); openAuth("login"); }; p.querySelector("#ppUp").onclick = () => { closeFloating(); openAuth("signup"); }; });
     return;
@@ -468,6 +489,7 @@ export function initUI(b) {
   document.addEventListener("click", e => { const a = e.target.closest("[data-auth]"); if (a) { e.preventDefault(); openAuth(a.dataset.auth); } const x = e.target.closest("[data-explore]"); if (x) B.goRoute(`/browse?url=${encodeURIComponent(x.dataset.explore)}`); });
   setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
+  if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
   initExtensions(B); initSettings(B);
   onAuthChanged(); verifyAuth().then(() => auth.token && pullSync());
   addLog("debug", `UI ready (${COMMANDS.length} commands)`);

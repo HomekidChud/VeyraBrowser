@@ -5,23 +5,23 @@ import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecordi
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
 const SECTIONS = [
-  { id: "account", label: "You and Veyra", icon: "i-user" },
-  { id: "appearance", label: "Appearance", icon: "i-moon" },
-  { id: "search", label: "Search engine", icon: "i-search" },
-  { id: "startup", label: "On startup", icon: "i-home" },
-  { id: "newtab", label: "New tab page", icon: "i-tab" },
-  { id: "privacy", label: "Privacy and security", icon: "i-shield" },
-  { id: "sessions", label: "Sessions", icon: "i-timer" },
-  { id: "downloads", label: "Downloads and history", icon: "i-download" },
-  { id: "accessibility", label: "Accessibility", icon: "i-zoom" },
-  { id: "shortcuts", label: "Keyboard shortcuts", icon: "i-keyboard" },
-  { id: "extensions", label: "Extensions", icon: "i-puzzle" },
-  { id: "vpn", label: "Veyra VPN", icon: "i-vpn" },
-  { id: "system", label: "System and engine", icon: "i-bolt" },
-  { id: "developer", label: "Developer", icon: "i-code" },
-  { id: "admin", label: "Server config", icon: "i-layers", admin: true },
-  { id: "reset", label: "Reset settings", icon: "i-reload" },
-  { id: "about", label: "About Veyra", icon: "i-info" }
+  { id: "account", label: "You and Veyra", desc: "Sign-in, sync and account security", icon: "i-user" },
+  { id: "appearance", label: "Appearance", desc: "Theme, accent colour, font size and layout", icon: "i-moon" },
+  { id: "search", label: "Search engine", desc: "Default search engine and web results", icon: "i-search" },
+  { id: "startup", label: "On startup", desc: "What opens when Veyra starts", icon: "i-home" },
+  { id: "newtab", label: "New tab page", desc: "Shortcuts, recent sites and clock", icon: "i-tab" },
+  { id: "privacy", label: "Privacy and security", desc: "Tracker blocking, incognito and clearing data", icon: "i-shield" },
+  { id: "sessions", label: "Sessions", desc: "Session timer, warnings and auto-restart", icon: "i-timer" },
+  { id: "downloads", label: "Downloads and history", desc: "Download and history limits", icon: "i-download" },
+  { id: "accessibility", label: "Accessibility", desc: "Motion, focus rings and link styles", icon: "i-zoom" },
+  { id: "shortcuts", label: "Keyboard shortcuts", desc: "View and rebind keyboard shortcuts", icon: "i-keyboard" },
+  { id: "extensions", label: "Extensions", desc: "Built-in and developer extensions", icon: "i-puzzle" },
+  { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
+  { id: "system", label: "System and engine", desc: "Page engine, Chromium and timeouts", icon: "i-bolt" },
+  { id: "developer", label: "Developer", desc: "DevTools, logging and diagnostics", icon: "i-code" },
+  { id: "admin", label: "Server config", desc: "Server plan and runtime config", icon: "i-layers", admin: true },
+  { id: "reset", label: "Reset settings", desc: "Restore default settings", icon: "i-reload" },
+  { id: "about", label: "About Veyra", desc: "Version, server health and backend", icon: "i-info" }
 ];
 
 // ---------------------------------------------------------------- row builders
@@ -82,6 +82,8 @@ function newtabSection() {
 function privacySection() {
   return section("privacy", "Privacy and security", "", `
     ${button("Clear browsing data", "History, downloads, cookies and engine cache.", "clearData", "Clear data")}
+    ${button("Incognito window", "History, downloads, notes and sign-in stay in memory; the server skips site logging and shared caching. Ctrl+Shift+N.", "incognito", "Open incognito window")}
+    ${toggle("challengeHandoff", "Hand security checks to real Chromium", "When a site shows a Cloudflare or captcha check, reopen it in Chromium so you can complete it yourself. Veyra never solves checks for you.")}
     ${toggle("blockTrackers", "Block trackers", "The server refuses requests to known ad and tracking hosts.")}
     ${toggle("doNotTrack", "Send a Do Not Track request", "Adds DNT and Sec-GPC headers to proxied requests.")}
     ${toggle("clearOnSessionEnd", "Clear page cookies when a session ends", "")}
@@ -166,17 +168,39 @@ function aboutSection() {
 }
 
 // ---------------------------------------------------------------- render
+// /settings            -> overview (home) grid of sections
+// /settings/<section>  -> only that section; every other section is hidden
+// search box           -> searches across *all* sections, whatever the route
+const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
+export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
+export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
+let lastRendered = null;
+const curSection = () => { const t = B?.activeTab?.(); return t && t.view === "settings" ? t.section || "" : ""; };
 function render(active) {
   const nav = $("settingsNav"), body = $("settingsBody");
-  const visible = SECTIONS.filter(s => !s.admin || isAdmin());
+  const visible = visibleSections();
   const cur = visible.find(s => s.id === active) ? active : "";
-  nav.innerHTML = visible.map(s => `<button class="snav ${s.id === (cur || "account") ? "on" : ""}" data-snav="${s.id}"><svg><use href="#${s.icon}"/></svg>${esc(s.label)}</button>`).join("");
-  const parts = { account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection };
-  body.innerHTML = visible.map(s => parts[s.id]()).join("") + `<p class="muted" id="settingsEmpty" style="display:none">No settings match your search.</p>`;
-  if (cur) requestAnimationFrame(() => $("s-" + cur)?.scrollIntoView({ block: "start" }));
-  else $("view-settings").scrollTop = 0;
-  const q = $("settingsSearch").value.trim(); if (q) filter(q);
-  loadAbout(); if (isAdmin()) loadAdmin();
+  const q = $("settingsSearch").value.trim();
+  const t = B?.activeTab?.();
+  if (t && t.view === "settings" && active && !cur) t.section = ""; // unknown section -> overview
+  nav.innerHTML = `<button class="snav ${!cur ? "on" : ""}" data-snav=""><svg><use href="#i-grid"/></svg>Overview</button>` +
+    visible.map(s => `<button class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}><svg><use href="#${s.icon}"/></svg>${esc(s.label)}</button>`).join("");
+  const parts = PARTS();
+  const empty = `<p class="muted s-empty" id="settingsEmpty" style="display:none">No settings match your search.</p>`;
+  if (q) {
+    body.innerHTML = `<div class="s-crumbs"><span>Search results for “${esc(q)}”</span></div>` + visible.map(s => parts[s.id]()).join("") + empty;
+    filter(q);
+  } else if (!cur) {
+    body.innerHTML = `<header class="s-home-head"><h1>Settings</h1><p class="muted">Pick a category, or search every setting from the box on the left.</p></header>
+      <div class="s-home-grid">${visible.map(s => `<button class="s-home-card" data-snav="${s.id}"><span class="s-home-ic"><svg><use href="#${s.icon}"/></svg></span><span class="s-home-txt"><b>${esc(s.label)}</b><small>${esc(s.desc || "")}</small></span><svg class="s-home-go"><use href="#i-forward"/></svg></button>`).join("")}</div>` + empty;
+  } else {
+    const meta = visible.find(s => s.id === cur);
+    body.innerHTML = `<nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>` + parts[cur]() + empty;
+  }
+  if (lastRendered !== `${cur}|${q}`) $("view-settings").scrollTop = 0;
+  lastRendered = `${cur}|${q}`;
+  if (q || !cur || cur === "about") loadAbout();
+  if (isAdmin() && (q || cur === "admin")) loadAdmin();
 }
 
 async function loadAbout() {
@@ -224,7 +248,7 @@ function setValue(el) {
   if (key === "customSearch" && v && !/%s/.test(v)) { toast("Custom search URL needs %s", { kind: "err" }); return; }
   settings[key] = v; saveSettings();
   if (key === "blockTrackers" || key === "doNotTrack") hooks.applyExtensionsToTab?.(B.activeTab());
-  if (["searchEngine", "startup", "extensionDeveloperMode"].includes(key)) render(key === "searchEngine" ? "search" : key === "startup" ? "startup" : "extensions");
+  if (["searchEngine", "startup", "extensionDeveloperMode"].includes(key)) render(B.activeTab()?.section || "");
   else toast("Setting saved", { ms: 1200 });
 }
 
@@ -235,7 +259,7 @@ async function act(a, el) {
     case "signup": return openAuth("signup");
     case "saveName": {
       const name = $("accName").value.trim(); if (!name) return toast("Name can't be empty", { kind: "err" });
-      try { const r = await api("/api/auth/me", { method: "PATCH", json: { name } }); setAuth(r.token || auth.token, r.user); toast("Name updated"); render("account"); } catch (e) { toast(e.message, { kind: "err" }); } return;
+      try { const r = await api("/api/auth/me", { method: "PATCH", json: { name } }); setAuth(r.token || auth.token, r.user); toast("Name updated"); render(curSection()); } catch (e) { toast(e.message, { kind: "err" }); } return;
     }
     case "changePassword": {
       const v = await promptDialog({ title: "Change password", ok: "Change password", fields: [{ name: "currentPassword", label: "Current password", type: "password" }, { name: "password", label: "New password (8+ characters)", type: "password" }] });
@@ -243,23 +267,24 @@ async function act(a, el) {
       try { const r = await api("/api/auth/me", { method: "PATCH", json: { password: v.password, currentPassword: v.currentPassword } }); setAuth(r.token, r.user); toast("Password changed. Other devices were signed out."); } catch (e) { toast(e.message, { kind: "err" }); } return;
     }
     case "syncNow": try { await pushSync(); toast("Synced"); } catch (e) { toast(e.message, { kind: "err" }); } return;
-    case "signOut": await signOut(); return render("account");
-    case "signOutAll": if (await confirmDialog("Sign out everywhere?", "Every device using this account will be signed out.", "Sign out everywhere")) { await signOut({ everywhere: true }); render("account"); } return;
+    case "incognito": hooks.openIncognitoWindow?.(); return;
+    case "signOut": await signOut(); return render(curSection());
+    case "signOutAll": if (await confirmDialog("Sign out everywhere?", "Every device using this account will be signed out.", "Sign out everywhere")) { await signOut({ everywhere: true }); render(curSection()); } return;
     case "deleteAccount": {
       const v = await promptDialog({ title: "Delete account", ok: "Delete forever", fields: [{ name: "password", label: "Confirm with your password", type: "password" }] });
       if (!v) return;
-      try { await api("/api/auth/me", { method: "DELETE", json: { password: v.password } }); setAuth("", null); toast("Account deleted"); render("account"); } catch (e) { toast(e.message, { kind: "err" }); } return;
+      try { await api("/api/auth/me", { method: "DELETE", json: { password: v.password } }); setAuth("", null); toast("Account deleted"); render(curSection()); } catch (e) { toast(e.message, { kind: "err" }); } return;
     }
     case "resetTiles": settings.ntpTiles = null; saveSettings(); return toast("Tiles restored");
     case "clearData": return hooks.openClearData?.();
-    case "endSession": if (await confirmDialog("End session now?", "Your page tabs close and the server deletes the session.", "End session")) { await B.endSession("manual"); render("sessions"); } return;
+    case "endSession": if (await confirmDialog("End session now?", "Your page tabs close and the server deletes the session.", "End session")) { await B.endSession("manual"); render(curSection()); } return;
     case "openDownloads": return nav("downloads");
     case "openHistory": return nav("history");
     case "openExtensions": return nav("extensions");
     case "openVpn": return nav("vpn");
-    case "vpnAutoOff": settings.vpnAutoProfile = ""; saveSettings(); return render("vpn");
-    case "resetShortcuts": settings.shortcuts = {}; saveSettings(); toast("Shortcuts restored"); return render("shortcuts");
-    case "reset": if (await confirmDialog("Reset settings?", "All settings go back to their defaults. Bookmarks, history and extensions are kept.", "Reset")) { resetSettings(); toast("Settings reset"); render(""); } return;
+    case "vpnAutoOff": settings.vpnAutoProfile = ""; saveSettings(); return render(curSection());
+    case "resetShortcuts": settings.shortcuts = {}; saveSettings(); toast("Shortcuts restored"); return render(curSection());
+    case "reset": if (await confirmDialog("Reset settings?", "All settings go back to their defaults. Bookmarks, history and extensions are kept.", "Reset")) { resetSettings(); toast("Settings reset"); render(curSection()); } return;
     case "copyApi": return copyText(API);
     case "applyPlan": {
       const plan = $("cfgPlan").value;
@@ -272,7 +297,7 @@ function startRebind(btn) {
   const id = btn.dataset.rebind;
   qsa(".kbd-btn.recording").forEach(b => b.classList.remove("recording"));
   btn.classList.add("recording"); btn.innerHTML = `<span class="muted">Press keys…</span>`;
-  const done = () => { setRecording(null); render("shortcuts"); };
+  const done = () => { setRecording(null); render(curSection()); };
   setRecording(combo => {
     if (combo === "Esc") return done();
     if (combo === "Backspace" || combo === "Delete") { settings.shortcuts = { ...settings.shortcuts, [id]: [] }; saveSettings(); return done(); }
@@ -287,11 +312,14 @@ export function initSettings(b) {
   B = b;
   hooks.renderSettings = section => render(section || "");
   const nav = $("settingsNav"), body = $("settingsBody");
-  nav.addEventListener("click", e => {
-    const s = e.target.closest("[data-snav]"); if (!s) return;
+  const goSection = id => {
     const t = B.activeTab(); if (!t || t.view !== "settings") return;
-    t.section = s.dataset.snav; $("settingsSearch").value = ""; B.renderActive();
-  });
+    $("settingsSearch").value = "";
+    // Route through openInternal so /settings/<id> gets its own history entry (Back works).
+    B.openInternal("settings", { tab: t, section: id });
+  };
+  nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
+  body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el && ["text", "password", "url", "color"].includes(el.type)) { setValue(el); if (el.dataset.set === "accent") qsa(".swatch").forEach(s => s.classList.remove("on")); } }, 450));
   body.addEventListener("click", e => {
@@ -299,9 +327,10 @@ export function initSettings(b) {
     const th = e.target.closest("[data-theme-pick]"); if (th) { settings.theme = th.dataset.themePick; saveSettings(); qsa(".theme-card").forEach(c => { c.classList.toggle("on", c === th); c.setAttribute("aria-pressed", c === th); }); return; }
     const sw = e.target.closest("[data-accent]"); if (sw) { settings.accent = sw.dataset.accent; saveSettings(); qsa(".swatch").forEach(s => s.classList.toggle("on", s === sw)); const ci = document.querySelector('#settingsBody input[type=color]'); if (ci) ci.value = sw.dataset.accent; return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
-    const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render("shortcuts"); }
+    const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
   });
-  $("settingsSearch").addEventListener("input", debounce(e => { filter(e.target.value.trim()); $("view-settings").scrollTop = 0; }, 120));
+  $("settingsSearch").addEventListener("input", debounce(() => render(B.activeTab()?.section || ""), 120));
+  $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.target.value = ""; render(B.activeTab()?.section || ""); } });
   hooks.onSessionTickSettings = () => { const el = $("setSessLeft"); const s = B.state.session; if (el && s) el.textContent = fmtClock(Math.max(0, s.expiresAt - Date.now())) + " left"; };
   setInterval(() => { if (B.activeTab()?.view === "settings") hooks.onSessionTickSettings(); }, 1000);
 }
