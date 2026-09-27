@@ -158,14 +158,14 @@ async function refreshBrowserSurface(t, force=false) {
     const verify=$("browserVerify"); verify?.classList.toggle("hidden", s.status!=="VERIFICATION_REQUIRED");
     $("browserRemoteBadge").textContent=s.status==='VERIFICATION_REQUIRED'?"VERIFY":"BROWSER";
     $("pageState").textContent=s.status==='VERIFICATION_REQUIRED'?"Website verification required":hostOf(t.url);
-    $("serverState").textContent=s.status==='VERIFICATION_REQUIRED'?"Verification required":"Browser engine"; $("serverState").className="server-pill"+(s.status==='VERIFICATION_REQUIRED'?" warn":" live");
+    $("serverState").textContent=s.status==='VERIFICATION_REQUIRED'?"Verification":"Browser"; $("serverState").className = "server-pill" + (s.status==='VERIFICATION_REQUIRED'?" warn":" live");
     updateIdentity(t.url); renderTabs();
     if (state.inspectMode && t.browserSessionId) v?.classList.remove("hidden");
     if (force) { clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700); }
   } catch(e) { addLog("error",`Browser session error: ${e.message}`); }
 }
-async function startBrowserSession(t,url) {
-  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url})});
+async function startBrowserSession(t,url,jobId='') {
+  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url,jobId})});
   t.browserMode='BROWSER_ENGINE'; t.browserSessionId=body.session.id; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
   showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
   await refreshBrowserSurface(t,true);
@@ -543,8 +543,8 @@ function restoreTabView(t) {
     if (t.browserMode === "BROWSER_ENGINE" && t.browserSessionId) { showFrameForTab(t); refreshBrowserSurface(t,true); }
     else { const frame = getOrCreateFrame(t); const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId); if (frame.src !== wantedProxy) frame.src = wantedProxy; showFrameForTab(t); }
     $("pageState").textContent = t.done ? "Ready" : (t.jobId ? "Loading…" : "Ready");
-    $("serverState").textContent = t.browserMode === "BROWSER_ENGINE" ? "Browser engine" : (t.done ? "Crawler finished" : (t.jobId ? "Crawling…" : "Crawler idle"));
-    $("serverState").className = "server-pill" + (t.browserMode === "BROWSER_ENGINE" || (!t.done && t.jobId) ? " live" : "");
+    $("serverState").textContent = t.browserMode === "BROWSER_ENGINE" ? "Browser" : "Proxy";
+    $("serverState").className = "server-pill" + (t.browserMode === "BROWSER_ENGINE" ? " live" : "");
     setLoading(!t.done && !!t.jobId && t.browserMode !== "BROWSER_ENGINE", 52, "Loading page…");
   } else if (t.view === "search") showSearch(t.searchQuery, false);
   else if (t.view === "calculator") showCalculator(t.calcExpression || "", false);
@@ -565,9 +565,14 @@ async function startJobForTab(t, url, loadFrame = true) {
   try { const cap = await apiRequest('/api/browser/capability',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}); mode = cap.body.mode || 'FAST_PROXY'; } catch(e) { addLog('debug',`Capability detection failed; using fast proxy: ${e.message}`); }
   if (mode === "BROWSER_ENGINE") {
     try {
-      await startBrowserSession(t,url); recordHistory("page",t.url,t.title); renderTabs();
-      // Indexing is background-only and never blocks the foreground browser session.
-      apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}).then(r=>{ t.jobId=r.body?.jobId||null; if(t.jobId)startPolling(t); }).catch(e=>addLog('debug',`Background indexing skipped: ${e.message}`));
+      let jobId = '';
+      try {
+        const opened = await apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})});
+        jobId = opened.body?.jobId || '';
+        t.jobId = jobId || null;
+        if (t.jobId) startPolling(t);
+      } catch(e) { addLog('debug',`Background indexing skipped: ${e.message}`); }
+      await startBrowserSession(t,url,jobId); recordHistory("page",t.url,t.title); renderTabs();
       return;
     } catch(e) {
       t.browserMode='FAST_PROXY'; t.browserSessionId=''; addLog('warn',`Browser engine unavailable; falling back to FAST_PROXY: ${e.message}`);
@@ -608,10 +613,10 @@ async function pollJob(t) {
       const gb = ((c.bytesScanned || 0) / 1073741824).toFixed(2);
       const w = b.workers || {};
       const rm = b.robotMesh?.summary || {};
-      $("crawlSummary").textContent = b.done ? "Ready" : "Loading…";
+      $("crawlSummary").textContent = "";
       $("backendHealth").textContent = "Backend: online";
-      $("serverState").textContent = b.done ? "Ready" : "Loading";
-      $("serverState").className = "server-pill" + (b.done ? "" : " live");
+      $("serverState").textContent = b.browser?.available ? "Browser" : "Proxy";
+      $("serverState").className = "server-pill" + (b.browser?.available ? " live" : "");
       const denom = Math.max(1, (c.processed || 0) + (c.queued || 0) + 4); $("loadProgress").style.width = b.done ? "100%" : `${Math.min(88, 42 + ((c.processed || 0) / denom) * 45)}%`;
     }
     for (const x of b.logs || []) { if (t.remoteLogIds.has(x.id)) continue; t.remoteLogIds.add(x.id); state.logs.push({ time: new Date(x.time), level: x.level, message: `[${hostOf(t.url)}] ${x.message}` }); }
@@ -620,8 +625,8 @@ async function pollJob(t) {
     if (b.done) {
       clearInterval(t.poll); t.poll = null; t.done = true;
       await Promise.all([loadResources(t), loadLinks(t)]);
-      if (isActive) { setLoading(false); $("pageState").textContent = b.statusText || "Ready"; }
-      if (b.status === "challenge") addLog("warn", `[${hostOf(t.url)}] Security verification stopped the crawl.`); else addLog("info", `[${hostOf(t.url)}] ${b.statusText || "Crawler finished."}`);
+      if (isActive) { setLoading(false); $("pageState").textContent = "Ready"; }
+      if (b.status === "challenge") addLog("warn", `[${hostOf(t.url)}] Security verification stopped the crawl.`);
     }
   } catch (e) {
     if (activeTab() === t) $("backendHealth").textContent = "Backend: error";
