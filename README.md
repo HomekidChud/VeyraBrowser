@@ -54,3 +54,9 @@ The Veyra frontend includes a custom inspect-element mode, custom downloads (Ctr
 
 ## v8.5 browser features
 The toolbar's Reload control becomes a Stop control while a page is loading. The tools dropdown provides Inspect element, Find in page, Print, Downloads, History, Extensions, Calculator, Search and diagnostics. Keyboard shortcuts include Ctrl+J, Ctrl+H, Ctrl+Shift+I, Ctrl+F and Ctrl+P. The extension developer mode accepts local JSON manifests with CSS-only UI customization; arbitrary script, network and credential access is deliberately excluded.
+
+## v8.7 hybrid browser runtime
+
+The frontend now distinguishes `FAST_PROXY` and `BROWSER_ENGINE` per tab. Capability detection happens before foreground navigation; browser-engine pages use an isolated backend Chromium session and a bounded remote viewport, while the crawler is started independently as background indexing work.
+
+`Ctrl+Shift+I` inspects the real Chromium DOM when a browser-engine session is active. Browser back/forward/reload use the real Playwright page history. Verification-required pages stay in the same browser session and expose a user-visible verification state rather than attempting to bypass the site's security controls.

@@ -84,6 +84,7 @@ function makeTab() {
   return {
     id: "t" + (++state.tabSeq), title: "New Tab", favicon: "", url: "", proxyUrl: "", jobId: null, done: false,
     history: [], histIndex: -1, view: "home", searchQuery: "", searchOffset: 0, searchData: null, proxySessionId: "",
+    browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserScreenshot: null, browserStatus: "",
     consolePageUrl: "", remoteLogIds: new Set(), resources: [], links: [], selected: -1, poll: null
   };
 }
@@ -117,12 +118,61 @@ function getOrCreateFrame(t) {
   return frame;
 }
 function activeFrame() { const t = activeTab(); return t ? getOrCreateFrame(t) : null; }
+function ensureBrowserViewport() {
+  const wrap = $("frameWrap"); if (!wrap) return null;
+  let v = $("browserRemoteViewport");
+  if (!v) {
+    v = document.createElement("div"); v.id = "browserRemoteViewport"; v.className = "browser-remote-viewport hidden";
+    v.innerHTML = '<img id="browserRemoteImage" alt="Remote Chromium page"><div class="browser-remote-badge" id="browserRemoteBadge">BROWSER</div><div class="browser-verify" id="browserVerify"><b>Website verification required</b><span>The actual browser session is waiting for you.</span><div><button id="browserVerifyComplete">Complete verification</button><button id="browserVerifyRetry">Retry</button><button id="browserVerifyDirect">Open directly</button></div></div>';
+    wrap.insertBefore(v, wrap.firstChild);
+    const img = v.querySelector("#browserRemoteImage");
+    const sendPointer = async (type,e) => { const t=activeTab(); if(!t?.browserSessionId)return; const r=img.getBoundingClientRect(); const x=Math.max(0,Math.min(1365,(e.clientX-r.left)*1365/r.width)); const y=Math.max(0,Math.min(820,(e.clientY-r.top)*820/r.height)); try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type,x,y,button:e.button===2?'right':'left'})}); await refreshBrowserSurface(t,true);}catch(err){addLog("error",`Browser input failed: ${err.message}`)}};
+    img.addEventListener("click",e=>sendPointer("click",e)); img.addEventListener("dblclick",e=>sendPointer("dblclick",e)); img.addEventListener("contextmenu",e=>{e.preventDefault();sendPointer("click",e)});
+    img.addEventListener("mousemove",async e=>{ if(!state.inspectMode)return; const t=activeTab(); const r=img.getBoundingClientRect(); const x=Math.max(0,Math.min(1365,(e.clientX-r.left)*1365/r.width)); const y=Math.max(0,Math.min(820,(e.clientY-r.top)*820/r.height)); try{const q=await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/inspect`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({x,y})}); if(q.body.data)renderInspectData(q.body.data)}catch{}});
+    img.addEventListener("wheel",e=>{e.preventDefault();sendPointer("wheel",e)} ,{passive:false});
+    window.addEventListener("keydown",async e=>{ const t=activeTab(); if(!t?.browserSessionId || document.activeElement?.tagName==='INPUT' || document.activeElement?.tagName==='TEXTAREA') return; const mod=e.ctrlKey||e.metaKey; if(mod||e.altKey) return; try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({type:"key",key:e.key.length===1?e.key:e.key})}); await refreshBrowserSurface(t,true);}catch{} });
+    v.querySelector("#browserVerifyComplete").onclick=()=>v.querySelector("#browserVerify")?.classList.add("hidden");
+    v.querySelector("#browserVerifyRetry").onclick=()=>refreshBrowserSurface(activeTab(),true);
+    v.querySelector("#browserVerifyDirect").onclick=()=>{const t=activeTab();if(t?.url)window.open(t.url,"_blank","noopener")};
+  }
+  return v;
+}
 function showFrameForTab(t) {
   if (!t) return;
   const wanted = getOrCreateFrame(t);
-  document.querySelectorAll("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", el === wanted));
+  const remote = ensureBrowserViewport();
+  const browser = t.browserMode === "BROWSER_ENGINE" && !!t.browserSessionId;
+  document.querySelectorAll("#frameWrap .tab-frame").forEach(el => el.classList.toggle("frame-active", !browser && el === wanted));
+  remote?.classList.toggle("hidden", !browser);
 }
 function destroyFrame(tabId) { getFrame(tabId)?.remove(); }
+async function refreshBrowserSurface(t, force=false) {
+  if (!t?.browserSessionId || !state.tabs.includes(t)) return;
+  try {
+    const r = await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`);
+    const s = r.body.session; const previousUrl=t.url; t.url=s.canonicalUrl||t.url; t.browserStatus=s.status; t.title=s.title||hostOf(t.url);
+    if (t.url && previousUrl && t.url !== previousUrl) { t.history=t.history.slice(0,t.histIndex+1); t.history.push(t.url); t.histIndex=t.history.length-1; recordHistory('page',t.url,t.title); }
+    const img=$("browserRemoteImage"), v=$("browserRemoteViewport"); if(!img||!v)return;
+    if(force || !img.dataset.session) { img.dataset.session=t.browserSessionId; img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`; }
+    else if(force) img.src=`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
+    const verify=$("browserVerify"); verify?.classList.toggle("hidden", s.status!=="VERIFICATION_REQUIRED");
+    $("browserRemoteBadge").textContent=s.status==='VERIFICATION_REQUIRED'?"VERIFY":"BROWSER";
+    $("pageState").textContent=s.status==='VERIFICATION_REQUIRED'?"Website verification required":hostOf(t.url);
+    $("serverState").textContent=s.status==='VERIFICATION_REQUIRED'?"Verification required":"Browser engine"; $("serverState").className="server-pill"+(s.status==='VERIFICATION_REQUIRED'?" warn":" live");
+    updateIdentity(t.url); renderTabs();
+    if (state.inspectMode && t.browserSessionId) v?.classList.remove("hidden");
+    if (force) { clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700); }
+  } catch(e) { addLog("error",`Browser session error: ${e.message}`); }
+}
+async function startBrowserSession(t,url) {
+  const {body}=await apiRequest('/api/browser/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tabId:t.id,url})});
+  t.browserMode='BROWSER_ENGINE'; t.browserSessionId=body.session.id; t.browserStatus=body.session.status; t.url=body.session.canonicalUrl||url;
+  showBrowser(); showFrameForTab(t); updateIdentity(t.url); setLoading(false);
+  await refreshBrowserSurface(t,true);
+  if(t.browserPoll)clearTimeout(t.browserPoll); t.browserPoll=setTimeout(()=>refreshBrowserSurface(t,true),700);
+  return body.session;
+}
+async function stopBrowserSession(t) { if(!t?.browserSessionId)return; try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}`,{method:'DELETE'})}catch{} clearTimeout(t.browserPoll); t.browserPoll=null; t.browserSessionId=''; }
 
 function routeName() {
   const p = location.pathname;
@@ -249,6 +299,7 @@ function setLoading(on, pct = 0, message = "Loading page…") {
 }
 async function stopCurrentLoad() {
   const t = activeTab();
+  try { if (t?.browserSessionId) await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/stop`, {method:"POST"}); } catch {}
   try { if (t?.jobId && !t.done) await stopJob(t.jobId, true); } catch {}
   if (t?.poll) { clearInterval(t.poll); t.poll = null; }
   if (t) { t.done = true; t.loading = false; }
@@ -352,6 +403,8 @@ function closeTab(id) {
   const t = state.tabs[idx];
   if (settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab has an active crawl running. Close it anyway?")) return;
   if (t.poll) clearInterval(t.poll);
+  clearTimeout(t.browserPoll);
+  if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
   if (t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
   destroyFrame(t.id);
   state.tabs.splice(idx, 1);
@@ -409,7 +462,8 @@ function showExtensions(pushRoute = true) {
 function toggleInspect(enabled = true) {
   const frame = activeFrame(), drawer = $("inspectDrawer"); if (!drawer) return;
   drawer.classList.toggle("hidden", !enabled); $("inspectHighlight")?.classList.toggle("hidden", !enabled);
-  state.inspectMode = !!enabled; closeMenu();
+  state.inspectMode = !!enabled; closeMenu(); const t=activeTab();
+  if (t?.browserMode === "BROWSER_ENGINE" && t.browserSessionId) { ensureBrowserViewport()?.classList.toggle("hidden", false); addLog("info", enabled ? "Inspect mode enabled for real Chromium DOM." : "Inspect mode disabled."); return; }
   if (frame?.contentWindow) frame.contentWindow.postMessage({ type: "veyra:inspect", enabled: !!enabled }, new URL(API).origin);
   if (enabled) addLog("info", "Inspect mode enabled."); else addLog("info", "Inspect mode disabled.");
 }
@@ -486,13 +540,12 @@ function restoreTabView(t) {
   if (!t) return;
   if (t.view === "browser" && t.url) {
     showBrowser(); updateIdentity(t.url);
-    const frame = getOrCreateFrame(t);
-    const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId);
-    if (frame.src !== wantedProxy) frame.src = wantedProxy;
+    if (t.browserMode === "BROWSER_ENGINE" && t.browserSessionId) { showFrameForTab(t); refreshBrowserSurface(t,true); }
+    else { const frame = getOrCreateFrame(t); const wantedProxy = proxyUrl(t.url, "view", t.proxySessionId); if (frame.src !== wantedProxy) frame.src = wantedProxy; showFrameForTab(t); }
     $("pageState").textContent = t.done ? "Ready" : (t.jobId ? "Loading…" : "Ready");
-    $("serverState").textContent = t.done ? "Crawler finished" : (t.jobId ? "Crawling…" : "Crawler idle");
-    $("serverState").className = "server-pill" + (!t.done && t.jobId ? " live" : "");
-    setLoading(!t.done && !!t.jobId, 52, "Loading page…");
+    $("serverState").textContent = t.browserMode === "BROWSER_ENGINE" ? "Browser engine" : (t.done ? "Crawler finished" : (t.jobId ? "Crawling…" : "Crawler idle"));
+    $("serverState").className = "server-pill" + (t.browserMode === "BROWSER_ENGINE" || (!t.done && t.jobId) ? " live" : "");
+    setLoading(!t.done && !!t.jobId && t.browserMode !== "BROWSER_ENGINE", 52, "Loading page…");
   } else if (t.view === "search") showSearch(t.searchQuery, false);
   else if (t.view === "calculator") showCalculator(t.calcExpression || "", false);
   else if (t.view === "downloads") showDownloads(false);
@@ -503,24 +556,31 @@ function restoreTabView(t) {
 
 async function startJobForTab(t, url, loadFrame = true) {
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId, true).catch(() => {});
+  if (t.browserSessionId) await stopBrowserSession(t);
   if (t.poll) clearInterval(t.poll);
-  t.resources = []; t.links = []; t.selected = -1; t.remoteLogIds = new Set(); t.done = false; t.jobId = null; t.url = url; t.title = hostOf(url); t.view = "browser";
-  showBrowser(); updateIdentity(url); setLoading(true, 16, "Connecting…");
-  $("pageState").textContent = "Connecting…"; $("serverState").textContent = "Starting crawl"; $("serverState").className = "server-pill warn";
+  t.resources = []; t.links = []; t.selected = -1; t.remoteLogIds = new Set(); t.done = false; t.jobId = null; t.url = url; t.title = hostOf(url); t.view = "browser"; t.browserMode = "FAST_PROXY";
+  showBrowser(); updateIdentity(url); setLoading(true, 16, "Choosing page runtime…");
+  $("pageState").textContent = "Choosing runtime…"; $("serverState").textContent = "Capability detection"; $("serverState").className = "server-pill warn";
+  let mode = "FAST_PROXY";
+  try { const cap = await apiRequest('/api/browser/capability',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}); mode = cap.body.mode || 'FAST_PROXY'; } catch(e) { addLog('debug',`Capability detection failed; using fast proxy: ${e.message}`); }
+  if (mode === "BROWSER_ENGINE") {
+    try {
+      await startBrowserSession(t,url); recordHistory("page",t.url,t.title); renderTabs();
+      // Indexing is background-only and never blocks the foreground browser session.
+      apiRequest('/api/open',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url})}).then(r=>{ t.jobId=r.body?.jobId||null; if(t.jobId)startPolling(t); }).catch(e=>addLog('debug',`Background indexing skipped: ${e.message}`));
+      return;
+    } catch(e) {
+      t.browserMode='FAST_PROXY'; t.browserSessionId=''; addLog('warn',`Browser engine unavailable; falling back to FAST_PROXY: ${e.message}`);
+      if (e.code === 'BROWSER_CAPACITY') renderProxyError('server', e);
+    }
+  }
   try {
     const { body } = await apiRequest("/api/open", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
     t.jobId = body.jobId; t.url = body.url || url; t.proxyUrl = API + (body.viewUrl || (`/api/view?url=${encodeURIComponent(t.url)}`));
     recordHistory("page", t.url, t.title);
-    if (activeTab() === t) {
-      updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…");
-      if (loadFrame) getOrCreateFrame(t).src = proxyUrl(t.url, "view", t.proxySessionId);
-    }
+    if (activeTab() === t) { updateIdentity(t.url); $("pageState").textContent = `Loading ${hostOf(t.url)}…`; setLoading(true, 42, "Fetching document…"); if (loadFrame) getOrCreateFrame(t).src = proxyUrl(t.url, "view", t.proxySessionId); showFrameForTab(t); }
     startPolling(t); renderTabs();
-  } catch (e) {
-    t.jobId = null; t.done = true;
-    if (activeTab() === t) renderProxyError("server", e);
-    addLog("error", `Open failed: ${e.message}`, { requestId: e.requestId, stack: e.stack || "" });
-  }
+  } catch (e) { t.jobId = null; t.done = true; if (activeTab() === t) renderProxyError("server", e); addLog("error", `Open failed: ${e.message}`, { requestId: e.requestId, stack: e.stack || "" }); }
 }
 async function navigateUrl(url, pushHistory = true, loadFrame = true) {
   const parsed = new URL(url); const t = activeTab(); if (!t) return;
@@ -573,7 +633,7 @@ async function stopJob(id, silent = false) {
   try { await apiRequest(`/api/crawl/${encodeURIComponent(id)}/stop`, { method: "POST" }); if (!silent) addLog("warn", `Stop requested for job ${id}.`); refreshDev(); }
   catch (e) { if (!silent) addLog("error", `Stop failed: ${e.message}`, { requestId: e.requestId }); }
 }
-async function reloadActive() { const t = activeTab(); if (!t) return; if (t.view === "browser" && t.url) await navigateUrl(t.url, false, true); else if (t.view === "search") await runSearch(t.searchQuery, true); else if (t.view === "calculator") renderCalculator(); }
+async function reloadActive() { const t = activeTab(); if (!t) return; if (t.browserSessionId) { try { setLoading(true,30,"Reloading…"); await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'reload'})}); await refreshBrowserSurface(t,true); setLoading(false); return; } catch(e) { addLog('warn',`Browser reload failed: ${e.message}`); } } if (t.view === "browser" && t.url) await navigateUrl(t.url, false, true); else if (t.view === "search") await runSearch(t.searchQuery, true); else if (t.view === "calculator") renderCalculator(); }
 
 async function loadResources(t = activeTab()) {
   if (!t?.jobId) return;
@@ -888,8 +948,8 @@ function wireApp() {
   $("homeBrowse").onclick = () => openPage($("homeInput").value); $("homeInput").onkeydown = e => { if (e.key === "Enter") openPage($("homeInput").value); };
   document.querySelectorAll(".shortcuts [data-url]").forEach(b => b.onclick = () => openPage(b.dataset.url)); document.querySelectorAll(".shortcuts [data-tool]").forEach(b => b.onclick = () => showCalculator());
   $("homeBtn").onclick = () => showHome(); $("newTab").onclick = newTabAction; $("reloadBtn").onclick = reloadActive;
-  $("backBtn").onclick = () => { const t=activeTab(); if(!t||t.histIndex<=0)return; t.histIndex--; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
-  $("forwardBtn").onclick = () => { const t=activeTab(); if(!t||t.histIndex>=t.history.length-1)return; t.histIndex++; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
+  $("backBtn").onclick = async () => { const t=activeTab(); if(!t)return; if(t.browserSessionId){try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'back'})});await refreshBrowserSurface(t,true);return}catch{}} if(t.histIndex<=0)return; t.histIndex--; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
+  $("forwardBtn").onclick = async () => { const t=activeTab(); if(!t)return; if(t.browserSessionId){try{await apiRequest(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({direction:'forward'})});await refreshBrowserSurface(t,true);return}catch{}} if(t.histIndex>=t.history.length-1)return; t.histIndex++; const target=t.history[t.histIndex]; if(target?.startsWith("search:")) showSearch(target.slice(7)); else if(target?.startsWith("calc:")) showCalculator(target.slice(5)); else openPage(target,false); };
   $("starBtn").onclick = saveBookmark; $("toolsMenuBtn").onclick = toggleMenu; document.querySelectorAll(".tool-tab").forEach(x=>x.onclick=()=>setTool(x.dataset.panel));
   $("backToPage").onclick = () => restoreTabView(activeTab()); $("menuBtn").onclick = toggleMenu;
   $("menuInspect").onclick=()=>{ toggleInspect(!state.inspectMode); closeMenu(); }; $("menuFind").onclick=()=>{closeMenu();findInPage()}; $("menuPrint").onclick=()=>{closeMenu();printCurrentPage()}; $("menuSource").onclick=()=>{closeMenu();setTool("sourcePanel")}; $("menuLinks").onclick=()=>{closeMenu();setTool("linkPanel")}; $("menuConsole").onclick=()=>{closeMenu();setTool("consolePanel")}; $("menuDev").onclick=()=>{closeMenu();setTool("devPanel")}; $("menuSettings").onclick=()=>{closeMenu();setTool("settingsPanel")}; $("menuDownloads").onclick=()=>{closeMenu();showDownloads()}; $("menuHistory").onclick=()=>{closeMenu();showHistory()}; $("menuExtensions").onclick=()=>{closeMenu();showExtensions()}; $("menuCalculator").onclick=()=>{closeMenu();showCalculator()}; $("menuSearch").onclick=()=>{closeMenu();showSearch()}; $("menuHome").onclick=()=>{closeMenu();newTabAction()};
