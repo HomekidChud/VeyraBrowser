@@ -11,3 +11,4 @@ ok("combined races proxy and chromium", app.includes('startBrowserSession(t, url
 ok("crawler mode is sent to the server", app.includes('engineMode') && app.includes('/api/open'));
 ok("settings migration reaches version 3", core.includes('settingsVersion: 3') && core.includes('obj.settingsVersion = 3'));
 console.log("Veyra frontend mode regression checks passed");
+ok("capability declaration is valid JavaScript", !app.includes("async async function capability"));

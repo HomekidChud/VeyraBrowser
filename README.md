@@ -1,7 +1,7 @@
-# Veyra Browser — frontend v8.13
+# Veyra Browser — frontend v8.14.1
 
 This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
-It needs the Veyra server **v8.13.0 or newer**, which provides the auth, session time limit and admin-gating endpoints.
+It needs the Veyra server **v8.14.0 or newer**, which provides the auth, session time limit and admin-gating endpoints.
 
 ## What's in it
 

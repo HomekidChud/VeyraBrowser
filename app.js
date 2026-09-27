@@ -430,7 +430,7 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
   await loadInTab(t, url, { loadFrame: true, record });
   if (push && activeTab() === t) syncRoute();
 }
-async async function capability(url) {
+async function capability(url) {
   if (settings.runtime === "proxy") return "FAST_PROXY";
   if (settings.runtime === "crawler") return "FAST_PROXY";
   if (settings.runtime === "browser" || settings.runtime === "combined") return "BROWSER_ENGINE";
