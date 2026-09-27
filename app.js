@@ -478,6 +478,7 @@ function openCrawl(t, url, session, enabled = true) {
   });
 }
 async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
+  const previousUrl = t.url;
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
   Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
@@ -501,7 +502,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null } = {}) {
   const useProxy = async () => {
     if (!loadFrame) return;
     t.browserMode = "FAST_PROXY";
-    const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id);
+    const f = getOrCreateFrame(t); f.removeAttribute("srcdoc"); f.src = proxyUrl(url, "view", session.id, previousUrl);
     if (activeTab() === t) showFrameForTab(t);
   };
 
@@ -1064,7 +1065,7 @@ function canonical(value) {
 }
 function submitForm(t, msg) {
   if (!state.session) return;
-  const f = getOrCreateFrame(t); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id); form.target = f.name; form.style.display = "none";
+  const f = getOrCreateFrame(t); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id, t.url); form.target = f.name; form.style.display = "none";
   for (const [n, v] of msg.entries || []) form.appendChild(Object.assign(document.createElement("input"), { type: "hidden", name: n, value: v }));
   document.body.appendChild(form); form.submit(); form.remove(); if (activeTab() === t) setLoading(true, 50, "Submitting…");
 }

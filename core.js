@@ -2,7 +2,7 @@
 const apiOverride = (() => { try { const q = new URLSearchParams(location.search).get("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
 export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.15.2";
+export const VERSION = "8.15.4";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -148,9 +148,15 @@ export async function api(path, options = {}) {
     );
   } finally { clearTimeout(timer); detachExternal?.(); }
 }
-export function proxyUrl(url, mode = "view", sid = "") {
+export function proxyUrl(url, mode = "view", sid = "", from = "") {
   const base = API + (mode === "resource" ? "/api/resource?url=" : mode === "download" ? "/api/download?url=" : "/api/view?url=") + encodeURIComponent(url);
-  return sid ? `${base}&sid=${encodeURIComponent(sid)}` : base;
+  const params = [];
+  if (sid) params.push(`sid=${encodeURIComponent(sid)}`);
+  // Preserve the real page-to-page relationship for foreground navigations.
+  // This lets the server send an accurate Referer/Sec-Fetch-Site to destinations
+  // such as Google Accounts without leaking the GitHub Pages app URL upstream.
+  if (mode === "view" && from && /^https?:\/\//i.test(from)) params.push(`from=${encodeURIComponent(from)}`);
+  return params.length ? `${base}&${params.join("&")}` : base;
 }
 
 // ---------------------------------------------------------------- logs (Veyra console)

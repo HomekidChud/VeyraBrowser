@@ -1,0 +1,11 @@
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert');
+const core = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
+const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+assert(core.includes('from = ""'), 'proxyUrl should accept a source page');
+assert(core.includes('mode === "view" && from'), 'source page should only be attached to view navigations');
+assert(app.includes('const previousUrl = t.url'), 'navigation should capture previous URL before replacing tab state');
+assert(app.includes('proxyUrl(url, "view", session.id, previousUrl)'), 'foreground navigation should send its previous page to the proxy');
+assert(app.includes('proxyUrl(msg.url, "view", state.session.id, t.url)'), 'POST form navigation should preserve source page');
+console.log('Google navigation regression checks passed');
