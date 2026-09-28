@@ -807,7 +807,7 @@ async function refreshRemote(t, loop = false) {
     if (activeTab() === t && t.view === "page") {
       const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
       setLoading(false); updateAddress(); updateIdentity();
-      if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "The site is asking for verification. Click inside the page to complete it.";
+      if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site security check detected. Chromium is showing the site's own check; click inside it to complete it.";
     }
     renderTabsSoon();
   } catch (e) {
@@ -934,7 +934,7 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   renderTabs(); renderActive({ push });
   if (query) runSearch(query);
 }
-const PROVIDER_LABEL = { google: "Google", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave", none: "no provider" };
+const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave Search API", none: "no provider" };
 async function runSearch(query, offset = 0) {
   const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
   const source = t.searchSource || "web";
@@ -962,12 +962,12 @@ function renderSearch() {
   renderSearchTabs(t);
   const d = t.searchData;
   const web = (t.searchSource || "web") === "web";
-  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Private web results: Google (when configured), DuckDuckGo or Bing, fetched by the Veyra server." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
+  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "API-first web results: Brave Search, Bing or Google when configured; HTML search fallbacks are last-resort only." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
   if (!d) return;
   $("searchStat").textContent = web ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
   $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
   $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
-    || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>Every provider came back empty or asked for a verification. Try again, or open the search on Google in real Chromium.</span><button class="btn ghost sm" id="searchWebGoogle">Open on Google</button></div>`
+    || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Configure a search API key for reliable server-side results, or open the provider directly.</span><button class="btn ghost sm" id="searchWebGoogle">Open on Google</button></div>`
       : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
   $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
   $("searchWeb")?.addEventListener("click", () => { t.searchSource = "web"; t.searchData = null; runSearch(t.searchQuery); });
@@ -1375,7 +1375,7 @@ function wire() {
     t.searchSource = b.dataset.src; settings.searchSource = b.dataset.src; saveSettings(); t.searchData = null;
     if (t.searchQuery) runSearch(t.searchQuery); else renderSearch();
   });
-  $("searchOnGoogle").onclick = () => { const t = activeTab(); if (t?.searchQuery) navigate(`https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`, { tab: t }); };
+  $("searchOnGoogle").onclick = () => { const t = activeTab(); if (!t?.searchQuery) return; const href = `https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`; window.open(href, "_blank", "noopener,noreferrer"); };
   $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
   $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();
   $("resFilter").oninput = () => renderResources();
