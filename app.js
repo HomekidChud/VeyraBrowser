@@ -276,8 +276,6 @@ export function renderActive({ push = true, replace = false } = {}) {
   $("readerView").classList.toggle("hidden", !(t.view === "page" && t.readerOpen));
   hooks.renderSidePanel?.(t);
   hooks.dt?.onTabChanged(t);
-  if (t.view === "cast") $("castPanel").innerHTML = ""; // clear for cast module to render
-  if (t.view === "internet") $("internetPanel").innerHTML = ""; // clear for internet module to render
   if (push) syncRoute({ replace });
 }
 function updateAddress() {

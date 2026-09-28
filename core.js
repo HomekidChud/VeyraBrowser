@@ -223,6 +223,22 @@ export async function getNeuralStats() {
   try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
+// Test admin login — auto-creates and logs in as admin when test mode is on
+export async function testAdminLogin() {
+  try {
+    const cfg = await api("/api/auth/config", { timeoutMs: 5000 });
+    if (!cfg.testMode) return { ok: false, reason: "Test mode is off on this server" };
+    const result = await api("/api/auth/test-login", { method: "POST", json: {}, timeoutMs: 10000 });
+    if (result.ok && result.token) {
+      auth.token = result.token;
+      auth.user = result.user;
+      auth.admin = true;
+      save("veyra-auth", { token: auth.token, user: auth.user });
+    }
+    return result;
+  } catch (e) { return { ok: false, reason: e.message }; }
+}
+
 // ---------------------------------------------------------------- logs (Veyra console)
 export const logs = [];
 export function addLog(level, message, meta = {}) {
