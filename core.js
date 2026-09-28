@@ -12,7 +12,7 @@ export function bootParam(name) {
 const apiOverride = (() => { try { const q = bootParam("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
 export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.17.2";
+export const VERSION = "8.18.0";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -76,11 +76,20 @@ export const DEFAULT_SETTINGS = {
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 4,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 5,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
-  challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true
+  challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true,
+  // Neural crawler settings (v5)
+  neuralCrawlerEnabled: true, neuralCrawlerPrewarm: true, neuralCrawlerQueryExpansion: true,
+  neuralCrawlerParallelSearch: true, neuralCrawlerBlockTrackers: true, neuralCrawlerProgressiveRender: true,
+  neuralCrawlerRetrainOnFeedback: true, neuralCrawlerModelPath: "",
+  // Device cast + internet settings
+  internetProfile: "auto", wifiSsid: "", wifiPass: "", wifiFreq: "auto",
+  cellApn: "", cellCarrier: "", cellType: "4g",
+  customProxy: "", customDns: "", customGateway: "",
+  bridgeInterface: "", bridgeFrom: "phone", castQuality: "auto", castFps: 30
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
 // Migrate settings saved by older frontends. Version 4 keeps the foreground-first page pipeline defaults.
@@ -103,9 +112,19 @@ export function migrateSettings(obj) {
     obj.requestTimeoutMs = Math.max(Number(obj.requestTimeoutMs) || 0, 30000);
     obj.settingsVersion = 4;
   }
+  if (Number(obj.settingsVersion) < 5) {
+    obj.neuralCrawlerEnabled = obj.neuralCrawlerEnabled !== false;
+    obj.neuralCrawlerPrewarm = obj.neuralCrawlerPrewarm !== false;
+    obj.neuralCrawlerQueryExpansion = obj.neuralCrawlerQueryExpansion !== false;
+    obj.neuralCrawlerParallelSearch = obj.neuralCrawlerParallelSearch !== false;
+    obj.neuralCrawlerBlockTrackers = obj.neuralCrawlerBlockTrackers !== false;
+    obj.neuralCrawlerProgressiveRender = obj.neuralCrawlerProgressiveRender !== false;
+    obj.neuralCrawlerRetrainOnFeedback = obj.neuralCrawlerRetrainOnFeedback !== false;
+    obj.settingsVersion = 5;
+  }
   return obj;
 }
-{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 4) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
+{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 5) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
 export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
@@ -193,6 +212,15 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
   // such as Google Accounts without leaking the GitHub Pages app URL upstream.
   if (mode === "view" && from && /^https?:\/\//i.test(from)) params.push(`from=${encodeURIComponent(from)}`);
   return params.length ? `${base}&${params.join("&")}` : base;
+}
+
+// ---------------------------------------------------------------- neural feedback
+export async function sendNeuralFeedback(url, positive, weight = 1.0) {
+  if (!settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
+  try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}
+}
+export async function getNeuralStats() {
+  try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
 // ---------------------------------------------------------------- logs (Veyra console)

@@ -4,7 +4,7 @@ import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks,
 import { dtCall, onBridgeEvent, isRemote } from "./bridge.js";
 
 let B, root, openState = false, panel = "elements";
-const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"]];
+const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
 const tab = () => B.activeTab();
 const onPage = t => t?.view === "page" && !!t.url;
 const dtState = t => t._dt || (t._dt = { nodes: new Map(), open: new Set(), sel: null, rootIds: [], docLoaded: false, conHistory: [], conHistIdx: -1, netSel: null, netFilter: "all", resEntries: [], srcOpen: [], srcActive: null, appSel: "local", netEnabled: false, stylesTab: "styles", forced: new Set() });
@@ -31,11 +31,15 @@ function build() {
     <section class="dt-panel dt-col" id="dt-network"></section>
     <section class="dt-panel" id="dt-application"></section>
     <section class="dt-panel dt-col" id="dt-performance"></section>
+    <section class="dt-panel" id="dt-audit"></section>
+    <section class="dt-panel" id="dt-memory"></section>
+    <section class="dt-panel" id="dt-security"></section>
+    <section class="dt-panel" id="dt-coverage"></section>
   </div>`;
   root.querySelector(".dt-tabs").onclick = e => { const b = e.target.closest("[data-panel]"); if (b) show(b.dataset.panel); };
   $("dtClose").onclick = close; $("dtPick").onclick = () => togglePick(); $("dtDevice").onclick = toggleDevice;
   $("dtDock").onclick = () => { settings.devtoolsDock = settings.devtoolsDock === "right" ? "bottom" : "right"; saveSettings(); applyDock(); };
-  wireResize(); buildElements(); buildConsole(); buildSources(); buildNetwork(); buildApplication(); buildPerformance();
+  wireResize(); buildElements(); buildConsole(); buildSources(); buildNetwork(); buildApplication(); buildPerformance(); buildAdvancedPanels();
   root.addEventListener("keydown", e => { if (e.key === "Escape" && panel !== "console") { e.stopPropagation(); show("console"); setTimeout(() => $("conInput").focus(), 0); } });
 }
 function applyDock() {
@@ -69,7 +73,7 @@ function show(p) {
 function refreshPanel() {
   if (!openState) return; const t = tab();
   if (p("performance")) { if (!onPage(t)) stopPerfMonitor(); }
-  ({ elements: renderElements, console: renderConsole, sources: renderSources, network: renderNetwork, application: renderApplication, performance: renderPerformance })[panel]?.();
+  ({ elements: renderElements, console: renderConsole, sources: renderSources, network: renderNetwork, application: renderApplication, performance: renderPerformance, audit: renderAudit, memory: renderMemory, security: renderSecurity, coverage: renderCoverage })[panel]?.();
   updateCounts();
 }
 const p = id => panel === id;
@@ -753,4 +757,60 @@ export function initDevtools(b) {
     pickingRemote: (e, pos) => { if (!picking) return false; const t = tab(); call("dom.nodeAt", { x: pos.x, y: pos.y }).then(r => { setPicking(false); if (r) onPicked(t, r); }).catch(() => setPicking(false)); return true; },
     hoverRemote: debounceRaf(pos => { if (picking) call("dom.nodeAt", { x: pos.x, y: pos.y }).catch(() => {}); })
   };
+}
+
+// ============================================================ Advanced panels
+function buildAdvancedPanels() {
+  $("dt-audit").innerHTML = `<div class="dt-sub"><button class="btn primary sm" id="auditRun">Run audit</button><span class="muted">Lighthouse-style performance, accessibility, SEO and best-practices checks.</span></div><div id="auditBody" class="dt-pane">${emptyMsg("Click Run audit to analyse the page.")}</div>`;
+  $("auditRun").onclick = async () => { const t = tab(); if (!onPage(t)) return toast("Open a website first"); $("auditBody").innerHTML = `<div class="dt-empty">Running audit…</div>`; try { const r = await call("audit.run", {}, 30000); renderAuditResults(r); } catch (e) { $("auditBody").innerHTML = emptyMsg(`Audit failed: ${e.message}`); } };
+
+  $("dt-memory").innerHTML = `<div class="dt-sub"><button class="btn primary sm" id="memSnapshot">Take heap snapshot</button><span class="muted">JavaScript heap memory usage.</span></div><div id="memBody" class="dt-pane">${emptyMsg("Click Take heap snapshot to analyse memory.")}</div>`;
+  $("memSnapshot").onclick = async () => { const t = tab(); if (!onPage(t)) return toast("Open a website first"); $("memBody").innerHTML = `<div class="dt-empty">Capturing snapshot…</div>`; try { const r = await call("memory.snapshot", {}, 15000); renderMemoryResults(r); } catch (e) { $("memBody").innerHTML = emptyMsg(`Snapshot failed: ${e.message}`); } };
+
+  $("dt-security").innerHTML = `<div class="dt-sub"><button class="btn primary sm" id="secCheck">Check security</button><span class="muted">Certificate, headers and mixed content.</span></div><div id="secBody" class="dt-pane">${emptyMsg("Click Check security to inspect the connection.")}</div>`;
+  $("secCheck").onclick = async () => { const t = tab(); if (!onPage(t)) return toast("Open a website first"); $("secBody").innerHTML = `<div class="dt-empty">Checking security…</div>`; try { const r = await api("/api/security/inspect", { json: { url: t.url }, timeoutMs: 10000 }); renderSecurityResults(r, t.url); } catch (e) { $("secBody").innerHTML = emptyMsg(`Security check failed: ${e.message}`); } };
+
+  $("dt-coverage").innerHTML = `<div class="dt-sub"><button class="btn primary sm" id="covStart">Start coverage</button><span class="muted">Unused CSS and JavaScript bytes.</span></div><div id="covBody" class="dt-pane">${emptyMsg("Click Start coverage to analyse unused code.")}</div>`;
+  $("covStart").onclick = async () => { const t = tab(); if (!onPage(t)) return toast("Open a website first"); $("covBody").innerHTML = `<div class="dt-empty">Analyzing coverage…</div>`; try { const r = await call("coverage.report", {}, 15000); renderCoverageResults(r); } catch (e) { $("covBody").innerHTML = emptyMsg(`Coverage failed: ${e.message}`); } };
+}
+function renderAudit() {}
+function renderMemory() {}
+function renderSecurity() {}
+function renderCoverage() {}
+function renderAuditResults(r) {
+  const gauge = s => { const c = s >= .9 ? "#3faa68" : s >= .5 ? "#e8a33a" : "#d94a3a"; const off = 2 * Math.PI * 28 * (1 - s); return `<svg width="64" height="64" viewBox="0 0 80 80"><circle cx="40" cy="40" r="28" fill="none" stroke="var(--surface-3)" stroke-width="6"/><circle cx="40" cy="40" r="28" fill="none" stroke="${c}" stroke-width="6" stroke-dasharray="${2 * Math.PI * 28}" stroke-dashoffset="${off}" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" fill="${c}" font-size="16" font-weight="700">${Math.round(s * 100)}</text></svg>`; };
+  const cats = r.categories || {};
+  let html = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">`;
+  html += `<div style="text-align:center"><h3>Overall</h3>${gauge(r.overall || .5)}</div>`;
+  for (const [cat, score] of Object.entries(r.categoryScores || {})) { const labels = { performance: "Performance", accessibility: "Accessibility", seo: "SEO", bestPractices: "Best Practices" }; html += `<div style="text-align:center"><h3>${labels[cat] || cat}</h3>${gauge(score)}</div>`; }
+  html += `</div>`;
+  for (const [cat, checks] of Object.entries(cats)) {
+    const labels = { performance: "Performance", accessibility: "Accessibility", seo: "SEO", bestPractices: "Best Practices" };
+    html += `<h4 style="margin:12px 0 6px">${labels[cat] || cat}</h4>`;
+    for (const c of checks) { const ic = c.score >= .9 ? "✓" : c.score >= .5 ? "!" : "✕"; const col = c.score >= .9 ? "#3faa68" : c.score >= .5 ? "#e8a33a" : "#d94a3a"; html += `<div style="display:flex;gap:8px;padding:4px 0;align-items:flex-start"><span style="color:${col};font-weight:700">${ic}</span><div><b>${esc(c.title)}</b><div class="muted small">${esc(c.desc)}</div>${c.displayValue ? `<span class="mono small" style="color:var(--accent)">${esc(c.displayValue)}${c.unit || ""}</span>` : ""}</div></div>`; }
+  }
+  $("auditBody").innerHTML = html;
+}
+function renderMemoryResults(r) {
+  const fmt = b => b > 1048576 ? `${(b / 1048576).toFixed(2)} MB` : b > 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`;
+  let html = `<div style="display:flex;gap:16px;margin-bottom:12px"><div class="neural-stat"><b>${(r.nodes || 0).toLocaleString()}</b><span>Objects</span></div><div class="neural-stat"><b>${fmt(r.shallowSize || 0)}</b><span>Shallow</span></div><div class="neural-stat"><b>${fmt(r.retainedSize || 0)}</b><span>Retained</span></div></div>`;
+  const types = Object.entries(r.byType || {}).sort((a, b) => (b[1].retained || 0) - (a[1].retained || 0)).slice(0, 20);
+  html += `<table class="table"><thead><tr><th>Type</th><th>Count</th><th>Retained</th></tr></thead><tbody>`;
+  for (const [type, data] of types) html += `<tr><td>${esc(type)}</td><td>${(data.count || 0).toLocaleString()}</td><td>${fmt(data.retained || 0)}</td></tr>`;
+  html += `</tbody></table>`;
+  $("memBody").innerHTML = html;
+}
+function renderSecurityResults(r, url) {
+  const secure = url.startsWith("https://");
+  let html = `<div style="text-align:center;padding:16px"><svg width="48" height="48"><use href="#i-${secure ? "lock" : "ban"}"/></svg><h3 style="margin:8px 0">${secure ? "Connection is secure" : "Connection is not secure"}</h3><p class="muted">${url}</p></div>`;
+  if (r.issues?.length) for (const i of r.issues) html += `<div style="padding:8px;border-radius:8px;background:var(--surface-2);margin:4px 0;border-left:3px solid ${i.severity === "error" ? "#d94a3a" : "#e8a33a"}"><b>${esc(i.title)}</b><div class="muted small">${esc(i.desc)}</div></div>`;
+  if (r.certificates?.length) { html += `<h4 style="margin:12px 0 6px">Certificates</h4><table class="table"><thead><tr><th>Subject</th><th>Issuer</th><th>Valid to</th></tr></thead><tbody>`; for (const c of r.certificates) html += `<tr><td>${esc(c.subject || "?")}</td><td>${esc(c.issuer || "?")}</td><td>${esc(c.validTo || "?")}</td></tr>`; html += `</tbody></table>`; }
+  if (r.headers && Object.keys(r.headers).length) { html += `<h4 style="margin:12px 0 6px">Security headers</h4><table class="table"><thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>`; for (const [k, v] of Object.entries(r.headers)) html += `<tr><td>${esc(k)}</td><td class="mono small">${esc(v)}</td></tr>`; html += `</tbody></table>`; }
+  $("secBody").innerHTML = html;
+}
+function renderCoverageResults(r) {
+  const fmt = b => b > 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`;
+  const pct = (u, t) => t ? Math.round(u / t * 100) : 0;
+  const section = (title, data) => { const p = pct(data.used, data.total); const col = p >= 70 ? "#3faa68" : p >= 40 ? "#e8a33a" : "#d94a3a"; let h = `<h4 style="margin:12px 0 6px">${title}</h4><div class="muted small" style="margin-bottom:4px">${fmt(data.used || 0)} of ${fmt(data.total || 0)} used (${p}%)</div><div style="height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden;margin-bottom:8px"><div style="height:100%;width:${p}%;background:${col}"></div></div>`; if (data.files?.length) { h += `<table class="table"><thead><tr><th>File</th><th>Total</th><th>Used</th><th>%</th></tr></thead><tbody>`; for (const f of data.files.slice(0, 30)) { const fp = pct(f.used, f.total); h += `<tr><td title="${esc(f.url)}">${esc(f.url.split("/").pop().slice(0, 50))}</td><td>${fmt(f.total || 0)}</td><td>${fmt(f.used || 0)}</td><td>${fp}%</td></tr>`; } h += `</tbody></table>`; } return h; };
+  $("covBody").innerHTML = section("CSS", r.css || {}) + section("JavaScript", r.js || {});
 }

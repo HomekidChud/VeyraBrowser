@@ -2,11 +2,12 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
 import { initUI } from "./ui.js";
 import { initDevtools } from "./devtools.js";
+import { initCast } from "./device-cast.js";
 
 // Official YouTube embed compatibility. For public watch/Shorts/live URLs,
 // use YouTube's documented IFrame embed player so playback stays in YouTube's
@@ -62,7 +63,9 @@ const INTERNAL = {
   resources: { title: "Page resources", icon: "i-file", path: "/resources" },
   links: { title: "All links", icon: "i-link", path: "/links" },
   console: { title: "Veyra console", icon: "i-terminal", path: "/console", admin: true },
-  dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true }
+  dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
+  cast: { title: "Device Cast", icon: "i-globe", path: "/cast" },
+  internet: { title: "Internet", icon: "i-vpn", path: "/internet" }
 };
 const saveHistory = () => save("veyra-history", state.history.slice(0, settings.historyMax || 1000));
 const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
@@ -179,6 +182,8 @@ function routeForTab(t) {
   if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
   if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
   if (t.view === "console") return ["/browse", "#console"];
+  if (t.view === "cast") return ["/cast", ""];
+  if (t.view === "internet") return ["/internet", ""];
   return [INTERNAL[t.view]?.path || "/browse", ""];
 }
 function syncRoute({ replace = false } = {}) {
@@ -206,7 +211,7 @@ function applyRoute() {
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
   if (location.hash === "#console") return openInternal("console", { push: false });
   const [, first, second] = route.split("/");
-  const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", console: "console", resources: "resources", links: "links" }[first];
+  const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
     // Unknown routes must be repaired without recursively calling goRoute()/applyRoute().
     // A malformed/mismatched APP_BASE previously caused an infinite applyRoute loop.
@@ -263,13 +268,16 @@ export function renderActive({ push = true, replace = false } = {}) {
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev,
+    cast: () => hooks.renderCast?.(), internet: () => hooks.renderInternet?.()
   }[t.view]; r?.();
   if (t.view !== "dev") clearInterval(state.devTimer);
   if (!$("findBar").classList.contains("hidden") && t.view !== "page") closeFind();
   $("readerView").classList.toggle("hidden", !(t.view === "page" && t.readerOpen));
   hooks.renderSidePanel?.(t);
   hooks.dt?.onTabChanged(t);
+  if (t.view === "cast") $("castPanel").innerHTML = ""; // clear for cast module to render
+  if (t.view === "internet") $("internetPanel").innerHTML = ""; // clear for internet module to render
   if (push) syncRoute({ replace });
 }
 function updateAddress() {
@@ -544,6 +552,7 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
   if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
   state.activeId === t.id || (state.activeId = t.id);
   if (pushHist) pushTabHistory(t, url);
+  sendNeuralFeedback(url, true, 0.5); // Light positive signal for navigation
   await loadInTab(t, url, { loadFrame: true, record });
   if (push && activeTab() === t) syncRoute();
 }
@@ -950,8 +959,8 @@ export function zoomStep(dir) { const t = activeTab(); const cur = t?.view === "
 export function toggleBookmark() {
   const t = activeTab(); if (!t?.url) return;
   const i = state.bookmarks.findIndex(b => b.url === t.url);
-  if (i >= 0) { const [b] = state.bookmarks.splice(i, 1); saveBookmarks(); toast("Bookmark removed", { action: () => { state.bookmarks.splice(i, 0, b); saveBookmarks(); updateIdentity(); }, actionLabel: "Undo" }); }
-  else { state.bookmarks.push({ id: uid(), url: t.url, title: t.title || hostOf(t.url), time: Date.now() }); saveBookmarks(); toast("Bookmarked"); }
+  if (i >= 0) { const [b] = state.bookmarks.splice(i, 1); saveBookmarks(); toast("Bookmark removed", { action: () => { state.bookmarks.splice(i, 0, b); saveBookmarks(); updateIdentity(); }, actionLabel: "Undo" }); sendNeuralFeedback(t.url, false, 2.0); }
+  else { state.bookmarks.push({ id: uid(), url: t.url, title: t.title || hostOf(t.url), time: Date.now() }); saveBookmarks(); toast("Bookmarked"); sendNeuralFeedback(t.url, true, 3.0); }
   updateIdentity();
 }
 
@@ -1009,7 +1018,7 @@ function renderSearch() {
   $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
     || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Configure a search API key for reliable server-side results, or open the provider directly.</span><button class="btn ghost sm" id="searchWebGoogle">Open on Google</button></div>`
       : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
-  $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
+  $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); sendNeuralFeedback(a.dataset.open, true, 1.0); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
   $("searchWeb")?.addEventListener("click", () => { t.searchSource = "web"; t.searchData = null; runSearch(t.searchQuery); });
   $("searchWebGoogle")?.addEventListener("click", () => navigate(`https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`));
   const more = web ? (d.results?.length || 0) >= 8 && (d.results?.length || 0) < 60 : d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
@@ -1462,7 +1471,7 @@ async function boot() {
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
     if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
-    initUI(B); initDevtools(B);
+    initUI(B); initDevtools(B); initCast(B);
     renderTabs(); tickSession();
     applyRoute();
     applyStartup(params);

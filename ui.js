@@ -376,6 +376,8 @@ function openMainMenu() {
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
+    menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast")),
+    menuItem("i-vpn", "Internet Connection", "", () => B.openInternal("internet")),
     "-",
     menuItem("i-inspect", "Inspect element", "picker", () => hooks.dt?.inspect(), { disabled: !onPage }),
     menuItem("i-code", "Developer tools", "devtools", () => hooks.dt?.toggle()),

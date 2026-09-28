@@ -1,5 +1,5 @@
 // Veyra settings page: browser-style sections, search, rebindable shortcuts, account and admin.
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce } from "./core.js";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats } from "./core.js";
 import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js";
 
 let B;
@@ -18,6 +18,7 @@ const SECTIONS = [
   { id: "extensions", label: "Extensions", desc: "Installed and published extensions", icon: "i-puzzle" },
   { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
   { id: "system", label: "System and engine", desc: "Page engine, Chromium and timeouts", icon: "i-bolt" },
+  { id: "neural", label: "Neural crawler", desc: "Trainable AI crawler and search optimisation", icon: "i-bolt" },
   { id: "developer", label: "Developer", desc: "DevTools, logging and diagnostics", icon: "i-code" },
   { id: "admin", label: "Server config", desc: "Server plan and runtime config", icon: "i-layers", admin: true },
   { id: "reset", label: "Reset settings", desc: "Restore default settings", icon: "i-reload" },
@@ -141,6 +142,19 @@ function systemSection() {
     ${toggle("confirmCloseWithCrawl", "Confirm before closing a tab that is still crawling", "")}
     ${number("requestTimeoutMs", "Request timeout (ms)", "", 3000, 120000, 1000)}`);
 }
+function neuralSection() {
+  return section("neural", "Neural crawler", "The trainable AI crawler learns from your browsing to prioritise which pages to index, and re-ranks search results by predicted relevance.", `
+    ${toggle("neuralCrawlerEnabled", "Enable neural crawler", "Turn on the trainable model that learns from your clicks and bookmarks.")}
+    ${toggle("neuralCrawlerRetrainOnFeedback", "Retrain on feedback", "Send click and bookmark signals to the server to retrain the model in real time.")}
+    ${toggle("neuralCrawlerParallelSearch", "Parallel search", "Query multiple search providers at once and merge the best results.")}
+    ${toggle("neuralCrawlerQueryExpansion", "Query expansion", "Add spell corrections and related terms to improve search coverage.")}
+    ${toggle("neuralCrawlerBlockTrackers", "Block trackers in Chromium", "Block ads, analytics and tracking scripts in Chromium pages for faster loads.")}
+    ${toggle("neuralCrawlerPrewarm", "Pre-warm Chromium contexts", "Create browser contexts ahead of time for faster first navigation.")}
+    ${toggle("neuralCrawlerProgressiveRender", "Progressive rendering", "Take an early screenshot after DOMContentLoaded instead of waiting for full load.")}
+    <div class="s-row" style="display:block"><div class="s-label"><b>Neural model stats</b><span>Live training statistics from the server.</span></div><div id="neuralStats" style="margin-top:8px"><span class="muted">Loading…</span></div></div>
+    ${button("Refresh stats", "Fetch the latest neural model statistics from the server.", "refreshNeuralStats", "Refresh")}
+    ${button("Reset neural model", "Clear all learned weights and start fresh.", "resetNeuralModel", "Reset model", "btn danger")}`);
+}
 function developerSection() {
   return section("developer", "Developer", "Options for the built-in developer tools.", `
     ${select("devtoolsDock", "Dock DevTools", "", [["bottom", "Bottom"], ["right", "Right"]])}
@@ -171,7 +185,7 @@ function aboutSection() {
 // /settings            -> overview (home) grid of sections
 // /settings/<section>  -> only that section; every other section is hidden
 // search box           -> searches across *all* sections, whatever the route
-const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
+const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
 export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
 export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
 let lastRendered = null;
@@ -200,6 +214,7 @@ function render(active) {
   if (lastRendered !== `${cur}|${q}`) $("view-settings").scrollTop = 0;
   lastRendered = `${cur}|${q}`;
   if (q || !cur || cur === "about") loadAbout();
+  if (q || cur === "neural") loadNeuralStats();
   if (isAdmin() && (q || cur === "admin")) loadAdmin();
 }
 
@@ -283,6 +298,11 @@ async function act(a, el) {
     case "openExtensions": return nav("extensions");
     case "openVpn": return nav("vpn");
     case "vpnAutoOff": settings.vpnAutoProfile = ""; saveSettings(); return render(curSection());
+    case "refreshNeuralStats": return loadNeuralStats();
+    case "resetNeuralModel": {
+      if (!await confirmDialog("Reset neural model?", "This clears all learned weights and training data. The model will start learning from scratch.", "Reset model")) return;
+      try { await api("/api/neural/reset", { method: "POST", json: {} }); toast("Neural model reset"); loadNeuralStats(); } catch (e) { toast(e.message, { kind: "err" }); } return;
+    }
     case "resetShortcuts": settings.shortcuts = {}; saveSettings(); toast("Shortcuts restored"); return render(curSection());
     case "reset": if (await confirmDialog("Reset settings?", "All settings go back to their defaults. Bookmarks, history and extensions are kept.", "Reset")) { resetSettings(); toast("Settings reset"); render(curSection()); } return;
     case "copyApi": return copyText(API);
