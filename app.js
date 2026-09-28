@@ -72,7 +72,7 @@ const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.sc
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "",
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(),
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -340,6 +340,42 @@ function onFrameLoad(t) {
   renderTabsSoon(); updateIdentity();
   // Re-apply zoom and extensions each time the document changes.
   setTimeout(() => { if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {}); hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t); }, 120);
+  // Blank / empty-shell detector: Roblox and similar SPAs often return a valid
+  // HTML title but leave the body empty under Fast proxy. Escalate once.
+  setTimeout(() => detectBlankProxyPage(t), 2200);
+}
+function detectBlankProxyPage(t) {
+  if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
+  if (t.browserMode === "BROWSER_ENGINE") return;
+  t.compatFallbackTried ||= new Set();
+  const key = `${t.url}|blank-shell`;
+  if (t.compatFallbackTried.has(key)) return;
+  const f = frameFor(t);
+  if (!f) return;
+  let blank = false;
+  try {
+    // Same-origin only when the iframe is still on the proxy origin; otherwise
+    // cross-origin access fails and we fall through to visual heuristics.
+    const doc = f.contentDocument;
+    if (doc) {
+      const body = doc.body;
+      const text = (body?.innerText || "").replace(/\s+/g, " ").trim();
+      const kids = body ? body.children.length : 0;
+      // Typical broken SPA shell: almost no visible text and few DOM nodes.
+      if (text.length < 40 && kids < 4) blank = true;
+      // Explicit empty React/Next roots.
+      const root = doc.querySelector("#root, #app, #__next, [data-reactroot]");
+      if (root && !(root.textContent || "").trim() && root.children.length === 0) blank = true;
+    }
+  } catch {
+    // Cross-origin: use host allowlist + loading state as a soft signal.
+    if (hostNeedsRealBrowser(t.url) && !t.renderWinner) blank = true;
+  }
+  if (!blank) return;
+  t.compatFallbackTried.add(key);
+  addLog("info", `Blank proxy shell detected on ${hostOf(t.url)}; switching to Chromium.`);
+  toast("This page stayed blank under the fast proxy. Switching to Chromium…", { ms: 3500 });
+  void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
 }
 function clearRemoteSurface() {
   const v = $("remoteSurface");
@@ -529,6 +565,17 @@ function desiredStrategy(url) {
 export function isGoogleSearchUrl(url) {
   try { const u = new URL(url); return /(^|\.)google\.[a-z.]+$/i.test(u.hostname) && /^\/(search|webhp)?$/.test(u.pathname) && u.searchParams.has("q"); } catch { return false; }
 }
+// Hosts that stay blank or unusable under Fast proxy (Roblox signup/login,
+// nested remote browsers, cloud game platforms). Prefer Chromium even on lean.
+function hostNeedsRealBrowser(url) {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    if (/(^|\.)roblox\.com$/.test(h) || /(^|\.)rbxcdn\.com$/.test(h)) return true;
+    if (/(^|\.)browser\.lol$/.test(h)) return true;
+    if (/(^|\.)now\.gg$/.test(h) || /(^|\.)geforce\.com$/.test(h)) return true;
+  } catch {}
+  return false;
+}
 function resolveStrategy(url) {
   const base = desiredStrategy(url);
   // Google search needs real JavaScript and rejects datacenter proxies:
@@ -536,6 +583,12 @@ function resolveStrategy(url) {
   if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
     if (state.server.leanMode && String(settings.runtime) === "auto") return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
     return { key: "browser", proxy: false, crawler: false, browser: true, race: false, google: true };
+  }
+  // Known-broken Fast-proxy hosts: try Chromium first (still fall back to proxy
+  // if capacity is full). This is what makes Roblox signup/login and browser.lol
+  // session creation possible.
+  if (hostNeedsRealBrowser(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
+    return { key: "combined", proxy: true, crawler: false, browser: true, race: true, auto: true, forceBrowserHost: true };
   }
   if (!base.auto) return base;
   // Proxy-first: never wait for the capability probe before showing the page.
@@ -630,8 +683,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     // On Render Free, Chromium + crawler + proxy at once can exceed the 512 MB
     // process budget. Keep the combined mode, but stage the expensive browser
     // lane after proxy first paint; non-lean plans may still race.
+    // forceBrowserHost (Roblox, browser.lol, …) races Chromium earlier so signup
+    // and nested-session UIs are usable instead of staying blank.
     await useProxy();
-    if (state.server.leanMode) {
+    if (state.server.leanMode && !strategy.forceBrowserHost) {
       scheduleDeferredCrawler(t, url, session, true, 150);
       // Render Free cannot safely run a proxy, crawler and Chromium process at full
       // strength simultaneously. Combined therefore stays adaptive on this plan:
@@ -646,6 +701,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         }).catch(() => {});
       }, 1800);
     } else {
+      // Paid plan, or known-broken host: race Chromium immediately.
       void raceChromium();
     }
     t.loadGuard = setTimeout(() => {
@@ -1210,8 +1266,34 @@ async function handleMessage(e) {
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
+  if (d.type === "veyra:browser-required") {
+    const u = canonical(d.pageUrl || t.url);
+    if (u && t.view === "page" && !isRemote(t)) {
+      t.compatFallbackTried ||= new Set();
+      const key = `${u}|${String(d.reason || "browser-required")}`;
+      if (!t.compatFallbackTried.has(key)) {
+        t.compatFallbackTried.add(key);
+        addLog("info", `Browser capability required (${d.reason || "site feature"}); switching ${hostOf(u)} to Chromium.`);
+        toast("This site needs a browser feature. Switching to Chromium…", { ms: 3000 });
+        void loadInTab(t, u, { forceBrowser: true, loadFrame: true, record: null });
+      }
+    }
+    return;
+  }
   if (d.type === "veyra:page-console" || d.type === "veyra:page-error") {
     const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
+    const pageErrorText = `${entry.message} ${entry.stack}`;
+    const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url) {
+      t.compatFallbackTried ||= new Set();
+      const key = `${t.url}|react-hydration`;
+      if (!t.compatFallbackTried.has(key)) {
+        t.compatFallbackTried.add(key);
+        addLog("info", `React hydration mismatch detected on ${hostOf(t.url)}; switching to Chromium.`);
+        toast("This site needs full browser rendering. Switching to Chromium…", { ms: 3000 });
+        void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
+      }
+    }
     t.console.push(entry); if (t.console.length > 2000) t.console.splice(0, t.console.length - 2000);
     hooks.dt?.onConsole(t, entry);
     if (entry.level === "error") addLog("warn", `[page:${hostOf(d.pageUrl || t.url)}] ${entry.message.slice(0, 400)}`);
