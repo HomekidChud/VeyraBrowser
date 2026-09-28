@@ -320,12 +320,12 @@
         <!-- Extensions -->
         <section class="view" id="view-extensions">
           <div class="page-shell">
-            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Extensions run inside proxied pages through the Veyra page bridge.</p></div>
+            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Extensions are isolated CSS-only packages that run through the Veyra page bridge.</p></div>
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
-              <button class="btn ghost" id="loadExtensionBtn">Load manifest…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
-              <span class="muted small">Manifests are JSON with <code>id</code>, <code>name</code>, <code>css</code> and optional <code>matches</code> host patterns. Scripts aren't allowed.</span>
-              <input type="file" id="extensionFile" accept="application/json,.json" hidden>
+              <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
+              <span class="muted small">Veyra packages are CSS-only: no scripts, service workers, cookie APIs, or network imports.</span>
+              <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json" hidden>
             </div>
             <div class="ext-grid" id="extensionsGrid"></div>
           </div>

@@ -598,19 +598,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.browserMode = "FAST_PROXY";
     const f = getOrCreateFrame(t);
     f.removeAttribute("srcdoc");
-    const ytEmbed = youtubeEmbedUrl(url);
-    if (ytEmbed) {
-      // Official YouTube player: avoids buffering/rewriting googlevideo media on Render.
-      // Playback remains subject to YouTube embedding rules and the user's network policy.
-      t.youtubeEmbed = true;
-      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-      f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      f.src = ytEmbed;
-    } else {
-      t.youtubeEmbed = false;
-      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-      f.src = proxyUrl(url, "view", session.id, previousUrl);
-    }
+    // Render the real target document first. YouTube watch/Shorts pages used to be
+    // replaced with an embed iframe here, which produced a player-only surface and
+    // prevented the page's own APIs, navigation and surrounding UI from loading.
+    // Full-page proxy is now the default; official embed remains available as an
+    // explicit compatibility fallback handled elsewhere.
+    t.youtubeEmbed = false;
+    f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+    f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+    f.src = proxyUrl(url, "view", session.id, previousUrl);
     if (activeTab() === t) showFrameForTab(t);
   };
 
@@ -782,18 +778,20 @@ async function refreshRemote(t, loop = false) {
 }
 async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
-  const browserUrl = youtubeEmbedUrl(url) || url;
+  // Chromium should receive the real target URL so YouTube's full page, APIs,
+  // navigation and player can operate normally. Official embed is a fallback only.
+  const browserUrl = url;
   if (t.browserSessionId) {
     try {
       const b = await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/navigate`, { json: { url: browserUrl, fastStart: !!background }, timeoutMs: 45000 });
-      t.browserMode = "BROWSER_ENGINE"; t.youtubeEmbed = !!youtubeEmbedUrl(url); t.url = url || b.session.canonicalUrl || url;
+      t.browserMode = "BROWSER_ENGINE"; t.youtubeEmbed = false; t.url = url || b.session.canonicalUrl || url;
       if (!background) { t.loading = false; if (activeTab() === t) showFrameForTab(t); }
       else if (!t.renderWinner) t.browserStatus = b.session.status || "ready";
       return;
     } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
   const b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
-  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = !!youtubeEmbedUrl(url); t.url = url || b.session.canonicalUrl || url;
+  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = false; t.url = url || b.session.canonicalUrl || url;
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
   else if (!t.renderWinner) { t.browserStatus = b.session.status || "ready"; }
@@ -1242,8 +1240,17 @@ async function handleMessage(e) {
     if (String(d.source).startsWith("history.")) { t.url = target; if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
-      if (!same) { pushTabHistory(t, target); t.url = target; recordHistory("page", target, t.title); if (t.jobId && !t.done) stopJob(t.jobId); t.jobId = null; if (!settings.preserveLog) { t.console = []; t.network = []; } hooks.dt?.onNavigate(t); if (state.session) openCrawl(t, target, state.session, ["auto","crawler","combined"].includes(settings.runtime || "auto")); }
-      else { const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); } }
+      if (!same) {
+        // The proxied document runtime intercepts the anchor so it can keep the
+        // parent browser chrome in sync. It must still trigger a real Veyra
+        // navigation; merely mutating t.url leaves the old DOM visible.
+        void loadInTab(t, target, { loadFrame: true, record: null }).then(() => {
+          if (activeTab() === t) syncRoute({ replace: true });
+        });
+        if (activeTab() === t) syncRoute({ replace: true });
+        return;
+      }
+      const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); }
     } else { t.url = target; }
     // The page runtime reports "document-navigation" once the DOM is ready. Some sites
     // (Google, YouTube…) keep fetching forever and never fire the iframe "load" event.

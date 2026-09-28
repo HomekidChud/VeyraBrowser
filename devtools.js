@@ -232,6 +232,8 @@ function nodeMenu(id, x, y) {
     { label: "Copy outerHTML", action: async () => copyText(await call("dom.outerHTML", { id })) },
     { label: "Copy selector", action: async () => copyText((await call("dom.select", { id })).selector) },
     { label: "Copy JS path", action: async () => copyText(`document.querySelector(${JSON.stringify((await call("dom.select", { id })).selector)})`) },
+    { label: "Copy computed styles", action: async () => { const r = await call("css.styles", { id, inherited: true }); copyText(JSON.stringify(r, null, 2)); } },
+    { label: "Copy element bounds", action: async () => { const r = await call("css.boxModel", { id }); copyText(JSON.stringify({ x: r.x, y: r.y, width: r.width, height: r.height, boxSizing: r.boxSizing }, null, 2)); } },
     "-",
     { label: "Scroll into view", action: () => call("dom.scrollIntoView", { id }) },
     { label: "Store as global variable", action: async () => { await call("dom.select", { id }); const r = await call("runtime.evaluate", { expression: "window.temp1 = $0, temp1" }); pushConsole({ level: "res", kind: "res", preview: r.value, message: "temp1" }); show("console"); } },

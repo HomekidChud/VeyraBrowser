@@ -15,7 +15,7 @@ const SECTIONS = [
   { id: "downloads", label: "Downloads and history", desc: "Download and history limits", icon: "i-download" },
   { id: "accessibility", label: "Accessibility", desc: "Motion, focus rings and link styles", icon: "i-zoom" },
   { id: "shortcuts", label: "Keyboard shortcuts", desc: "View and rebind keyboard shortcuts", icon: "i-keyboard" },
-  { id: "extensions", label: "Extensions", desc: "Built-in and developer extensions", icon: "i-puzzle" },
+  { id: "extensions", label: "Extensions", desc: "Installed and published extensions", icon: "i-puzzle" },
   { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
   { id: "system", label: "System and engine", desc: "Page engine, Chromium and timeouts", icon: "i-bolt" },
   { id: "developer", label: "Developer", desc: "DevTools, logging and diagnostics", icon: "i-code" },
@@ -125,8 +125,8 @@ function shortcutsSection() {
 }
 function extensionsSection() {
   return section("extensions", "Extensions", "", `
-    ${row("Manage extensions", "Turn built-in extensions on or off and load your own CSS extensions.", `<button class="btn" data-act="openExtensions">Open extensions</button>`)}
-    ${toggle("extensionDeveloperMode", "Developer mode", "Lets you load unpacked CSS extensions from a manifest.")}`);
+    ${row("Manage extensions", "Install verified CSS-only packages from the Veyra Store or load your own safe CSS package in Developer mode.", `<button class="btn" data-act="openExtensions">Open extensions</button>`)}
+    ${toggle("extensionDeveloperMode", "Developer mode", "Lets you load local Veyra CSS packages for development.")}`);
 }
 function vpnSection() {
   return section("vpn", "Veyra VPN", "", `
