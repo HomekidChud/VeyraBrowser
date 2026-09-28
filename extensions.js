@@ -159,11 +159,32 @@ export async function renderExtensions() {
       const catLabels = { reading: "Reading", accessibility: "Accessibility", appearance: "Appearance", social: "Social", privacy: "Privacy", media: "Media", developer: "Developer", typography: "Typography", other: "Other" };
       const featured = list.filter(e => e.rating >= 4.7).sort((a, b) => (b.installs || 0) - (a.installs || 0)).slice(0, 3);
       const stars = n => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
+      const catCounts = {};
+      list.forEach(e => { const c = e.category || "other"; catCounts[c] = (catCounts[c] || 0) + 1; });
       grid.innerHTML = nav + `
-        ${featured.length ? `<div class="ext-featured"><h3>Featured</h3><div class="ext-featured-grid">${featured.map(e => `<article class="ext-card featured" data-install-store="${esc(e.id)}"><div class="ext-top"><span class="ext-ico featured-ic"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-meta"><span class="ext-rating">${stars(e.rating)}</span><span class="muted small">${(e.installs || 0).toLocaleString()} installs</span></div><div class="ext-tags">${(e.tags || []).slice(0, 3).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><div class="ext-foot"><span class="muted small">${esc(e.version || "1.0.0")} · ${esc(e.publisher || "Veyra Store")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : "primary"} sm">${installed.has(e.id) ? "Reinstall" : "Install"}</button></div></article>`).join("")}</div></div>` : ""}
-        <div class="ext-search-bar"><input class="input" id="extSearch" placeholder="Search extensions…" style="flex:1;max-width:400px"><div class="ext-cats">${categories.map(c => `<button class="dt-chip" data-cat="${esc(c)}">${catLabels[c] || c}</button>`).join("")}</div></div>
-        <div class="ext-grid">${list.map(e => `<article class="ext-card ${installed.has(e.id) ? "installed" : ""}"><div class="ext-top"><span class="ext-ico"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-meta"><span class="ext-rating">${stars(e.rating || 5)}</span><span class="muted small">${(e.installs || 0).toLocaleString()} installs · ${esc(e.version || "1.0.0")}</span></div><div class="ext-tags">${(e.tags || []).slice(0, 4).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><div class="ext-foot"><span class="muted small">${esc((e.matches || []).join(", ") || "all sites")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : ""} sm" data-install-store="${esc(e.id)}">${installed.has(e.id) ? "Reinstall" : "Install"}</button></div></article>`).join("")}</div>`;
-      const search = $("extSearch"); if (search) search.oninput = () => { const q = search.value.toLowerCase(); grid.querySelectorAll(".ext-card").forEach(c => { c.style.display = c.textContent.toLowerCase().includes(q) ? "" : "none"; }); };
+        <div class="ext-store-header">
+          <div class="ext-store-title"><h2>Veyra Extension Store</h2><p>${list.length} verified CSS-only extensions · sandboxed and script-free</p></div>
+          <input class="input" id="extSearch" placeholder="Search extensions…" style="max-width:300px">
+        </div>
+        <div class="ext-store-layout">
+          <div class="ext-store-sidebar">
+            <h4>Categories</h4>
+            <button class="ext-cat-btn active" data-cat="all">All <span class="count">${list.length}</span></button>
+            ${categories.map(c => `<button class="ext-cat-btn" data-cat="${esc(c)}">${catLabels[c] || c} <span class="count">${catCounts[c] || 0}</span></button>`).join("")}
+          </div>
+          <div class="ext-store-main">
+            ${featured.length ? `<div class="ext-featured"><h3>Featured</h3><div class="ext-featured-grid">${featured.map(e => `<article class="ext-card featured" data-install-store="${esc(e.id)}"><div class="ext-top"><span class="ext-ico featured-ic"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-meta"><span class="ext-rating">${stars(e.rating)}</span><span class="muted small">${(e.installs || 0).toLocaleString()} installs</span></div><div class="ext-tags">${(e.tags || []).slice(0, 3).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><div class="ext-foot"><span class="muted small">${esc(e.version || "1.0.0")} · ${esc(e.publisher || "Veyra Store")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : "primary"} sm">${installed.has(e.id) ? "Reinstall" : "Install"}</button></div></article>`).join("")}</div></div>` : ""}
+            <div class="ext-grid" id="extGridList">${list.map(e => `<article class="ext-card ${installed.has(e.id) ? "installed" : ""}" data-cat="${esc(e.category || "other")}"><div class="ext-top"><span class="ext-ico"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-meta"><span class="ext-rating">${stars(e.rating || 5)}</span><span class="muted small">${(e.installs || 0).toLocaleString()} installs · ${esc(e.version || "1.0.0")}</span></div><div class="ext-tags">${(e.tags || []).slice(0, 4).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><div class="ext-foot"><span class="muted small">${esc((e.matches || []).join(", ") || "all sites")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : ""} sm" data-install-store="${esc(e.id)}">${installed.has(e.id) ? "Reinstall" : "Install"}</button></div></article>`).join("")}</div>
+          </div>
+        </div>`;
+      const search = $("extSearch"); 
+      if (search) search.oninput = () => { const q = search.value.toLowerCase(); $("extGridList").querySelectorAll(".ext-card").forEach(c => { c.style.display = c.textContent.toLowerCase().includes(q) ? "" : "none"; }); };
+      grid.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => {
+        grid.querySelectorAll("[data-cat]").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        const cat = b.dataset.cat;
+        $("extGridList").querySelectorAll(".ext-card").forEach(c => { c.style.display = cat === "all" || c.dataset.cat === cat ? "" : "none"; });
+      });
     } catch (e) { grid.innerHTML = nav + `<div class="empty"><b>Extension Store unavailable</b><span>${esc(e.message)}</span><button class="btn ghost sm" data-ext-refresh>Retry</button></div>`; }
     return;
   }

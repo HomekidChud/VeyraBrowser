@@ -1001,7 +1001,6 @@ async function runSearch(query, offset = 0) {
 function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => w.length > 1 && !/:/.test(w)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "gi"), "<mark>$1</mark>") : s; }
 function renderSearchTabs(t) {
   qsa("#searchTabs [data-src]").forEach(b => { const on = b.dataset.src === (t.searchSource || "web"); b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
-  $("searchOnGoogle").classList.toggle("hidden", !t.searchQuery);
 }
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
@@ -1009,16 +1008,16 @@ function renderSearch() {
   renderSearchTabs(t);
   const d = t.searchData;
   const web = (t.searchSource || "web") === "web";
-  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "API-first web results: Brave Search, Bing or Google when configured; HTML search fallbacks are last-resort only." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
+  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Veyra searches multiple providers in parallel — Brave, Bing, DuckDuckGo and Wikipedia — and merges the best results." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
   if (!d) return;
   $("searchStat").textContent = web ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
   $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
   $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
-    || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Configure a search API key for reliable server-side results, or open the provider directly.</span><button class="btn ghost sm" id="searchWebGoogle">Open on Google</button></div>`
+    || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Veyra will retry with alternate providers.</span><button class="btn primary sm" id="searchRetryVeyra">Retry with Veyra</button></div>`
       : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
   $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); sendNeuralFeedback(a.dataset.open, true, 1.0); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
   $("searchWeb")?.addEventListener("click", () => { t.searchSource = "web"; t.searchData = null; runSearch(t.searchQuery); });
-  $("searchWebGoogle")?.addEventListener("click", () => navigate(`https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`));
+  $("searchRetryVeyra")?.addEventListener("click", () => { t.searchData = null; runSearch(t.searchQuery); });
   const more = web ? (d.results?.length || 0) >= 8 && (d.results?.length || 0) < 60 : d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
   $("searchMore").classList.toggle("hidden", !more); $("searchMore").onclick = () => runSearch(t.searchQuery, d.results.length);
   loadIndexStats();
@@ -1422,7 +1421,6 @@ function wire() {
     t.searchSource = b.dataset.src; settings.searchSource = b.dataset.src; saveSettings(); t.searchData = null;
     if (t.searchQuery) runSearch(t.searchQuery); else renderSearch();
   });
-  $("searchOnGoogle").onclick = () => { const t = activeTab(); if (!t?.searchQuery) return; const href = `https://www.google.com/search?q=${encodeURIComponent(t.searchQuery)}`; window.open(href, "_blank", "noopener,noreferrer"); };
   $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
   $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();
   $("resFilter").oninput = () => renderResources();

@@ -91,13 +91,19 @@ function qrCodeUrl(text, size = 300) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&color=0d0f13&bgcolor=ffffff&margin=10`;
 }
 
-// ---------------------------------------------------------------- WebSocket connection
+// ---------------------------------------------------------------- Cast connection (WebSocket with HTTP polling fallback)
+let castPollTimer = null;
+let castSessionId = null;
+
 function connectCastServer(sessionId) {
+  castSessionId = sessionId;
+  // Try WebSocket first
   const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=browser&session=${encodeURIComponent(sessionId)}`;
   try {
     castWs = new WebSocket(wsUrl);
   } catch (e) {
-    toast("Cast WebSocket failed: " + e.message, { kind: "err" });
+    // WebSocket not available — fall back to HTTP polling
+    startPollingFallback(sessionId);
     return;
   }
 
@@ -116,16 +122,62 @@ function connectCastServer(sessionId) {
   };
 
   castWs.onerror = (e) => {
-    addLog("warn", "CAST", "WebSocket error");
-    toast("Cast connection error", { kind: "err" });
+    addLog("warn", "CAST", "WebSocket error — falling back to HTTP polling");
+    // Don't show error toast — silently fall back to polling
+    if (castWs) { try { castWs.close(); } catch {} castWs = null; }
+    startPollingFallback(sessionId);
   };
 
-  castWs.onclose = () => {
-    addLog("info", "CAST", "Disconnected from cast server");
-    if (castSession?.status === "streaming") stopStreaming();
-    castSession = null;
-    if (B?.renderActive) B.renderActive({ push: false });
+  castWs.onclose = (event) => {
+    addLog("info", "CAST", `WebSocket closed (code ${event.code})`);
+    if (event.code !== 1000 && event.code !== 1001) {
+      // Abnormal close — try polling fallback
+      startPollingFallback(sessionId);
+    } else {
+      if (castSession?.status === "streaming") stopStreaming();
+      castSession = null;
+      if (B?.renderActive) B.renderActive({ push: false });
+    }
   };
+}
+
+// HTTP polling fallback — works without WebSocket support on the server
+function startPollingFallback(sessionId) {
+  if (castPollTimer) clearInterval(castPollTimer);
+  addLog("info", "CAST", "Using HTTP polling for cast connection");
+  // Create session via HTTP if not already created
+  api("/api/cast/create", { method: "POST", json: {}, timeoutMs: 10000 }).then(result => {
+    if (result.ok) {
+      castSession = {
+        id: result.sessionId,
+        pairingCode: result.pairingCode,
+        qrPayload: result.qrPayload,
+        qrUrl: result.qrUrl,
+        status: "waiting",
+        deviceName: "",
+        deviceType: "",
+        connectionType: "",
+        networkStrength: 0,
+        frameCount: 0,
+      };
+      renderCastView();
+      // Poll for messages every 500ms
+      castPollTimer = setInterval(async () => {
+        try {
+          const msgs = await api(`/api/cast/poll/${castSession.id}`, { timeoutMs: 5000 });
+          if (msgs.ok && msgs.messages) {
+            for (const msg of msgs.messages) handleMessage(msg);
+          }
+        } catch {}
+      }, 500);
+    }
+  }).catch(e => {
+    toast("Cast polling failed: " + e.message, { kind: "err" });
+  });
+}
+
+function stopPollingFallback() {
+  if (castPollTimer) { clearInterval(castPollTimer); castPollTimer = null; }
 }
 
 function handleMessage(msg) {
@@ -476,7 +528,7 @@ function showInternetConfig(profileId) {
 // ---------------------------------------------------------------- event wiring
 function wireCastWaiting() {
   const start = $("castStartBtn");
-  if (start) start.onclick = () => { const sid = uid(); connectCastServer(sid); };
+  if (start) start.onclick = () => { startPollingFallback(uid()); };
   const cancel = $("castCancelBtn");
   if (cancel) cancel.onclick = () => { if (castWs) castWs.close(); castSession = null; renderCastView(); };
   const copy = $("castCopyCode");
