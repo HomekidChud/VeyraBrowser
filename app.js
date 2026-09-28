@@ -680,6 +680,19 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Combined Chromium path unavailable: ${e.message}`); });
 
   if (strategy.race) {
+    // Known real-browser hosts are never rendered through the broken fast-proxy
+    // lane first. On constrained plans this avoids wasting the only Chromium slot
+    // while leaving the user staring at an unusable proxy shell.
+    if (strategy.forceBrowserHost) {
+      t.loadStrategy = "browser"; t.renderWinner = "";
+      void raceChromium();
+      t.loadGuard = setTimeout(() => {
+        if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
+          t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+        }
+      }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
+      return renderTabs();
+    }
     // On Render Free, Chromium + crawler + proxy at once can exceed the 512 MB
     // process budget. Keep the combined mode, but stage the expensive browser
     // lane after proxy first paint; non-lean plans may still race.
@@ -731,6 +744,12 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
         showSearch(q, { tab: t, push: activeTab() === t, pushHist: false, source: "web", engine: "google" });
         return;
+      }
+      if (strategy.forceBrowserHost) {
+        addLog("warn", `Required Chromium path unavailable for ${hostOf(url)}: ${e.message}`);
+        if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+        t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
+        return renderError(t, "server", Object.assign(new Error(`This site requires real Chromium, but Chromium is currently unavailable: ${e.message}`), { code: e.code }));
       }
       if (e.code === "BROWSER_CAPACITY") addLog("warn", `Chromium is at capacity; using fast proxy: ${e.message}`);
       else addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
@@ -800,7 +819,7 @@ async function refreshRemote(t, loop = false) {
   try {
     const r = await api(`/api/browser/session/${encodeURIComponent(expectedId)}`, { timeoutMs: 8000 });
     if (t.browserSessionId !== expectedId) return;
-    const s = r.session; const prev = t.url;
+    const s = r.session; const prev = t.url; t.lastBrowserUse = Date.now();
     if (!t.youtubeEmbed) t.url = s.canonicalUrl || t.url;
     t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
     if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
@@ -832,6 +851,18 @@ async function refreshRemote(t, loop = false) {
   }
   if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 3000 : 900);
 }
+function releaseInactiveBrowserSlot(exclude) {
+  const candidates = state.tabs.filter(t => t !== exclude && t.view === "page" && t.browserSessionId && t.browserMode === "BROWSER_ENGINE");
+  if (!candidates.length) return false;
+  // Prefer the least-recently-used inactive tab. Its Chromium state is disposable
+  // on constrained plans, while the active requested tab keeps its own session.
+  candidates.sort((a, b) => (Number(a.lastBrowserUse || 0) - Number(b.lastBrowserUse || 0)) || (state.tabs.indexOf(a) - state.tabs.indexOf(b)));
+  const victim = candidates[0];
+  addLog("info", `Chromium capacity full; releasing inactive Chromium tab ${hostOf(victim.url) || "(unknown)"} for ${hostOf(exclude?.url) || "the requested site"}.`);
+  void stopBrowserSession(victim);
+  return true;
+}
+
 async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
   // Chromium should receive the real target URL so YouTube's full page, APIs,
@@ -846,7 +877,16 @@ async function startBrowserSession(t, url, { background = false } = {}) {
       return;
     } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
-  const b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+  let b;
+  try {
+    b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+  } catch (e) {
+    if (e.code !== "BROWSER_CAPACITY" || !releaseInactiveBrowserSlot(t)) throw e;
+    // Give the server a moment to close the victim context, then retry once.
+    await new Promise(r => setTimeout(r, 150));
+    b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+  }
+  t.lastBrowserUse = Date.now();
   t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = false; t.url = url || b.session.canonicalUrl || url;
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
