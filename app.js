@@ -328,6 +328,22 @@ function getOrCreateFrame(t) {
 }
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page") return;
+  // Full-page fast proxy ("proxy+ full page"): the server extracted the page's
+  // embedded state (Next.js/Nuxt/Redux/JSON-LD) and rendered the full readable
+  // page without Chromium. When the marker is present the page is complete —
+  // skip the Chromium race entirely and stop any background browser session.
+  try {
+    const f = frameFor(t);
+    const doc = f && f.contentDocument;
+    if (doc && doc.querySelector("[data-veyra-fullpage]")) {
+      t.fullPage = true;
+      t.browserMode = "FAST_PROXY";
+      clearTimeout(t.combinedGraceTimer); t.combinedGraceTimer = null;
+      if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
+      if (!t.renderWinner) t.renderWinner = "proxy";
+      addLog("info", `Full page delivered by the fast pipeline on ${hostOf(t.url)} (no Chromium needed).`);
+    }
+  } catch { /* cross-origin frame — ignore */ }
   if (t.loadStrategy === "combined" && !t.renderWinner) {
     t.renderWinner = "proxy";
     t.browserMode = "FAST_PROXY";
