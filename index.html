@@ -90,7 +90,7 @@
     <header class="land-nav">
       <a class="brand" href="./" data-route="/"><svg class="brand-mark"><use href="#logo"/></svg><span>Veyra</span></a>
       <nav class="land-links" aria-label="Main">
-        <a href="#features">Features</a><a href="#explore">Explore</a><a href="#how">How it works</a><a href="#faq">FAQ</a>
+        <a href="#" data-go="/browse">Open browser</a>
       </nav>
       <div class="land-actions" id="landActions">
         <button class="btn ghost" data-auth="login">Sign in</button>
@@ -130,55 +130,11 @@
           </div>
         </div>
       </section>
-
-      <section class="strip" aria-label="Highlights">
-        <div><b>2:00</b><span>session lifetime, then everything is deleted</span></div>
-        <div><b>0</b><span>cookies left in your own browser</span></div>
-        <div><b>6</b><span>DevTools panels: Elements to Performance</span></div>
-        <div><b>WireGuard</b><span>VPN exits, with a kill switch</span></div>
-      </section>
-
-      <section class="features" id="features">
-        <div class="section-head"><p class="kicker">Features</p><h2>A browser that runs somewhere else.</h2></div>
-        <div class="feature-grid">
-          <article class="feature big"><svg><use href="#i-timer"/></svg><h3>Two-minute sessions</h3><p>Every session starts clean and has a visible countdown. When it hits zero, Veyra deletes the session's cookies, tabs, Chromium context and VPN tunnel on the server.</p></article>
-          <article class="feature"><svg><use href="#i-code"/></svg><h3>Real DevTools</h3><p>Elements with live CSS editing, a console REPL, network waterfall, storage, sources and performance, all working against the proxied page.</p></article>
-          <article class="feature"><svg><use href="#i-vpn"/></svg><h3>Veyra VPN</h3><p>Send a session through WireGuard, SOCKS5 or HTTP exits. Region pools, failover and a kill switch are handled on the server.</p></article>
-          <article class="feature"><svg><use href="#i-puzzle"/></svg><h3>Extensions that act on pages</h3><p>Dark mode, tracker blocking, reader view, focus mode, zoom, page stats and notes. You can also load your own CSS extension manifests.</p></article>
-          <article class="feature"><svg><use href="#i-bolt"/></svg><h3>Two engines</h3><p>A fast rewriting proxy for most sites. Heavy apps get a real Chromium tab streamed to you.</p></article>
-          <article class="feature wide"><svg><use href="#i-keyboard"/></svg><h3>Keyboard first</h3><p>Browser shortcuts work even when the focus is inside a page, and you can rebind every one of them in Settings.</p></article>
-        </div>
-      </section>
-
-      <section class="explore" id="explore">
-        <div class="section-head"><p class="kicker">Explore</p><h2>Start somewhere.</h2><p class="sub">Each card opens in a fresh session. Nothing is saved on your device.</p></div>
-        <div class="explore-grid" id="exploreGrid"></div>
-      </section>
-
-      <section class="how" id="how">
-        <div class="section-head"><p class="kicker">How it works</p><h2>Three hops, no residue.</h2></div>
-        <ol class="steps">
-          <li><b>You open a site.</b><span>Veyra creates a session with a two-minute lifetime and a private cookie jar.</span></li>
-          <li><b>Our server fetches it.</b><span>The page is loaded server-side, optionally through a VPN exit, then rewritten so every link, script and request stays inside Veyra.</span></li>
-          <li><b>The session ends.</b><span>At 0:00 the server deletes it: cookies, Chromium context, VPN tunnel and crawl jobs. Your browser keeps nothing from the site.</span></li>
-        </ol>
-      </section>
-
-      <section class="faq" id="faq">
-        <div class="section-head"><p class="kicker">FAQ</p><h2>Questions, answered.</h2></div>
-        <div class="faq-list" id="faqList"></div>
-      </section>
-
-      <section class="cta">
-        <h2>Open your first session.</h2>
-        <p>Free to try. Sign up if you want your settings to follow you.</p>
-        <div class="cta-actions"><button class="btn primary lg" data-go="/browse">Start browsing</button><button class="btn ghost lg" data-auth="signup">Create account</button></div>
-      </section>
     </main>
     <footer class="land-foot">
       <div class="brand small"><svg class="brand-mark"><use href="#logo"/></svg><span>Veyra</span></div>
-      <nav><a href="#features">Features</a><a href="#faq">FAQ</a><a href="#" data-go="/settings/about">About</a><a href="#" data-go="/browse">Open browser</a></nav>
-      <small>Veyra runs pages on a remote server. Respect each site's terms of use. v8.18.0</small>
+      <nav><a href="#" data-go="/browse">Open browser</a><a href="#" data-go="/settings/about">About</a></nav>
+      <small>Veyra runs pages on a remote server. Respect each site's terms of use. v8.19.0</small>
     </footer>
   </div>
 

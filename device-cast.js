@@ -301,6 +301,11 @@ function renderCastView() {
   } else if (castSession.status === "paired" || castSession.status === "streaming") {
     view.innerHTML = castStreamingView();
     wireCastStreaming();
+    // Auto-start mirroring when a device pairs — no need to click a button
+    if (castSession.status === "paired" && !castSession._autoStarted) {
+      castSession._autoStarted = true;
+      setTimeout(() => { if (castSession?.status === "paired") startStreaming(); }, 800);
+    }
   } else if (castSession.status === "disconnected") {
     view.innerHTML = castDisconnectedView();
   }
@@ -423,6 +428,7 @@ function renderDeviceJoinView(view, sessionId, code) {
 }
 
 function connectDevice(sessionId, code, body) {
+  deviceSessionId = sessionId; // Store for HTTP frame delivery fallback
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((isMobile ? "Phone" : "Device"))}&type=phone&connection=${navigator.connection?.effectiveType?.includes("2") || navigator.connection?.effectiveType?.includes("3") || navigator.connection?.effectiveType?.includes("4") ? "cellular" : "wifi"}`;
   try { deviceWs = new WebSocket(wsUrl); } catch (e) {
@@ -458,20 +464,41 @@ function connectDevice(sessionId, code, body) {
 }
 
 function renderDevicePaired(body) {
-  body.innerHTML = `<button class="btn primary lg" id="djShare">Share this screen</button>
-    <p class="muted small">Screen sharing uses your browser's built-in screen capture. The Veyra browser must press “Start mirroring” to receive frames.</p>
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+  const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  
+  let shareButtons = '';
+  if (isMobile && !hasDisplayMedia) {
+    // Mobile device without screen capture support — offer camera options
+    shareButtons = `<div style="display:grid;gap:10px;justify-items:center">
+      <p class="muted small" style="max-width:320px;text-align:center">Screen capture is not available on mobile browsers. You can mirror your camera instead.</p>
+      <button class="btn primary lg" id="djShareBack">Share back camera</button>
+      <button class="btn ghost lg" id="djShareFront">Share front camera</button>
+    </div>`;
+  } else {
+    shareButtons = `<button class="btn primary lg" id="djShare">Share this screen</button>
+    <p class="muted small">Screen sharing uses your browser's built-in screen capture. The Veyra browser will automatically start receiving frames.</p>`;
+  }
+  body.innerHTML = shareButtons + `
     <div id="djStatus" class="muted small"></div>
     <canvas id="djCanvas" style="display:none;max-width:100%;border-radius:12px"></canvas>`;
-  body.querySelector("#djShare").onclick = () => startDeviceStream(15, true);
+  const shareBtn = body.querySelector("#djShare");
+  if (shareBtn) shareBtn.onclick = () => startDeviceStream(15, true);
+  const backBtn = body.querySelector("#djShareBack");
+  if (backBtn) backBtn.onclick = () => startDeviceStream(15, true, "environment");
+  const frontBtn = body.querySelector("#djShareFront");
+  if (frontBtn) frontBtn.onclick = () => startDeviceStream(15, true, "user");
 }
 
 // HTTP polling fallback for device connections (mobile/Android)
 let devicePollTimer = null;
 function startDevicePolling(sessionId, code, body) {
   if (devicePollTimer) clearInterval(devicePollTimer);
+  deviceSessionId = sessionId; // Store for HTTP frame delivery
   // Register device via HTTP
   api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone" }, timeoutMs: 10000 }).then(result => {
     if (!result.ok) { body.innerHTML = `<p class="muted">Could not join: ${esc(result.error || "unknown error")}</p>`; return; }
+    devicePollId = result.deviceId; // Store device ID for polling
     deviceJoined = true;
     const t = $("djTitle"), s = $("djSub");
     if (t) t.textContent = "Paired with Veyra";
@@ -500,30 +527,63 @@ function stopDevicePolling() {
   if (devicePollTimer) { clearInterval(devicePollTimer); devicePollTimer = null; }
 }
 
-async function startDeviceStream(fps = 15, manual = false) {
+// Store session info for HTTP polling frame delivery
+let deviceSessionId = null;
+let devicePollId = null;
+
+async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
   if (deviceStream) { if (manual) { const st = $("djStatus"); if (st) st.textContent = "Already sharing."; } return; }
-  // Try getDisplayMedia first (desktop browsers)
-  try {
-    deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
-  } catch (e) {
-    // getDisplayMedia not available (Android/mobile) — try getUserMedia as fallback
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        // Try facingMode environment (back camera) for screen-like capture on mobile
-        deviceStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
-          audio: false
-        });
-      } catch (e2) {
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+  const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  
+  // If facingMode is specified (camera chosen explicitly), go straight to getUserMedia
+  if (facingMode) {
+    try {
+      deviceStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
+        audio: false
+      });
+    } catch (e) {
+      const st = $("djStatus");
+      if (st) st.textContent = `Camera unavailable: ${e.message}`;
+      return;
+    }
+  } else if (hasDisplayMedia && !isMobile) {
+    // Desktop: try getDisplayMedia first
+    try {
+      deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
+    } catch (e) {
+      // getDisplayMedia failed — try getUserMedia as fallback
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          deviceStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
+            audio: false
+          });
+        } catch (e2) {
+          const st = $("djStatus");
+          if (st) st.textContent = `Screen capture unavailable. getDisplayMedia: ${e.message}. getUserMedia: ${e2.message}`;
+          addLog("warn", "CAST", `Screen capture failed: ${e2.message}`);
+          return;
+        }
+      } else {
         const st = $("djStatus");
-        if (st) st.textContent = `Screen capture unavailable on this device. getDisplayMedia: ${e.message}. getUserMedia: ${e2.message}`;
-        addLog("warn", "CAST", `Screen capture failed on mobile: ${e2.message}`);
+        if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
+        addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
         return;
       }
-    } else {
+    }
+  } else {
+    // Mobile without getDisplayMedia — default to back camera
+    try {
+      deviceStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
+        audio: false
+      });
+    } catch (e) {
       const st = $("djStatus");
-      if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
-      addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
+      if (st) st.textContent = `Camera unavailable: ${e.message}`;
+      addLog("warn", "CAST", `Camera capture failed: ${e.message}`);
       return;
     }
   }
@@ -536,11 +596,18 @@ async function startDeviceStream(fps = 15, manual = false) {
   deviceStream.getVideoTracks()[0]?.addEventListener("ended", () => stopDeviceStream());
   const interval = Math.max(66, Math.round(1000 / Math.max(1, fps)));
   deviceTimer = setInterval(() => {
-    if (!deviceWs || deviceWs.readyState !== 1 || !ctx || video.videoWidth === 0) return;
+    if (!ctx || video.videoWidth === 0) return;
     const w = 360, h = Math.round(video.videoHeight * (w / video.videoWidth)) || 640;
     deviceCanvas.width = w; deviceCanvas.height = h;
     ctx.drawImage(video, 0, 0, w, h);
-    try { deviceWs.send(JSON.stringify({ type: "frame", data: deviceCanvas.toDataURL("image/jpeg", 0.6) })); } catch {}
+    const frameData = deviceCanvas.toDataURL("image/jpeg", 0.6);
+    // Send via WebSocket if available, otherwise via HTTP polling
+    if (deviceWs && deviceWs.readyState === 1) {
+      try { deviceWs.send(JSON.stringify({ type: "frame", data: frameData })); } catch {}
+    } else if (deviceSessionId) {
+      // HTTP polling fallback — push frame to session buffer
+      try { api(`/api/cast/push/${encodeURIComponent(deviceSessionId)}`, { method: "POST", json: { type: "frame", data: frameData }, timeoutMs: 3000 }); } catch {}
+    }
   }, interval);
 }
 

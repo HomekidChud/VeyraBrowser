@@ -145,8 +145,10 @@ const FAQ = [
   ["What data do you keep?", "Session data is deleted when the session ends. History and downloads live in your own browser's storage and can be cleared at any time. If you sign in, synced settings are stored on the server until you delete your account."]
 ];
 function renderLanding() {
-  $("exploreGrid").innerHTML = EXPLORE.map(x => { const li = letterIcon(x.url); return `<button class="explore-card" data-explore="${esc(x.url)}"><span class="ico" style="background:${li.color}">${esc(li.letter)}</span><b>${esc(x.title)}</b><span>${esc(x.sub)}</span><span class="cat">${esc(x.cat)}</span></button>`; }).join("");
-  $("faqList").innerHTML = FAQ.map(([q, a], i) => `<details class="faq-item" ${i === 0 ? "open" : ""}><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("");
+  const exploreGrid = $("exploreGrid");
+  if (exploreGrid) exploreGrid.innerHTML = EXPLORE.map(x => { const li = letterIcon(x.url); return `<button class="explore-card" data-explore="${esc(x.url)}"><span class="ico" style="background:${li.color}">${esc(li.letter)}</span><b>${esc(x.title)}</b><span>${esc(x.sub)}</span><span class="cat">${esc(x.cat)}</span></button>`; }).join("");
+  const faqList = $("faqList");
+  if (faqList) faqList.innerHTML = FAQ.map(([q, a], i) => `<details class="faq-item" ${i === 0 ? "open" : ""}><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("");
   renderLandActions();
 }
 hooks.renderLanding = renderLanding;
