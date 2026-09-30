@@ -415,6 +415,7 @@ function renderDeviceJoinView(view, sessionId, code) {
   view.querySelector("#djLeave").onclick = () => {
     try { deviceWs && deviceWs.close(); } catch {}
     stopDeviceStream();
+    stopDevicePolling();
     deviceWs = null; deviceJoined = false;
     try { history.replaceState({}, "", (window.VEYRA_BASE || "./") + "cast"); } catch {}
     renderCastView();
@@ -422,8 +423,15 @@ function renderDeviceJoinView(view, sessionId, code) {
 }
 
 function connectDevice(sessionId, code, body) {
-  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((navigator.userAgent.includes("Mobile") ? "Phone" : "Device"))}&type=phone&connection=${navigator.connection?.effectiveType?.includes("2") || navigator.connection?.effectiveType?.includes("3") || navigator.connection?.effectiveType?.includes("4") ? "cellular" : "wifi"}`;
-  try { deviceWs = new WebSocket(wsUrl); } catch (e) { body.innerHTML = `<p class="muted">Could not connect: ${esc(e.message)}</p>`; return; }
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((isMobile ? "Phone" : "Device"))}&type=phone&connection=${navigator.connection?.effectiveType?.includes("2") || navigator.connection?.effectiveType?.includes("3") || navigator.connection?.effectiveType?.includes("4") ? "cellular" : "wifi"}`;
+  try { deviceWs = new WebSocket(wsUrl); } catch (e) {
+    // WebSocket not available — try HTTP polling fallback for mobile
+    deviceWs = null;
+    body.innerHTML = `<p class="muted">WebSocket unavailable. Trying HTTP fallback…</p>`;
+    startDevicePolling(sessionId, code, body);
+    return;
+  }
   deviceWs.onopen = () => {
     deviceJoined = true;
     const t = $("djTitle"), s = $("djSub");
@@ -457,15 +465,67 @@ function renderDevicePaired(body) {
   body.querySelector("#djShare").onclick = () => startDeviceStream(15, true);
 }
 
+// HTTP polling fallback for device connections (mobile/Android)
+let devicePollTimer = null;
+function startDevicePolling(sessionId, code, body) {
+  if (devicePollTimer) clearInterval(devicePollTimer);
+  // Register device via HTTP
+  api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone" }, timeoutMs: 10000 }).then(result => {
+    if (!result.ok) { body.innerHTML = `<p class="muted">Could not join: ${esc(result.error || "unknown error")}</p>`; return; }
+    deviceJoined = true;
+    const t = $("djTitle"), s = $("djSub");
+    if (t) t.textContent = "Paired with Veyra";
+    if (s) s.textContent = "Your screen can now be mirrored into the Veyra browser.";
+    renderDevicePaired(body);
+    addLog("info", "CAST", "Device joined cast session via HTTP polling");
+    // Poll for commands from the browser
+    devicePollTimer = setInterval(async () => {
+      try {
+        const msgs = await api(`/api/cast/device/poll/${encodeURIComponent(result.deviceId)}`, { timeoutMs: 5000 });
+        if (msgs.ok && msgs.messages) {
+          for (const msg of msgs.messages) {
+            if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
+            else if (msg.type === "stop_streaming") stopDeviceStream();
+            else if (msg.type === "set_quality") { if (deviceTimer) { stopDeviceStream(); startDeviceStream(msg.fps || 15); } }
+          }
+        }
+      } catch {}
+    }, 500);
+  }).catch(e => {
+    body.innerHTML = `<p class="muted">Connection failed: ${esc(e.message)}</p>`;
+  });
+}
+
+function stopDevicePolling() {
+  if (devicePollTimer) { clearInterval(devicePollTimer); devicePollTimer = null; }
+}
+
 async function startDeviceStream(fps = 15, manual = false) {
-  if (deviceStream) { if (manual) $("djStatus") && ($("djStatus").textContent = "Already sharing."); return; }
+  if (deviceStream) { if (manual) { const st = $("djStatus"); if (st) st.textContent = "Already sharing."; } return; }
+  // Try getDisplayMedia first (desktop browsers)
   try {
     deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
   } catch (e) {
-    const st = $("djStatus");
-    if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
-    addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
-    return;
+    // getDisplayMedia not available (Android/mobile) — try getUserMedia as fallback
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        // Try facingMode environment (back camera) for screen-like capture on mobile
+        deviceStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
+          audio: false
+        });
+      } catch (e2) {
+        const st = $("djStatus");
+        if (st) st.textContent = `Screen capture unavailable on this device. getDisplayMedia: ${e.message}. getUserMedia: ${e2.message}`;
+        addLog("warn", "CAST", `Screen capture failed on mobile: ${e2.message}`);
+        return;
+      }
+    } else {
+      const st = $("djStatus");
+      if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
+      addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
+      return;
+    }
   }
   deviceCanvas = $("djCanvas");
   if (deviceCanvas) { deviceCanvas.style.display = "block"; }
@@ -487,6 +547,7 @@ async function startDeviceStream(fps = 15, manual = false) {
 function stopDeviceStream() {
   if (deviceTimer) { clearInterval(deviceTimer); deviceTimer = null; }
   if (deviceStream) { try { deviceStream.getTracks().forEach(t => t.stop()); } catch {} deviceStream = null; }
+  if (devicePollTimer) { clearInterval(devicePollTimer); devicePollTimer = null; }
   const st = $("djStatus"); if (st) st.textContent = "";
   if (deviceCanvas) deviceCanvas.style.display = "none";
 }

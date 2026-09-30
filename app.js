@@ -51,7 +51,11 @@ export const state = {
   downloadControllers: new Map(),
   session: null, sessionTimer: null, sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
   vpn: { status: null, connected: false, profile: null },
-  incognito: INCOGNITO, server: { leanMode: false, version: "", checked: false }, sessionPromise: null
+  incognito: INCOGNITO, server: { leanMode: false, version: "", checked: false }, sessionPromise: null,
+  // Tab grouping: map of groupId -> { id, name, color, collapsed }
+  tabGroups: load("veyra-tab-groups", []),
+  // Split screen: { active: bool, leftTabId, rightTabId }
+  splitScreen: { active: false, leftTabId: null, rightTabId: null }
 };
 const INTERNAL = {
   newtab: { title: "New tab", icon: "i-home", path: "/browse" },
@@ -73,6 +77,107 @@ const INTERNAL = {
 const saveHistory = () => save("veyra-history", state.history.slice(0, settings.historyMax || 1000));
 const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
 const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
+const saveTabGroups = () => save("veyra-tab-groups", state.tabGroups);
+
+// ---------------------------------------------------------------- tab groups
+const GROUP_COLORS = ["#5b7fd6", "#c2566b", "#3f9a78", "#b0772f", "#8a5cc9", "#2f8fa8"];
+export function createTabGroup(name = "New Group") {
+  const group = { id: uid(), name, color: GROUP_COLORS[state.tabGroups.length % GROUP_COLORS.length], collapsed: false };
+  state.tabGroups.push(group); saveTabGroups(); return group;
+}
+export function assignTabToGroup(tabId, groupId) {
+  const t = tabById(tabId); if (!t) return;
+  t.groupId = groupId; renderTabs();
+}
+export function removeTabFromGroup(tabId) {
+  const t = tabById(tabId); if (!t) return;
+  delete t.groupId; renderTabs();
+}
+export function deleteTabGroup(groupId) {
+  state.tabGroups = state.tabGroups.filter(g => g.id !== groupId);
+  state.tabs.forEach(t => { if (t.groupId === groupId) delete t.groupId; });
+  saveTabGroups(); renderTabs();
+}
+export function toggleGroupCollapse(groupId) {
+  const g = state.tabGroups.find(g => g.id === groupId); if (!g) return;
+  g.collapsed = !g.collapsed; saveTabGroups(); renderTabs();
+}
+export function renameTabGroup(groupId, name) {
+  const g = state.tabGroups.find(g => g.id === groupId); if (!g) return;
+  g.name = name; saveTabGroups(); renderTabs();
+}
+
+// ---------------------------------------------------------------- split screen
+export function toggleSplitScreen() {
+  const ss = state.splitScreen;
+  if (ss.active) {
+    // Close split screen
+    ss.active = false; ss.leftTabId = null; ss.rightTabId = null;
+    // Remove any split view elements
+    qsa(".split-pane").forEach(el => el.remove());
+    document.getElementById("viewport")?.classList.remove("split-active");
+  } else {
+    // Open split screen with current tab on left
+    const t = activeTab();
+    if (!t || t.view !== "page") return;
+    // Find or create a second tab for the right pane
+    const otherTabs = state.tabs.filter(x => x.id !== t.id && x.view === "page");
+    const rightTab = otherTabs[0] || newTab({ url: t.url, background: true });
+    ss.active = true; ss.leftTabId = t.id; ss.rightTabId = rightTab.id;
+    renderSplitScreen();
+  }
+  renderTabs();
+}
+function renderSplitScreen() {
+  const ss = state.splitScreen;
+  if (!ss.active) return;
+  const viewport = document.getElementById("viewport");
+  if (!viewport) return;
+  viewport.classList.add("split-active");
+  // Ensure split pane container exists
+  let splitContainer = document.getElementById("splitContainer");
+  if (!splitContainer) {
+    splitContainer = document.createElement("div");
+    splitContainer.id = "splitContainer";
+    splitContainer.className = "split-container";
+    viewport.appendChild(splitContainer);
+  }
+  const leftTab = tabById(ss.leftTabId);
+  const rightTab = tabById(ss.rightTabId);
+  splitContainer.innerHTML = `
+    <div class="split-pane split-left" id="splitLeft">
+      <div class="split-header"><span class="split-title">${esc(leftTab?.title || "Left")}</span><button class="icon-btn sm" id="splitClose" title="Close split view"><svg><use href="#i-x"/></svg></button></div>
+      <div class="split-content" id="splitLeftContent"></div>
+    </div>
+    <div class="split-divider" id="splitDivider"></div>
+    <div class="split-pane split-right" id="splitRight">
+      <div class="split-header"><span class="split-title">${esc(rightTab?.title || "Right")}</span><button class="icon-btn sm" id="splitSwap" title="Swap panes"><svg><use href="#i-reload"/></svg></button></div>
+      <div class="split-content" id="splitRightContent"></div>
+    </div>
+  `;
+  // Move frames into split panes
+  if (leftTab) { const f = frameFor(leftTab); if (f) document.getElementById("splitLeftContent")?.appendChild(f); }
+  if (rightTab) { const f = frameFor(rightTab); if (f) document.getElementById("splitRightContent")?.appendChild(f); }
+  document.getElementById("splitClose")?.addEventListener("click", () => toggleSplitScreen());
+  document.getElementById("splitSwap")?.addEventListener("click", () => {
+    const tmp = ss.leftTabId; ss.leftTabId = ss.rightTabId; ss.rightTabId = tmp;
+    renderSplitScreen(); renderTabs();
+  });
+  // Divider drag
+  const divider = document.getElementById("splitDivider");
+  if (divider) {
+    let dragging = false;
+    divider.addEventListener("mousedown", e => { dragging = true; e.preventDefault(); });
+    document.addEventListener("mousemove", e => {
+      if (!dragging) return;
+      const rect = splitContainer.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.max(20, Math.min(80, pct));
+      splitContainer.style.gridTemplateColumns = `${clamped}% 6px ${100 - clamped}%`;
+    });
+    document.addEventListener("mouseup", () => { dragging = false; });
+  }
+}
 
 // ---------------------------------------------------------------- tabs
 function makeTab(extra = {}) {
@@ -96,9 +201,47 @@ export function renderTabs() {
   const list = $("tabsList"); if (!list) return;
   const ordered = [...state.tabs.filter(t => t.pinned), ...state.tabs.filter(t => !t.pinned)];
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
-  list.innerHTML = state.tabs.map(t => `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""}" role="tab" aria-selected="${t.id === state.activeId}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
-    <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
-    <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`).join("");
+  let html = "";
+  // Render tabs with group separators
+  const renderedGroupIds = new Set();
+  for (const t of state.tabs) {
+    // If this tab is in a group, render the group header first (once)
+    if (t.groupId && !renderedGroupIds.has(t.groupId)) {
+      const g = state.tabGroups.find(g => g.id === t.groupId);
+      if (g) {
+        renderedGroupIds.add(t.groupId);
+        const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+        html += `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${g.color}">
+          <div class="tab-group-header" data-group="${g.id}" title="Click to collapse/expand">
+            <span class="tab-group-dot" style="background:${g.color}"></span>
+            <span class="tab-group-name">${esc(g.name)}</span>
+            <span class="tab-group-count">${groupTabs.length}</span>
+            <button class="tab-group-close" data-group-close="${g.id}" title="Remove group"><svg><use href="#i-x"/></svg></button>
+          </div>`;
+        if (g.collapsed) {
+          // Show collapsed tabs as small pills
+          html += `<div class="tab-group-collapsed">`;
+          for (const gt of groupTabs) {
+            html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
+          }
+          html += `</div>`;
+        }
+      }
+    }
+    // Skip rendering individual tabs if their group is collapsed
+    const group = t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null;
+    if (group && group.collapsed) continue;
+    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
+      <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
+      <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
+    // Close group div after last tab in group
+    if (t.groupId) {
+      const groupTabs = state.tabs.filter(x => x.groupId === t.groupId);
+      const lastInGroup = groupTabs[groupTabs.length - 1];
+      if (lastInGroup && lastInGroup.id === t.id) html += `</div>`;
+    }
+  }
+  list.innerHTML = html;
   list.querySelectorAll(".tab").forEach(el => {
     el.onmousedown = e => { if (e.button === 1) { e.preventDefault(); closeTab(el.dataset.tab); } };
     el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); };
@@ -109,18 +252,48 @@ export function renderTabs() {
     el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); moveTab(from, el.dataset.tab); };
   });
   list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
+  // Group header click (collapse/expand)
+  list.querySelectorAll("[data-group]").forEach(el => { el.onclick = e => { if (!e.target.closest("[data-group-close]")) toggleGroupCollapse(el.dataset.group); }; });
+  list.querySelectorAll("[data-group-close]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteTabGroup(b.dataset.groupClose); });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   document.title = (activeTab()?.title && activeTab().view !== "newtab" ? activeTab().title + " · " : "") + (state.incognito ? "Veyra Incognito" : "Veyra");
 }
 function moveTab(fromId, toId) { if (!fromId || fromId === toId) return; const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId); if (a < 0 || b < 0) return; const [t] = state.tabs.splice(a, 1); state.tabs.splice(b, 0, t); renderTabs(); }
 function tabContextMenu(id, x, y) {
   const t = tabById(id); if (!t) return; const i = state.tabs.indexOf(t);
+  const groupItems = state.tabGroups.length ? [
+    { label: t.groupId ? "Remove from group" : "Add to group", action: () => {
+      if (t.groupId) { removeTabFromGroup(id); }
+      else {
+        // Show group selection
+        if (state.tabGroups.length === 1) { assignTabToGroup(id, state.tabGroups[0].id); }
+        else {
+          const items = state.tabGroups.map(g => ({ label: g.name, action: () => assignTabToGroup(id, g.id) }));
+          items.push("-", { label: "New group…", action: async () => {
+            const r = await promptDialog({ title: "New tab group", ok: "Create", fields: [{ name: "name", label: "Group name", value: "", placeholder: "Work, Research…" }] });
+            if (r && r.name) { const g = createTabGroup(r.name); assignTabToGroup(id, g.id); }
+          } });
+          ctxMenu(x + 30, y + 30, items);
+        }
+      }
+    } },
+    ...(t.groupId ? [{ label: "Ungroup all tabs in this group", action: () => { const gid = t.groupId; state.tabs.forEach(tab => { if (tab.groupId === gid) delete tab.groupId; }); deleteTabGroup(gid); } }] : []),
+  ] : [
+    { label: "Add to new group…", action: async () => {
+      const r = await promptDialog({ title: "New tab group", ok: "Create", fields: [{ name: "name", label: "Group name", value: "", placeholder: "Work, Research…" }] });
+      if (r && r.name) { const g = createTabGroup(r.name); assignTabToGroup(id, g.id); }
+    } }
+  ];
   ctxMenu(x, y, [
     { label: "New tab to the right", action: () => newTab({ index: i + 1 }) },
     "-",
     { label: "Reload", kbd: "Ctrl+R", action: () => { switchTab(id); reload(); } },
     { label: "Duplicate", action: () => duplicateTab(t) },
     { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; renderTabs(); } },
+    "-",
+    ...groupItems,
+    { label: "Split screen with this tab", action: () => { switchTab(id); toggleSplitScreen(); } },
+    "-",
     { label: "Copy address", disabled: !t.url, action: () => copyText(t.url) },
     "-",
     { label: "Close", kbd: "Ctrl+W", action: () => closeTab(id) },

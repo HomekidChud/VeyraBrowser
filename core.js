@@ -247,12 +247,11 @@ export function addLog(level, message, meta = {}) {
 }
 
 // ---------------------------------------------------------------- UI helpers
+// Toast notifications removed — too intrusive. Function kept as a no-op so
+// callers don't crash, but nothing is ever shown to the user.
 export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200 } = {}) {
-  const box = $("toasts"); if (!box) return;
-  const el = document.createElement("div"); el.className = `toast ${kind}`; el.innerHTML = `<span>${esc(message)}</span>`;
-  if (action) { const b = document.createElement("button"); b.textContent = actionLabel || "Undo"; b.onclick = () => { action(); el.remove(); }; el.appendChild(b); }
-  box.appendChild(el); while (box.children.length > 3) box.firstChild.remove();
-  setTimeout(() => el.remove(), ms);
+  // No-op: popup notifications permanently removed per user request.
+  if (action) { try { action(); } catch {} }
 }
 // Promise-based modal prompt. fields: [{name,label,value,type,placeholder}]
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {

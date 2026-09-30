@@ -131,9 +131,29 @@ function extensionsSection() {
     ${toggle("extensionDeveloperMode", "Developer mode", "Lets you load local Veyra CSS packages for development.")}`);
 }
 function vpnSection() {
+  const customVpns = load("veyra-custom-vpns", []);
   return section("vpn", "Veyra VPN", "", `
     ${row("Status", B.state.vpn?.connected ? `Connected to ${B.state.vpn.profile?.name || "an exit"}` : "Not connected", `<button class="btn" data-act="openVpn">Open VPN</button>`)}
-    ${row("Connect automatically", settings.vpnAutoProfile ? `New sessions use ${settings.vpnAutoProfile}.` : "Off. Choose an exit in the VPN page.", settings.vpnAutoProfile ? `<button class="btn" data-act="vpnAutoOff">Turn off</button>` : "")}`);
+    ${row("Connect automatically", settings.vpnAutoProfile ? `New sessions use ${settings.vpnAutoProfile}.` : "Off. Choose an exit in the VPN page.", settings.vpnAutoProfile ? `<button class="btn" data-act="vpnAutoOff">Turn off</button>` : "")}
+    <div class="s-row" style="display:block">
+      <div class="s-label"><b>Custom VPN Methods</b><span>Add your own VPN provider via API key, config, or manual server settings.</span></div>
+      <div class="custom-vpn-list" id="customVpnList">
+        ${customVpns.length ? customVpns.map((v, i) => `
+          <div class="custom-vpn-card">
+            <div class="vpn-info"><b>${esc(v.name || v.type || "VPN")}</b><span>${esc(v.server || v.apiKey ? v.apiKey.slice(0,8)+"…" : "Configured")} · ${esc(v.type || "proxy")}</span></div>
+            <div class="vpn-actions">
+              <button class="btn ghost sm" data-vpn-connect="${i}">Use</button>
+              <button class="btn ghost sm" data-vpn-edit="${i}">Edit</button>
+              <button class="btn danger sm" data-vpn-delete="${i}">Delete</button>
+            </div>
+          </div>
+        `).join("") : `<p class="muted small">No custom VPNs configured yet.</p>`}
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-act="addCustomVpn">Add VPN provider</button>
+        <button class="btn ghost" data-act="importVpnConfig">Import WireGuard config</button>
+      </div>
+    </div>`);
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
@@ -306,6 +326,40 @@ async function act(a, el) {
     case "openExtensions": return nav("extensions");
     case "openVpn": return nav("vpn");
     case "vpnAutoOff": settings.vpnAutoProfile = ""; saveSettings(); return render(curSection());
+    case "addCustomVpn": {
+      const r = await promptDialog({ title: "Add VPN provider", ok: "Add", fields: [
+        { name: "name", label: "Name", value: "", placeholder: "My VPN", required: true },
+        { name: "type", label: "Type", type: "select", value: "socks5", options: ["socks5", "http", "https", "wireguard", "api"] },
+        { name: "server", label: "Server / Proxy URL", value: "", placeholder: "socks5://host:port or https://api.vpn.com" },
+        { name: "apiKey", label: "API Key (if using API type)", value: "", placeholder: "Optional API key" },
+        { name: "username", label: "Username", value: "", placeholder: "Optional" },
+        { name: "password", label: "Password", value: "", placeholder: "Optional", type: "password" },
+        { name: "region", label: "Region", value: "", placeholder: "e.g. UK, US, DE" }
+      ] });
+      if (!r || !r.name) return;
+      const vpns = load("veyra-custom-vpns", []);
+      vpns.push({ id: Date.now().toString(36), ...r });
+      save("veyra-custom-vpns", vpns);
+      // Also push to server if connected
+      try { await api("/api/vpn/custom", { method: "POST", json: { name: r.name, type: r.type, server: r.server, apiKey: r.apiKey, username: r.username, password: r.password, region: r.region } }); } catch {}
+      toast("VPN provider added");
+      render(curSection());
+      return;
+    }
+    case "importVpnConfig": {
+      const r = await promptDialog({ title: "Import WireGuard config", ok: "Import", fields: [
+        { name: "name", label: "Name", value: "", placeholder: "My WireGuard VPN", required: true },
+        { name: "config", label: "WireGuard config", type: "textarea", value: "", placeholder: "[Interface]\nPrivateKey = ...\n[Peer]\nPublicKey = ...\nEndpoint = host:port" }
+      ] });
+      if (!r || !r.config) return;
+      const vpns = load("veyra-custom-vpns", []);
+      vpns.push({ id: Date.now().toString(36), name: r.name, type: "wireguard", config: r.config });
+      save("veyra-custom-vpns", vpns);
+      try { await api("/api/vpn/custom", { method: "POST", json: { name: r.name, type: "wireguard", config: r.config } }); } catch {}
+      toast("WireGuard config imported");
+      render(curSection());
+      return;
+    }
     case "refreshNeuralStats": return loadNeuralStats();
     case "resetNeuralModel": {
       if (!await confirmDialog("Reset neural model?", "This clears all learned weights and training data. The model will start learning from scratch.", "Reset model")) return;
@@ -350,12 +404,24 @@ export function initSettings(b) {
   body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el && ["text", "password", "url", "color"].includes(el.type)) { setValue(el); if (el.dataset.set === "accent") qsa(".swatch").forEach(s => s.classList.remove("on")); } }, 450));
-  body.addEventListener("click", e => {
+  body.addEventListener("click", async e => {
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
     const th = e.target.closest("[data-theme-pick]"); if (th) { settings.theme = th.dataset.themePick; saveSettings(); qsa(".theme-card").forEach(c => { c.classList.toggle("on", c === th); c.setAttribute("aria-pressed", c === th); }); return; }
     const sw = e.target.closest("[data-accent]"); if (sw) { settings.accent = sw.dataset.accent; saveSettings(); qsa(".swatch").forEach(s => s.classList.toggle("on", s === sw)); const ci = document.querySelector('#settingsBody input[type=color]'); if (ci) ci.value = sw.dataset.accent; return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
     const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
+    // Custom VPN card actions
+    const vc = e.target.closest("[data-vpn-connect]"); if (vc) { const vpns = load("veyra-custom-vpns", []); const v = vpns[Number(vc.dataset.vpnConnect)]; if (v) { try { await B.connectVpn(v.id || v.name); } catch(err) { toast(err.message, { kind: "err" }); } } return; }
+    const ve = e.target.closest("[data-vpn-edit]"); if (ve) { const vpns = load("veyra-custom-vpns", []); const v = vpns[Number(ve.dataset.vpnEdit)]; if (v) {
+      const r = await promptDialog({ title: "Edit VPN", ok: "Save", fields: [
+        { name: "name", label: "Name", value: v.name || "" },
+        { name: "server", label: "Server", value: v.server || "" },
+        { name: "username", label: "Username", value: v.username || "" },
+        { name: "password", label: "Password", type: "password", value: v.password || "" }
+      ] });
+      if (r) { Object.assign(v, r); save("veyra-custom-vpns", vpns); toast("VPN updated"); render(curSection()); }
+    } return; }
+    const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const vpns = load("veyra-custom-vpns", []); vpns.splice(Number(vd.dataset.vpnDelete), 1); save("veyra-custom-vpns", vpns); toast("VPN removed"); render(curSection()); return; }
   });
   $("settingsSearch").addEventListener("input", debounce(() => render(B.activeTab()?.section || ""), 120));
   $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.target.value = ""; render(B.activeTab()?.section || ""); } });

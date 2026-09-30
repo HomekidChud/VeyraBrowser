@@ -918,3 +918,135 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
 .internet-config{margin-bottom:16px}
 .internet-test{display:flex;gap:8px;align-items:center}
 .ntp-incog-ic svg{width:24px;height:24px}
+
+/* ================================================================ Tab Groups */
+.tab-group{display:flex;flex-direction:column;align-items:flex-start;position:relative}
+.tab-group-header{display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;user-select:none;max-width:200px}
+.tab-group-header:hover{background:var(--surface-2);border-radius:8px}
+.tab-group-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.tab-group-name{font-size:.78em;font-weight:600;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab-group-count{font-size:.7em;color:var(--muted);background:var(--surface-3);padding:1px 6px;border-radius:999px}
+.tab-group-close{width:18px;height:18px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;border-radius:50%}
+.tab-group-close:hover{background:var(--surface-3);color:var(--text)}
+.tab-group-close svg{width:11px;height:11px}
+.tab-group-collapsed{display:flex;gap:2px;padding:0 4px 0 8px}
+.tab.tab-collapsed{width:36px;min-width:36px;padding:0;justify-content:center;border-radius:8px 8px 0 0}
+.tab.tab-collapsed .tab-title,.tab.tab-collapsed .tab-close{display:none}
+.tab.grouped{border-left:2px solid var(--group-color,var(--accent));margin-left:2px}
+
+/* ================================================================ Split Screen */
+.split-container{display:grid;grid-template-columns:50% 6px 50%;height:100%;width:100%;position:absolute;inset:0;z-index:5}
+.split-pane{display:flex;flex-direction:column;min-width:0;overflow:hidden;background:var(--frame-bg)}
+.split-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--bg-2);border-bottom:1px solid var(--line);font-size:.85em;font-weight:600;color:var(--text-2);flex:none}
+.split-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.split-content{flex:1;min-height:0;position:relative;overflow:auto;display:flex;justify-content:center}
+.split-content .tab-frame{width:100%;height:100%;display:block}
+.split-content .browser-surface{width:100%;height:100%;display:block}
+.split-divider{width:6px;cursor:col-resize;background:var(--line);flex:none;position:relative}
+.split-divider:hover{background:var(--accent)}
+.split-divider::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:40px;border-radius:2px;background:var(--muted)}
+.viewport.split-active .view{display:none!important}
+.viewport.split-active .split-container{display:grid}
+
+/* ================================================================ Custom VPN Settings */
+.custom-vpn-list{display:grid;gap:10px;margin-top:12px}
+.custom-vpn-card{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-lg)}
+.custom-vpn-card .vpn-info{flex:1;min-width:0}
+.custom-vpn-card .vpn-info b{display:block;font-weight:600}
+.custom-vpn-card .vpn-info span{color:var(--muted);font-size:.85em}
+.custom-vpn-card .vpn-actions{display:flex;gap:6px;flex:none}
+.vpn-method-tabs{display:flex;gap:4px;margin-bottom:14px}
+.vpn-method-tab{padding:8px 14px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--text-2);font-weight:600;font-size:.88em;cursor:pointer}
+.vpn-method-tab.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+
+/* ================================================================ Mobile UI Fixes */
+@media (max-width:768px){
+  /* Fix toolbar overflow on mobile */
+  .toolbar{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+  .toolbar::-webkit-scrollbar{display:none}
+  /* Fix tabs row overflow */
+  .tabs-row{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  /* Prevent UI elements from sticking out */
+  .browser{overflow:hidden;width:100vw;max-width:100%}
+  .chrome{max-width:100%;overflow:hidden}
+  .toolbar{max-width:100vw}
+  /* Make tabs narrower on mobile */
+  .tab{width:120px;min-width:80px;flex-basis:120px}
+  /* Hide less important toolbar buttons on mobile */
+  #homeBtn,#downloadBtn,#extBtn{display:none}
+  /* Fix omnibox to not overflow */
+  .omnibox{min-width:0;max-width:100%}
+  .omnibox input{min-width:0}
+  /* Fix settings page on mobile */
+  .settings{display:flex;flex-direction:column}
+  .settings-nav{width:100%;max-width:100%;position:sticky;top:0;z-index:5;background:var(--bg-2);border-right:0;border-bottom:1px solid var(--line)}
+  /* Fix status bar text overflow */
+  .statusbar{font-size:.7em}
+  .statusbar span{max-width:50vw}
+  /* Fix cast page on mobile */
+  .cast-page{padding:16px}
+  .cast-qr-section{flex-direction:column;align-items:center}
+  .cast-pairing-info{max-width:100%}
+  .cast-mirror-section{flex-direction:column}
+  .cast-mirror-frame{width:100%;max-width:360px;height:560px;margin:0 auto}
+  .cast-side-panel{width:100%}
+  /* Fix split screen on mobile */
+  .split-container{grid-template-columns:1fr;grid-template-rows:50% 6px 50%}
+  .split-divider{width:100%;height:6px;cursor:row-resize}
+  /* Fix search page on mobile */
+  .search-hero{flex-wrap:wrap;height:auto;padding:10px}
+  .search-hero input{width:100%}
+  .search-hero .btn{width:100%}
+  /* Fix ntp tiles on mobile */
+  .ntp-tiles{grid-template-columns:repeat(3,1fr);max-width:100%}
+  /* Fix page shell on mobile */
+  .page-shell{padding:20px 14px 60px}
+  /* Fix bookmarks bar on mobile */
+  .bookmarks-bar{padding:0 8px 4px}
+  .bm{max-width:140px}
+  /* Fix modal on mobile */
+  .modal-card{width:calc(100vw - 24px);max-width:calc(100vw - 24px);padding:20px}
+  .modal-card.sm{width:calc(100vw - 24px)}
+  /* Fix devtools on mobile */
+  .devtools{height:45%}
+  /* Fix session pill on mobile */
+  .session-pill{padding:0 8px;font-size:.8em}
+  .session-pill svg{display:none}
+  /* Fix tab groups on mobile */
+  .tab-group-header{max-width:120px}
+  .tab-group-name{max-width:80px}
+  /* Hide popover elements that stick out */
+  .popover,.menu,.ctx-menu{max-width:calc(100vw - 24px)}
+  /* Fix VPN popover on mobile */
+  .vpn-list{max-height:300px;overflow-y:auto}
+  /* Fix side panel on mobile */
+  .side-panel{width:100%;max-width:100%}
+  /* Fix frame wrap on mobile - prevent overflow */
+  .frame-wrap{overflow:auto;-webkit-overflow-scrolling:touch}
+}
+
+/* Extra safety for very small screens */
+@media (max-width:400px){
+  .tab{width:100px;min-width:60px;flex-basis:100px}
+  .tab-title{font-size:.8em}
+  .toolbar{padding:4px}
+  .omnibox{height:34px}
+  .omnibox input{font-size:.9em}
+  .site-chip{padding:0 6px}
+  .session-pill{padding:0 6px;font-size:.75em}
+  .ntp-tiles{grid-template-columns:repeat(2,1fr)}
+}
+
+/* Fix for iOS safe area */
+@supports (padding:max(0px)){
+  .browser{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  .statusbar{padding-bottom:env(safe-area-inset-bottom)}
+}
+
+/* Fix for viewport units on mobile */
+.browser{height:100vh;height:100dvh}
+.workspace{height:calc(100dvh - var(--chrome-height,0px))}
+
+/* Prevent horizontal scroll on body */
+body{overflow-x:hidden}
+html{overflow-x:hidden;max-width:100%}
