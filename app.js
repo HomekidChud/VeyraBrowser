@@ -8,6 +8,8 @@ import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./br
 import { initUI } from "./ui.js";
 import { initDevtools } from "./devtools.js";
 import { initCast } from "./device-cast.js";
+import { maybeOfferRenew } from "./renew.js";
+import { renderAdmin } from "./admin.js";
 
 // Official YouTube embed compatibility. For public watch/Shorts/live URLs,
 // use YouTube's documented IFrame embed player so playback stays in YouTube's
@@ -64,6 +66,7 @@ const INTERNAL = {
   links: { title: "All links", icon: "i-link", path: "/links" },
   console: { title: "Veyra console", icon: "i-terminal", path: "/console", admin: true },
   dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
+  admin: { title: "Admin panel", icon: "i-shield", path: "/admin", admin: true },
   cast: { title: "Device Cast", icon: "i-globe", path: "/cast" },
   internet: { title: "Internet", icon: "i-vpn", path: "/internet" }
 };
@@ -211,7 +214,7 @@ function applyRoute() {
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
   if (location.hash === "#console") return openInternal("console", { push: false });
   const [, first, second] = route.split("/");
-  const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
+  const view = { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
     // Unknown routes must be repaired without recursively calling goRoute()/applyRoute().
     // A malformed/mismatched APP_BASE previously caused an infinite applyRoute loop.
@@ -268,10 +271,11 @@ export function renderActive({ push = true, replace = false } = {}) {
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev,
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, admin: () => renderAdmin(t.section),
     cast: () => hooks.renderCast?.(), internet: () => hooks.renderInternet?.()
   }[t.view]; r?.();
   if (t.view !== "dev") clearInterval(state.devTimer);
+  if (t.view !== "admin") clearInterval(state.adminTimer);
   if (!$("findBar").classList.contains("hidden") && t.view !== "page") closeFind();
   $("readerView").classList.toggle("hidden", !(t.view === "page" && t.readerOpen));
   hooks.renderSidePanel?.(t);
@@ -496,6 +500,8 @@ function tickSession() {
     if (left <= 30000 && !state.sessionWarned[30]) { state.sessionWarned[30] = 1; toast("30 seconds left in this session", { kind: "warn" }); }
     if (left <= 10000 && !state.sessionWarned[10]) { state.sessionWarned[10] = 1; toast("10 seconds left. The session will be deleted", { kind: "err" }); }
   }
+  // Ad-based renewal offer: once per session, when the timer drops below 60s.
+  if (left > 0 && left <= 60000) maybeOfferRenew(s, left);
   hooks.onSessionTick?.(left, s);
   if (left <= 0) endSession("timer");
 }
@@ -532,6 +538,16 @@ export async function endSession(reason = "timer") {
   } finally { state.sessionEnding = false; }
 }
 hooks.onSessionExpired = reason => { if (state.session) endSession(reason); };
+// Session renewal (ads): the renew module reads the current session id and
+// pushes a new expiry back into the live session state when an ad completes.
+hooks.currentSessionId = () => state.session?.id || "";
+hooks.onSessionRenewed = expiresAt => {
+  if (!state.session || !expiresAt) return;
+  state.session.expiresAt = expiresAt;
+  state.sessionWarned = {};   // warnings can fire again for the new window
+  tickSession();
+  addLog("info", `Session renewed — new expiry ${new Date(expiresAt).toLocaleTimeString()}`);
+};
 window.addEventListener("pagehide", () => { const s = state.session; if (s) try { navigator.sendBeacon(`${API}/api/session/${encodeURIComponent(s.id)}/close`, ""); } catch {} });
 
 // ---------------------------------------------------------------- input classification + navigation
@@ -1487,7 +1503,7 @@ async function boot() {
     renderTabs(); tickSession();
     applyRoute();
     applyStartup(params);
-    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
+    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }

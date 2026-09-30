@@ -14,6 +14,7 @@
  */
 
 import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js";
+import { qrSvg } from "./qr.js";
 
 let B;
 let castWs = null;
@@ -26,70 +27,11 @@ let inputLoop = false;
 let lastFrameTime = 0;
 let fpsCounter = { count: 0, lastReset: 0, fps: 0 };
 
-// ---------------------------------------------------------------- QR code generation (inline, no external dependency)
-function generateQRMatrix(text) {
-  // Simple QR code matrix generator (simplified — produces a visual QR-like pattern)
-  // For production use, a proper QR library would be needed, but this creates a
-  // scannable pattern that encodes the data as a visual code
-  const size = 25;
-  const matrix = Array(size).fill(null).map(() => Array(size).fill(0));
-
-  // Position detection patterns (corners)
-  const placeFinder = (r, c) => {
-    for (let i = -1; i <= 7; i++) {
-      for (let j = -1; j <= 7; j++) {
-        const rr = r + i, cc = c + j;
-        if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
-        const isBorder = (i === 0 || i === 6 || j === 0 || j === 6) && i >= 0 && i <= 6 && j >= 0 && j <= 6;
-        const isInner = (i >= 2 && i <= 4 && j >= 2 && j <= 4);
-        matrix[rr][cc] = (isBorder || isInner) ? 1 : 0;
-      }
-    }
-  };
-  placeFinder(0, 0);
-  placeFinder(0, size - 7);
-  placeFinder(size - 7, 0);
-
-  // Data encoding (simplified hash-based)
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-  for (let i = 0; i < size; i++) {
-    for (let j = 0; j < size; j++) {
-      // Skip finder patterns
-      if ((i < 8 && j < 8) || (i < 8 && j >= size - 8) || (i >= size - 8 && j < 8)) continue;
-      hash = ((hash << 3) ^ (hash >> 5) ^ (i * 31 + j * 17)) | 0;
-      matrix[i][j] = (hash & 1);
-    }
-  }
-
-  // Timing patterns
-  for (let i = 8; i < size - 8; i++) {
-    matrix[6][i] = i % 2 === 0 ? 1 : 0;
-    matrix[i][6] = i % 2 === 0 ? 1 : 0;
-  }
-
-  return matrix;
-}
-
-function qrToSvg(text, size = 300) {
-  const matrix = generateQRMatrix(text);
-  const cells = matrix.length;
-  const cellSize = size / cells;
-  let rects = "";
-  for (let i = 0; i < cells; i++) {
-    for (let j = 0; j < cells; j++) {
-      if (matrix[i][j]) {
-        rects += `<rect x="${j * cellSize}" y="${i * cellSize}" width="${cellSize}" height="${cellSize}" fill="currentColor"/>`;
-      }
-    }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" class="qr-code" style="background:#fff;color:#000;padding:20px;border-radius:12px;box-sizing:content-box;width:${size}px;height:${size}px">${rects}</svg>`;
-}
-
-// External QR generator URL (fallback for high-quality QR)
-function qrCodeUrl(text, size = 300) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&color=0d0f13&bgcolor=ffffff&margin=10`;
-}
+// ---------------------------------------------------------------- QR code
+// Real QR codes come from ./qr.js — a self-contained encoder (byte mode, ECC L,
+// versions 1-9). The old "QR" here was a decorative hash pattern that phones
+// could not scan ("no usable data found"), and the old image fallback
+// depended on a third-party QR service. Both are gone.
 
 // ---------------------------------------------------------------- Cast connection (WebSocket with HTTP polling fallback)
 let castPollTimer = null;
@@ -344,6 +286,12 @@ function sendTouchInput(x, y, type = "tap") {
 function renderCastView() {
   const view = $("view-cast");
   if (!view) return;
+  // Device join mode: the phone scanned the QR code, which now points at
+  // /cast?session=<id>&code=<code>. Render the phone-side join + screen share
+  // view instead of the desktop "generate QR" flow.
+  const joinParams = new URLSearchParams(location.search);
+  const joinSession = joinParams.get("session"), joinCode = joinParams.get("code");
+  if (joinSession && joinCode) { renderDeviceJoinView(view, joinSession, joinCode); return; }
   if (!castSession) {
     view.innerHTML = castWaitingView();
     wireCastWaiting();
@@ -362,14 +310,18 @@ function castWaitingView() {
   if (!castSession) {
     return `<div class="cast-page"><div class="cast-center"><div class="cast-icon"><svg width="64" height="64"><use href="#i-globe"/></svg></div><h2>Cast a Device</h2><p class="muted">Scan the QR code with your phone to mirror its screen in Veyra.</p><button class="btn primary lg" id="castStartBtn">Generate QR Code</button></div></div>`;
   }
-  const qr = qrCodeUrl(castSession.qrPayload, 320);
-  const inlineQr = qrToSvg(castSession.qrPayload, 280);
+  let inlineQr;
+  try {
+    inlineQr = qrSvg(castSession.qrPayload, 300);
+  } catch (e) {
+    addLog("warn", "CAST", `QR generation failed: ${e.message}`);
+    inlineQr = `<div style="padding:40px;color:#aeb9c6">QR unavailable — use the deep link below.</div>`;
+  }
   return `<div class="cast-page">
     <div class="cast-header"><h2>Waiting for device…</h2><button class="btn ghost sm" id="castCancelBtn">Cancel</button></div>
     <div class="cast-qr-section">
       <div class="cast-qr-wrapper">
-        <img src="${esc(qr)}" alt="QR code" class="qr-img" onerror="this.style.display='none';document.getElementById('inlineQr').style.display='block'">
-        <div id="inlineQr" style="display:none">${inlineQr}</div>
+        <div id="inlineQr">${inlineQr}</div>
       </div>
       <div class="cast-pairing-info">
         <h3>Pair your device</h3>
@@ -440,6 +392,103 @@ function castDisconnectedView() {
     <p class="muted">${esc(castSession?.deviceName || "The device")} disconnected from the session.</p>
     <button class="btn primary lg" id="castReconnectBtn">Reconnect</button>
   </div></div>`;
+}
+
+// ---------------------------------------------------------------- device join (phone side, opened from the QR code)
+let deviceWs = null;
+let deviceStream = null;
+let deviceCanvas = null;
+let deviceTimer = null;
+let deviceJoined = false;
+
+function renderDeviceJoinView(view, sessionId, code) {
+  view.innerHTML = `<div class="cast-page"><div class="cast-center">
+    <div class="cast-icon"><svg width="64" height="64"><use href="#i-globe"/></svg></div>
+    <h2 id="djTitle">${deviceJoined ? "Paired with Veyra" : "Joining cast session…"}</h2>
+    <p class="muted" id="djSub">${deviceJoined ? "Your screen can now be mirrored into the Veyra browser." : "Connecting to the cast session from the QR code."}</p>
+    <div id="djBody" style="margin-top:18px;display:grid;gap:10px;justify-items:center"></div>
+    <button class="btn ghost sm" id="djLeave" style="margin-top:16px">Leave</button>
+  </div></div>`;
+  const body = view.querySelector("#djBody");
+  if (deviceJoined) renderDevicePaired(body);
+  else connectDevice(sessionId, code, body);
+  view.querySelector("#djLeave").onclick = () => {
+    try { deviceWs && deviceWs.close(); } catch {}
+    stopDeviceStream();
+    deviceWs = null; deviceJoined = false;
+    try { history.replaceState({}, "", (window.VEYRA_BASE || "./") + "cast"); } catch {}
+    renderCastView();
+  };
+}
+
+function connectDevice(sessionId, code, body) {
+  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((navigator.userAgent.includes("Mobile") ? "Phone" : "Device"))}&type=phone&connection=${navigator.connection?.effectiveType?.includes("2") || navigator.connection?.effectiveType?.includes("3") || navigator.connection?.effectiveType?.includes("4") ? "cellular" : "wifi"}`;
+  try { deviceWs = new WebSocket(wsUrl); } catch (e) { body.innerHTML = `<p class="muted">Could not connect: ${esc(e.message)}</p>`; return; }
+  deviceWs.onopen = () => {
+    deviceJoined = true;
+    const t = $("djTitle"), s = $("djSub");
+    if (t) t.textContent = "Paired with Veyra";
+    if (s) s.textContent = "Your screen can now be mirrored into the Veyra browser.";
+    renderDevicePaired(body);
+    addLog("info", "CAST", "Device joined cast session");
+  };
+  deviceWs.onmessage = ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
+      else if (msg.type === "stop_streaming") stopDeviceStream();
+      else if (msg.type === "set_quality") { if (deviceTimer) { stopDeviceStream(); startDeviceStream(msg.fps || 15); } }
+    } catch {}
+  };
+  deviceWs.onclose = ev => {
+    deviceJoined = false; stopDeviceStream();
+    const t = $("djTitle"), s = $("djSub");
+    if (t) t.textContent = ev.code === 4003 ? "Wrong pairing code" : "Disconnected";
+    if (s) s.textContent = ev.code === 4003 ? "This QR code has expired. Generate a new one in the Veyra browser." : "The cast session closed. You can close this page.";
+    if (body) body.innerHTML = "";
+  };
+}
+
+function renderDevicePaired(body) {
+  body.innerHTML = `<button class="btn primary lg" id="djShare">Share this screen</button>
+    <p class="muted small">Screen sharing uses your browser's built-in screen capture. The Veyra browser must press “Start mirroring” to receive frames.</p>
+    <div id="djStatus" class="muted small"></div>
+    <canvas id="djCanvas" style="display:none;max-width:100%;border-radius:12px"></canvas>`;
+  body.querySelector("#djShare").onclick = () => startDeviceStream(15, true);
+}
+
+async function startDeviceStream(fps = 15, manual = false) {
+  if (deviceStream) { if (manual) $("djStatus") && ($("djStatus").textContent = "Already sharing."); return; }
+  try {
+    deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
+  } catch (e) {
+    const st = $("djStatus");
+    if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
+    addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
+    return;
+  }
+  deviceCanvas = $("djCanvas");
+  if (deviceCanvas) { deviceCanvas.style.display = "block"; }
+  const ctx = deviceCanvas?.getContext("2d");
+  const video = document.createElement("video");
+  video.muted = true; video.srcObject = deviceStream; video.play().catch(() => {});
+  const st = $("djStatus"); if (st) st.textContent = "Sharing your screen…";
+  deviceStream.getVideoTracks()[0]?.addEventListener("ended", () => stopDeviceStream());
+  const interval = Math.max(66, Math.round(1000 / Math.max(1, fps)));
+  deviceTimer = setInterval(() => {
+    if (!deviceWs || deviceWs.readyState !== 1 || !ctx || video.videoWidth === 0) return;
+    const w = 360, h = Math.round(video.videoHeight * (w / video.videoWidth)) || 640;
+    deviceCanvas.width = w; deviceCanvas.height = h;
+    ctx.drawImage(video, 0, 0, w, h);
+    try { deviceWs.send(JSON.stringify({ type: "frame", data: deviceCanvas.toDataURL("image/jpeg", 0.6) })); } catch {}
+  }, interval);
+}
+
+function stopDeviceStream() {
+  if (deviceTimer) { clearInterval(deviceTimer); deviceTimer = null; }
+  if (deviceStream) { try { deviceStream.getTracks().forEach(t => t.stop()); } catch {} deviceStream = null; }
+  const st = $("djStatus"); if (st) st.textContent = "";
+  if (deviceCanvas) deviceCanvas.style.display = "none";
 }
 
 // ---------------------------------------------------------------- internet connection view
@@ -567,8 +616,7 @@ export const cast = {
   startStreaming,
   stopStreaming,
   setQuality,
-  qrCodeUrl,
-  qrToSvg,
+  renderDeviceJoinView,
 };
 
 hooks.renderCast = renderCastView;

@@ -383,7 +383,7 @@ function openMainMenu() {
     menuItem("i-code", "Developer tools", "devtools", () => hooks.dt?.toggle()),
     menuItem("i-file", "View source resources", "viewSource", () => B.openInternal("resources"), { disabled: !onPage }),
     menuItem("i-link", "View all links", "", () => B.openInternal("links"), { disabled: !onPage }),
-    ...(isAdmin() ? ["-", menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
+    ...(isAdmin() ? ["-", menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
     "-",
     menuItem("i-settings", "Settings", "settings", () => B.openInternal("settings")),
     menuItem("i-user", auth.user ? "Sign out" : "Sign in", "", () => auth.user ? signOut() : openAuth("login")),
@@ -426,8 +426,9 @@ function openSessionPop() {
   const s = B.state.session; const limit = s?.limitMs || B.state.serverLimitMs;
   pop(`<h4>${s ? "Session running" : "No active session"}</h4><p class="pop-sub">${limit ? `Sessions last ${fmtClock(limit)}. At 0:00 the server deletes cookies, tabs, Chromium context and the VPN tunnel.` : "Sessions on this server don't have a time limit."}</p>
     ${s ? `<dl class="kv"><dt>ID</dt><dd class="mono">${esc(s.id.slice(0, 12))}…</dd><dt>Time left</dt><dd id="popLeft">${fmtClock(B.sessionRemaining())}</dd><dt>Tabs open</dt><dd>${B.state.tabs.filter(t => t.view === "page").length}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "on") : "off"}</dd></dl>` : ""}
-    <div style="display:flex;gap:8px;margin-top:12px">${s ? `<button class="btn danger sm" id="popEnd">End and delete now</button>` : `<button class="btn primary sm" id="popStart">Start a session</button>`}<button class="btn ghost sm" data-go="/settings/sessions">Session settings</button></div>`, $("sessionPill"), p => {
+    <div style="display:flex;gap:8px;margin-top:12px">${s ? `<button class="btn danger sm" id="popEnd">End and delete now</button>` : `<button class="btn primary sm" id="popStart">Start a session</button>`}${s ? `<button class="btn ghost sm" id="popRenew">Watch ad to extend</button>` : ""}<button class="btn ghost sm" data-go="/settings/sessions">Session settings</button></div>`, $("sessionPill"), p => {
     p.querySelector("#popEnd")?.addEventListener("click", () => { closeFloating(); B.endSession("manual"); });
+    p.querySelector("#popRenew")?.addEventListener("click", () => { closeFloating(); hooks.openRenewFlow?.(); });
     p.querySelector("#popStart")?.addEventListener("click", async () => { closeFloating(); try { await B.ensureSession(); toast("Session started"); } catch (e) { toast(e.message, { kind: "err" }); } });
     const iv = setInterval(() => { const el = p.querySelector("#popLeft"); if (!el || p.classList.contains("hidden")) return clearInterval(iv); el.textContent = fmtClock(B.sessionRemaining()); }, 500);
     p.querySelector("[data-go]")?.addEventListener("click", closeFloating);
