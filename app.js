@@ -586,16 +586,52 @@ function clearRemoteSurface() {
 function ensureRemoteSurface() {
   let v = $("remoteSurface"); if (v) return v;
   v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0;
-  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none" draggable="false">`;
+  v.style.position = "relative";
+  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none" draggable="false"><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
   $("frameWrap").insertBefore(v, $("frameLoader"));
   const img = v.querySelector("img");
-  const pos = e => { const r = img.getBoundingClientRect(); return { x: Math.max(0, Math.min(1365, (e.clientX - r.left) * 1365 / r.width)), y: Math.max(0, Math.min(820, (e.clientY - r.top) * 820 / r.height)) }; };
-  const send = async (payload) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); refreshRemote(t, true); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
+  // Server viewport — kept in sync with browser-engine.js contextOptions.viewport.
+  const VW = 1365, VH = 820;
+  // Map a pointer event to server viewport coordinates.
+  // object-fit:contain letterboxes the image when the container aspect ratio
+  // differs from VW:VH. getBoundingClientRect() returns the full element box,
+  // not the rendered bitmap area — so clicks in the letterbox bars produced
+  // wildly wrong coordinates (the #1 cause of "clicks not detected").
+  const pos = e => {
+    const r = img.getBoundingClientRect();
+    const containerAspect = r.width / r.height;
+    const imageAspect = VW / VH;
+    let imgW, imgH, offsetX, offsetY;
+    if (containerAspect > imageAspect) {
+      // Wider container: pillarbox (bars on left/right)
+      imgH = r.height;
+      imgW = r.height * imageAspect;
+      offsetX = (r.width - imgW) / 2;
+      offsetY = 0;
+    } else {
+      // Taller container: letterbox (bars on top/bottom)
+      imgW = r.width;
+      imgH = r.width / imageAspect;
+      offsetX = 0;
+      offsetY = (r.height - imgH) / 2;
+    }
+    const px = e.clientX - r.left - offsetX;
+    const py = e.clientY - r.top - offsetY;
+    return {
+      x: Math.max(0, Math.min(VW, px * VW / imgW)),
+      y: Math.max(0, Math.min(VH, py * VH / imgH)),
+    };
+  };
+  // Send input to the remote Chromium session. delay=true keeps the faster
+  // refresh cadence for user-initiated actions; the server also needs a beat
+  // to process the click and re-render before we grab a new screenshot.
+  const send = async (payload, { delay = 250 } = {}) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); setTimeout(() => refreshRemote(t, true), delay); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
   img.addEventListener("click", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; send({ type: "click", ...pos(e), button: "left" }); });
   img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e) }));
   img.addEventListener("contextmenu", e => { e.preventDefault(); send({ type: "click", ...pos(e), button: "right" }); });
   img.addEventListener("wheel", e => { e.preventDefault(); send({ type: "wheel", ...pos(e), deltaY: e.deltaY, deltaX: e.deltaX }); }, { passive: false });
-  img.addEventListener("mousemove", e => hooks.dt?.hoverRemote(pos(e)));
+  img.addEventListener("mousemove", e => { hooks.dt?.hoverRemote(pos(e)); const c = $("remoteCursor"); if (c) { const p = pos(e); const r = img.getBoundingClientRect(); const containerAspect = r.width / r.height; const imageAspect = VW / VH; let imgW, imgH, offsetX, offsetY; if (containerAspect > imageAspect) { imgH = r.height; imgW = r.height * imageAspect; offsetX = (r.width - imgW) / 2; offsetY = 0; } else { imgW = r.width; imgH = r.width / imageAspect; offsetX = 0; offsetY = (r.height - imgH) / 2; } c.style.left = (offsetX + p.x * imgW / VW) + "px"; c.style.top = (offsetY + p.y * imgH / VH) + "px"; c.style.opacity = "0.7"; } });
+  img.addEventListener("mouseleave", () => { const c = $("remoteCursor"); if (c) c.style.opacity = "0"; });
   v.addEventListener("keydown", e => { if (e.ctrlKey || e.metaKey || e.altKey || e.key === "F12") return; e.preventDefault(); send({ type: "key", key: e.key }); });
   return v;
 }
@@ -1061,7 +1097,7 @@ async function refreshRemote(t, loop = false) {
       return;
     }
   }
-  if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 3000 : 900);
+  if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 5000 : 1500);
 }
 function releaseInactiveBrowserSlot(exclude) {
   const candidates = state.tabs.filter(t => t !== exclude && t.view === "page" && t.browserSessionId && t.browserMode === "BROWSER_ENGINE");
