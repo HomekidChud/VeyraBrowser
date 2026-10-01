@@ -131,27 +131,16 @@ function extensionsSection() {
     ${toggle("extensionDeveloperMode", "Developer mode", "Lets you load local Veyra CSS packages for development.")}`);
 }
 function vpnSection() {
-  const customVpns = load("veyra-custom-vpns", []);
   return section("vpn", "Veyra VPN", "", `
     ${row("Status", B.state.vpn?.connected ? `Connected to ${B.state.vpn.profile?.name || "an exit"}` : "Not connected", `<button class="btn" data-act="openVpn">Open VPN</button>`)}
     ${row("Connect automatically", settings.vpnAutoProfile ? `New sessions use ${settings.vpnAutoProfile}.` : "Off. Choose an exit in the VPN page.", settings.vpnAutoProfile ? `<button class="btn" data-act="vpnAutoOff">Turn off</button>` : "")}
     <div class="s-row" style="display:block">
-      <div class="s-label"><b>Custom VPN Methods</b><span>Add your own VPN provider via API key, config, or manual server settings.</span></div>
-      <div class="custom-vpn-list" id="customVpnList">
-        ${customVpns.length ? customVpns.map((v, i) => `
-          <div class="custom-vpn-card">
-            <div class="vpn-info"><b>${esc(v.name || v.type || "VPN")}</b><span>${esc(v.server || v.apiKey ? v.apiKey.slice(0,8)+"…" : "Configured")} · ${esc(v.type || "proxy")}</span></div>
-            <div class="vpn-actions">
-              <button class="btn ghost sm" data-vpn-connect="${i}">Use</button>
-              <button class="btn ghost sm" data-vpn-edit="${i}">Edit</button>
-              <button class="btn danger sm" data-vpn-delete="${i}">Delete</button>
-            </div>
-          </div>
-        `).join("") : `<p class="muted small">No custom VPNs configured yet.</p>`}
-      </div>
+      <div class="s-label"><b>Your VPN profiles</b><span>Add your own VPN provider, run a VeyraVPN Node at home, or import a WireGuard config. Profiles are saved to your account and sync across sessions.</span></div>
+      <div class="custom-vpn-list" id="customVpnList"><span class="muted small">Loading…</span></div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" data-act="addCustomVpn">Add VPN provider</button>
         <button class="btn ghost" data-act="importVpnConfig">Import WireGuard config</button>
+        <button class="btn ghost" data-act="runVeyraNode">Run VeyraVPN Node</button>
       </div>
     </div>`);
 }
@@ -236,6 +225,7 @@ function render(active) {
   lastRendered = `${cur}|${q}`;
   if (q || !cur || cur === "about") loadAbout();
   if (q || cur === "neural") loadNeuralStats();
+  if (q || cur === "vpn") renderVpnList();
   if (isAdmin() && (q || cur === "admin")) loadAdmin();
 }
 
@@ -329,21 +319,18 @@ async function act(a, el) {
     case "addCustomVpn": {
       const r = await promptDialog({ title: "Add VPN provider", ok: "Add", fields: [
         { name: "name", label: "Name", value: "", placeholder: "My VPN", required: true },
-        { name: "type", label: "Type", type: "select", value: "socks5", options: ["socks5", "http", "https", "wireguard", "api"] },
-        { name: "server", label: "Server / Proxy URL", value: "", placeholder: "socks5://host:port or https://api.vpn.com" },
-        { name: "apiKey", label: "API Key (if using API type)", value: "", placeholder: "Optional API key" },
+        { name: "type", label: "Type", type: "select", value: "socks5", options: ["socks5", "http", "https", "wireguard"] },
+        { name: "server", label: "Server address", value: "", placeholder: "host:port (e.g. 1.2.3.4:1080)" },
         { name: "username", label: "Username", value: "", placeholder: "Optional" },
         { name: "password", label: "Password", value: "", placeholder: "Optional", type: "password" },
         { name: "region", label: "Region", value: "", placeholder: "e.g. UK, US, DE" }
       ] });
       if (!r || !r.name) return;
-      const vpns = load("veyra-custom-vpns", []);
-      vpns.push({ id: Date.now().toString(36), ...r });
-      save("veyra-custom-vpns", vpns);
-      // Also push to server if connected
-      try { await api("/api/vpn/custom", { method: "POST", json: { name: r.name, type: r.type, server: r.server, apiKey: r.apiKey, username: r.username, password: r.password, region: r.region } }); } catch {}
-      toast("VPN provider added");
-      render(curSection());
+      try {
+        await api("/api/vpn/custom", { method: "POST", json: r });
+        toast("VPN profile saved" + (r.type === "wireguard" ? " to server" : ""));
+      } catch (e) { toast(`Failed: ${e.message}`, { kind: "err" }); }
+      renderVpnList();
       return;
     }
     case "importVpnConfig": {
@@ -352,12 +339,15 @@ async function act(a, el) {
         { name: "config", label: "WireGuard config", type: "textarea", value: "", placeholder: "[Interface]\nPrivateKey = ...\n[Peer]\nPublicKey = ...\nEndpoint = host:port" }
       ] });
       if (!r || !r.config) return;
-      const vpns = load("veyra-custom-vpns", []);
-      vpns.push({ id: Date.now().toString(36), name: r.name, type: "wireguard", config: r.config });
-      save("veyra-custom-vpns", vpns);
-      try { await api("/api/vpn/custom", { method: "POST", json: { name: r.name, type: "wireguard", config: r.config } }); } catch {}
-      toast("WireGuard config imported");
-      render(curSection());
+      try {
+        await api("/api/vpn/custom", { method: "POST", json: { name: r.name, type: "wireguard", config: r.config } });
+        toast("WireGuard config imported and saved to server");
+      } catch (e) { toast(`Failed: ${e.message}`, { kind: "err" }); }
+      renderVpnList();
+      return;
+    }
+    case "runVeyraNode": {
+      showVeyraNodeGuide();
       return;
     }
     case "refreshNeuralStats": return loadNeuralStats();
@@ -390,6 +380,84 @@ function startRebind(btn) {
   });
 }
 
+// ---- VPN profile management (server-backed via MongoDB) ----
+async function renderVpnList() {
+  const el = $("customVpnList");
+  if (!el) return;
+  el.innerHTML = `<span class="muted small">Loading…</span>`;
+  let profiles = [];
+  try {
+    const r = await api("/api/vpn/list", { timeoutMs: 8000 });
+    profiles = r?.profiles || [];
+  } catch (e) { el.innerHTML = `<span class="muted small">Failed to load: ${esc(e.message)}</span>`; return; }
+  if (!profiles.length) {
+    el.innerHTML = `<p class="muted small">No VPN profiles yet. Add a provider, import a WireGuard config, or run a VeyraVPN Node at home.</p>`;
+    return;
+  }
+  el.innerHTML = profiles.map(p => `
+    <div class="custom-vpn-card">
+      <div class="vpn-info">
+        <b>${esc(p.name || p.id)}</b>
+        <span>${esc(p.server || "WireGuard config")} · ${esc(p.type || "proxy")} · ${esc(p.source === "env" ? "env var" : p.source === "db" ? "saved" : "")}</span>
+      </div>
+      <div class="vpn-actions">
+        <button class="btn ghost sm" data-vpn-connect="${esc(p.id)}">Use</button>
+        <button class="btn ghost sm" data-vpn-test="${esc(p.id)}">Test</button>
+        ${p.source === "db" ? `<button class="btn danger sm" data-vpn-delete="${esc(p.id)}">Delete</button>` : ""}
+      </div>
+    </div>
+  `).join("");
+}
+
+function showVeyraNodeGuide() {
+  const modal = document.createElement("dialog");
+  modal.className = "vpn-node-guide";
+  modal.innerHTML = `
+    <form method="dialog" style="max-width:640px;padding:0">
+      <div style="padding:28px 32px">
+        <h2 style="margin:0 0 4px;font-size:20px">Run a VeyraVPN Node at home</h2>
+        <p class="muted" style="margin:0 0 20px;font-size:14px">Route Veyra traffic through your own home/VPS IP instead of a datacenter. No VPN provider needed.</p>
+
+        <div style="background:#1a1d24;border:1px solid #2a2e36;border-radius:12px;padding:20px;margin-bottom:16px">
+          <h3 style="font-size:15px;margin:0 0 12px">Quick start</h3>
+          <ol style="margin:0;padding-left:20px;line-height:1.8;font-size:13px;color:#aab5c4">
+            <li>Install Node.js 18+ on any machine (home server, VPS, Raspberry Pi)</li>
+            <li>Download <code style="background:#0d0f13;padding:2px 6px;border-radius:4px">veyra-node.js</code> from the <a href="https://github.com/HomekidChud/VeyraServer" target="_blank" rel="noopener" style="color:var(--accent)">VeyraServer repo</a></li>
+            <li>Run: <code style="background:#0d0f13;padding:2px 6px;border-radius:4px">node veyra-node.js</code></li>
+            <li>It prints your server address, username, and password</li>
+            <li>Copy those into "Add VPN provider" here</li>
+          </ol>
+        </div>
+
+        <div style="background:#1a1d24;border:1px solid #2a2e36;border-radius:12px;padding:20px;margin-bottom:16px">
+          <h3 style="font-size:15px;margin:0 0 8px">What it does</h3>
+          <p style="margin:0;font-size:13px;color:#aab5c4;line-height:1.5">Runs a lightweight SOCKS5 proxy on your machine. Veyra routes proxy, crawler, and Chromium traffic through it. Your exit IP is your home/VPS IP, not Render's datacenter IP — which helps with sites that block cloud IPs.</p>
+        </div>
+
+        <div style="background:#1a1d24;border:1px solid #2a2e36;border-radius:12px;padding:20px;margin-bottom:16px">
+          <h3 style="font-size:15px;margin:0 0 8px">Options</h3>
+          <pre style="margin:0;font-size:12px;color:#aab5c4;white-space:pre-wrap">node veyra-node.js --port=1080 --user=veyra --name="Home Node" --region=UK
+node veyra-node.js --print-json   # Print Veyra import JSON and exit</pre>
+        </div>
+
+        <div style="background:#1a1d24;border:1px solid #2a2e36;border-radius:12px;padding:20px;margin-bottom:20px">
+          <h3 style="font-size:15px;margin:0 0 8px">Find your public IP</h3>
+          <pre style="margin:0;font-size:12px;color:#aab5c4">curl ifconfig.me</pre>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn ghost" id="vpnNodeClose">Close</button>
+          <a class="btn" href="https://github.com/HomekidChud/VeyraServer/raw/main/veyra-node.js" target="_blank" rel="noopener" download>Download veyra-node.js</a>
+        </div>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector("#vpnNodeClose").onclick = () => modal.close();
+  modal.addEventListener("close", () => modal.remove());
+  modal.showModal();
+}
+
 export function initSettings(b) {
   B = b;
   hooks.renderSettings = section => render(section || "");
@@ -410,18 +478,10 @@ export function initSettings(b) {
     const sw = e.target.closest("[data-accent]"); if (sw) { settings.accent = sw.dataset.accent; saveSettings(); qsa(".swatch").forEach(s => s.classList.toggle("on", s === sw)); const ci = document.querySelector('#settingsBody input[type=color]'); if (ci) ci.value = sw.dataset.accent; return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
     const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
-    // Custom VPN card actions
-    const vc = e.target.closest("[data-vpn-connect]"); if (vc) { const vpns = load("veyra-custom-vpns", []); const v = vpns[Number(vc.dataset.vpnConnect)]; if (v) { try { await B.connectVpn(v.id || v.name); } catch(err) { toast(err.message, { kind: "err" }); } } return; }
-    const ve = e.target.closest("[data-vpn-edit]"); if (ve) { const vpns = load("veyra-custom-vpns", []); const v = vpns[Number(ve.dataset.vpnEdit)]; if (v) {
-      const r = await promptDialog({ title: "Edit VPN", ok: "Save", fields: [
-        { name: "name", label: "Name", value: v.name || "" },
-        { name: "server", label: "Server", value: v.server || "" },
-        { name: "username", label: "Username", value: v.username || "" },
-        { name: "password", label: "Password", type: "password", value: v.password || "" }
-      ] });
-      if (r) { Object.assign(v, r); save("veyra-custom-vpns", vpns); toast("VPN updated"); render(curSection()); }
-    } return; }
-    const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const vpns = load("veyra-custom-vpns", []); vpns.splice(Number(vd.dataset.vpnDelete), 1); save("veyra-custom-vpns", vpns); toast("VPN removed"); render(curSection()); return; }
+    // Custom VPN card actions — now server-backed via MongoDB
+    const vc = e.target.closest("[data-vpn-connect]"); if (vc) { const pid = vc.dataset.vpnConnect; try { await B.connectVpn(pid); toast("VPN connected"); } catch(err) { toast(err.message, { kind: "err" }); } renderVpnList(); return; }
+    const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const pid = vd.dataset.vpnDelete; try { await api(`/api/vpn/custom/${encodeURIComponent(pid)}`, { method: "DELETE" }); toast("VPN profile removed"); } catch(e) { toast(`Failed: ${e.message}`, { kind: "err" }); } renderVpnList(); return; }
+    const vt = e.target.closest("[data-vpn-test]"); if (vt) { const pid = vt.dataset.vpnTest; try { const r = await api("/api/vpn/test", { method: "POST", json: { profileId: pid } }); toast(r.healthy ? `Healthy (${r.latencyMs}ms, IP: ${r.exitIp || "?"})` : `Failed: ${r.lastError || "unreachable"}`, { kind: r.healthy ? "ok" : "err" }); } catch(e) { toast(`Test failed: ${e.message}`, { kind: "err" }); } return; }
   });
   $("settingsSearch").addEventListener("input", debounce(() => render(B.activeTab()?.section || ""), 120));
   $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.target.value = ""; render(B.activeTab()?.section || ""); } });
