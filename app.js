@@ -1501,7 +1501,8 @@ export async function refreshVpnStatus() {
     const st = await api("/api/vpn/status", { timeoutMs: 8000 }); state.vpn.status = st;
     if (state.session) { const si = await api(`/api/vpn/session?sid=${encodeURIComponent(state.session.id)}`, { timeoutMs: 8000 }); state.vpn.connected = !!si.connected; state.vpn.profile = si.profile || null; state.vpn.info = si; }
     else { state.vpn.connected = false; state.vpn.profile = null; }
-  } catch (e) { state.vpn.error = e.message; }
+    state.vpn.error = null;
+  } catch (e) { state.vpn.error = e.message; state.vpn.status = null; state.vpn.connected = false; state.vpn.profile = null; }
   $("vpnBtn").classList.toggle("on", state.vpn.connected); updateIdentity();
   return state.vpn;
 }
