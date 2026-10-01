@@ -264,7 +264,7 @@ function stopStreaming() {
 }
 
 function setQuality(q, fps) {
-  if (!castWs?.readyState === WebSocket.OPEN) return;
+  if (castWs?.readyState !== WebSocket.OPEN) return;
   castWs.send(JSON.stringify({ type: "set_quality", quality: q, fps }));
   if (castSession) { castSession.quality = q; castSession.fps = fps; }
   toast(`Quality set to ${q} (${fps} FPS)`, { ms: 2000 });
@@ -277,7 +277,7 @@ function setInputEnabled(enabled) {
 
 // ---------------------------------------------------------------- touch/input relay
 function sendTouchInput(x, y, type = "tap") {
-  if (!castWs?.readyState === WebSocket.OPEN) return;
+  if (castWs?.readyState !== WebSocket.OPEN) return;
   if (!castSession?.inputEnabled) return;
   castWs.send(JSON.stringify({ type: "input", input: { x, y, type, timestamp: Date.now() } }));
 }
@@ -721,7 +721,7 @@ function wireCastStreaming() {
   if (stop) stop.onclick = stopStreaming;
   const disconnect = $("castDisconnectBtn");
   if (disconnect) disconnect.onclick = () => { if (castWs) castWs.close(); castSession = null; renderCastView(); };
-  view.querySelectorAll("[data-q]").forEach(b => b.onclick = () => setQuality(b.dataset.q, parseInt(b.dataset.fps)));
+  document.querySelectorAll("[data-q]").forEach(b => b.onclick = () => setQuality(b.dataset.q, parseInt(b.dataset.fps)));
   const inputToggle = $("castInputToggle");
   if (inputToggle) inputToggle.onchange = e => setInputEnabled(e.target.checked);
   // Touch input relay

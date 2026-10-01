@@ -1023,6 +1023,42 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
   .side-panel{width:100%;max-width:100%}
   /* Fix frame wrap on mobile - prevent overflow */
   .frame-wrap{overflow:auto;-webkit-overflow-scrolling:touch}
+  /* Fix remote Chromium image on mobile - proper aspect ratio */
+  .browser-surface{width:100%;height:100%;object-fit:contain}
+  #remoteImg{width:100%;height:100%;object-fit:contain}
+  /* Fix VPN hero on mobile */
+  .vpn-hero{flex-wrap:wrap;gap:12px;padding:16px}
+  .vpn-hero .spacer{display:none}
+  .vpn-orb{width:48px;height:48px}
+  .vpn-orb svg{width:24px;height:24px}
+  /* Fix VPN list rows on mobile */
+  .vpn-row{flex-wrap:wrap;gap:8px;padding:10px}
+  .vpn-row .n{width:100%;order:-1}
+  /* Fix settings rows on mobile */
+  .s-row{flex-wrap:wrap;gap:8px;min-height:auto;padding:12px}
+  .s-row .s-ctl{width:100%;justify-content:flex-start}
+  .s-row .s-label{width:100%}
+  /* Fix devtools panels on mobile */
+  .dt-bar{overflow-x:auto;scrollbar-width:none}
+  .dt-sub{overflow-x:auto;scrollbar-width:none}
+  /* Fix extension store on mobile */
+  .ext-store-layout{grid-template-columns:1fr}
+  /* Fix landing page on mobile */
+  .land-nav{flex-wrap:wrap;gap:12px;padding:10px 16px}
+  .land-actions{margin-left:0;width:100%}
+  /* Fix feature grid on mobile */
+  .feature-grid{grid-template-columns:1fr}
+  /* Fix new tab page on mobile */
+  .ntp-brand{font-size:1.8rem}
+  .ntp-search{width:100%}
+  /* Fix address bar on mobile */
+  .omnibox input{font-size:.9em}
+  .site-chip{padding:0 6px}
+  /* Prevent horizontal scroll everywhere */
+  .viewport{overflow-x:hidden}
+  /* Fix cast stat cards on mobile */
+  .cast-stat-card{padding:10px}
+  .cast-stat-card b{font-size:1.1rem}
 }
 
 /* Extra safety for very small screens */

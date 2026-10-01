@@ -580,14 +580,16 @@ function clearRemoteSurface() {
   const v = $("remoteSurface");
   if (!v) return;
   const img = $("remoteImg");
-  if (img) img.removeAttribute("src");
+  if (img) { img.removeAttribute("src"); img.style.visibility = "hidden"; }
+  const ld = $("remoteLoading"); if (ld) ld.style.display = "none";
+  const er = $("remoteError"); if (er) er.style.display = "none";
   v.classList.remove("frame-active");
 }
 function ensureRemoteSurface() {
   let v = $("remoteSurface"); if (v) return v;
   v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0;
   v.style.position = "relative";
-  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none" draggable="false"><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
+  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none;visibility:hidden" draggable="false"><div id="remoteLoading" style="position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:var(--bg);color:var(--text-2);z-index:3"><div class="spinner"></div><span class="muted">Starting Chromium…</span></div><div id="remoteError" style="position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--text-2);z-index:3;text-align:center;padding:24px"><svg width="40" height="40" style="color:var(--line-2)"><use href="#i-info"/></svg><b>Remote Chromium unavailable</b><span class="muted small" id="remoteErrorText">The browser session could not be loaded.</span><button class="btn ghost sm" id="remoteRetryBtn">Retry</button></div><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
   $("frameWrap").insertBefore(v, $("frameLoader"));
   const img = v.querySelector("img");
   // Server viewport — kept in sync with browser-engine.js contextOptions.viewport.
@@ -626,6 +628,9 @@ function ensureRemoteSurface() {
   // refresh cadence for user-initiated actions; the server also needs a beat
   // to process the click and re-render before we grab a new screenshot.
   const send = async (payload, { delay = 250 } = {}) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); setTimeout(() => refreshRemote(t, true), delay); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
+  img.addEventListener("load", () => { img.style.visibility = "visible"; const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "none"; if (er) er.style.display = "none"; });
+  img.addEventListener("error", () => { img.style.visibility = "hidden"; const ld = $("remoteLoading"); if (ld) ld.style.display = "grid"; });
+  v.addEventListener("click", e => { if (e.target.id === "remoteRetryBtn" || e.target.closest("#remoteRetryBtn")) { const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "grid"; if (er) er.style.display = "none"; const t = activeTab(); if (t?.browserSessionId) refreshRemote(t, true); } });
   img.addEventListener("click", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; send({ type: "click", ...pos(e), button: "left" }); });
   img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e) }));
   img.addEventListener("contextmenu", e => { e.preventDefault(); send({ type: "click", ...pos(e), button: "right" }); });
@@ -1073,8 +1078,15 @@ async function refreshRemote(t, loop = false) {
     if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
     if (activeTab() === t && t.view === "page") {
       const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
+      const ld = $("remoteLoading"); if (ld && !img?.complete) ld.style.display = "grid";
       setLoading(false); updateAddress(); updateIdentity();
       if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site security check detected. Chromium is showing the site's own check; click inside it to complete it.";
+      else if (s.status === "BROWSER_ERROR" || s.status === "CRASHED") {
+        const er = $("remoteError"), erT = $("remoteErrorText");
+        if (er) er.style.display = "grid";
+        if (erT) erT.textContent = s.lastError || "The browser session encountered an error.";
+        const ld2 = $("remoteLoading"); if (ld2) ld2.style.display = "none";
+      }
     }
     renderTabsSoon();
   } catch (e) {
