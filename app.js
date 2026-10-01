@@ -1240,6 +1240,7 @@ async function runSearch(query, offset = 0) {
   const source = t.searchSource || "web";
   renderSearchTabs(t);
   $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
+  $("aiAnswer").classList.add("hidden");
   if (!offset) $("searchResults").innerHTML = Array.from({ length: 4 }, () => `<div class="result"><div class="skel" style="height:16px;width:55%;border-radius:4px;background:var(--surface-3)"></div><div style="height:10px"></div><div style="height:12px;width:85%;border-radius:4px;background:var(--surface-2)"></div></div>`).join("");
   try {
     const b = source === "web"
@@ -1249,7 +1250,27 @@ async function runSearch(query, offset = 0) {
     b.source = source;
     if (offset && t.searchData) t.searchData.results.push(...(b.results || [])); else t.searchData = b;
     renderSearch();
+    // Fetch AI answer in parallel (non-blocking)
+    if (!offset && source === "web" && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results);
   } catch (e) { $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
+}
+async function fetchAIAnswer(t, query, results) {
+  const ai = $("aiAnswer");
+  if (!ai) return;
+  ai.classList.remove("hidden");
+  ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Analyzing results…</span></div><div class="ai-answer-body"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div></div></div>`;
+  try {
+    const r = await api("/api/search/answer", { json: { query, results: results.slice(0, 5).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 15000 });
+    if (activeTab() !== t || t.searchQuery !== query) return;
+    if (r.hasAnswer) {
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
+      ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
+    } else {
+      ai.classList.add("hidden");
+    }
+  } catch {
+    ai.classList.add("hidden");
+  }
 }
 function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => w.length > 1 && !/:/.test(w)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "gi"), "<mark>$1</mark>") : s; }
 function renderSearchTabs(t) {
@@ -1261,7 +1282,7 @@ function renderSearch() {
   renderSearchTabs(t);
   const d = t.searchData;
   const web = (t.searchSource || "web") === "web";
-  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Veyra searches multiple providers in parallel — Brave, Bing, DuckDuckGo and Wikipedia — and merges the best results." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
+  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("aiAnswer").classList.add("hidden"); $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Veyra searches multiple providers in parallel — Brave, Bing, DuckDuckGo and Wikipedia — and merges the best results." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
   if (!d) return;
   $("searchStat").textContent = web ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
   $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
