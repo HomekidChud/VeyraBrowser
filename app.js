@@ -554,38 +554,71 @@ function onFrameLoad(t) {
   // HTML title but leave the body empty under Fast proxy. Escalate once.
   setTimeout(() => detectBlankProxyPage(t), 2200);
 }
+// Snapshot of the proxied document used to decide whether the page is a dead
+// shell or a hydrating SPA. Returns null when there is no frame to inspect.
+function proxyDocStats(t) {
+  const f = frameFor(t);
+  if (!f) return null;
+  try {
+    const doc = f.contentDocument;
+    if (!doc) return null;
+    const body = doc.body;
+    const text = (body?.innerText || "").replace(/\s+/g, " ").trim();
+    const kids = body ? body.children.length : 0;
+    const nodes = doc.getElementsByTagName("*").length;
+    // Explicit empty React/Next roots.
+    const root = doc.querySelector("#root, #app, #__next, [data-reactroot]");
+    const emptyRoot = !!(root && !(root.textContent || "").trim() && root.children.length === 0);
+    return { sameOrigin: true, text, kids, nodes, emptyRoot };
+  } catch {
+    // Cross-origin: use the host allowlist + loading state as a soft signal.
+    return { sameOrigin: false, allowlisted: hostNeedsRealBrowser(t.url) };
+  }
+}
+function proxyDocLooksBlank(t) {
+  const s = proxyDocStats(t);
+  if (!s) return { blank: false, nodes: -1 };
+  if (!s.sameOrigin) return { blank: !!(s.allowlisted && !t.renderWinner), nodes: -1 };
+  // Typical broken SPA shell: almost no visible text and few DOM nodes.
+  const blank = (s.text.length < 40 && s.kids < 4) || s.emptyRoot;
+  return { blank, nodes: s.nodes };
+}
+function escalateBlankProxyPage(t, key) {
+  t.compatFallbackTried.add(key);
+  addLog("info", `Blank proxy shell detected on ${hostOf(t.url)}; switching to Chromium.`);
+  toast("This page stayed blank under the fast proxy. Switching to Chromium\u2026", { ms: 3500 });
+  void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
+}
 function detectBlankProxyPage(t) {
   if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
   if (t.browserMode === "BROWSER_ENGINE") return;
   t.compatFallbackTried ||= new Set();
   const key = `${t.url}|blank-shell`;
   if (t.compatFallbackTried.has(key)) return;
-  const f = frameFor(t);
-  if (!f) return;
-  let blank = false;
-  try {
-    // Same-origin only when the iframe is still on the proxy origin; otherwise
-    // cross-origin access fails and we fall through to visual heuristics.
-    const doc = f.contentDocument;
-    if (doc) {
-      const body = doc.body;
-      const text = (body?.innerText || "").replace(/\s+/g, " ").trim();
-      const kids = body ? body.children.length : 0;
-      // Typical broken SPA shell: almost no visible text and few DOM nodes.
-      if (text.length < 40 && kids < 4) blank = true;
-      // Explicit empty React/Next roots.
-      const root = doc.querySelector("#root, #app, #__next, [data-reactroot]");
-      if (root && !(root.textContent || "").trim() && root.children.length === 0) blank = true;
-    }
-  } catch {
-    // Cross-origin: use host allowlist + loading state as a soft signal.
-    if (hostNeedsRealBrowser(t.url) && !t.renderWinner) blank = true;
+  // "Fast proxy" is an explicit engine choice: respect it and keep the proxy
+  // page instead of silently restarting the tab on Chromium. (The Chromium
+  // fallback toggle documents Automatic and Proxy + accelerator modes only.)
+  if (String(settings.runtime || "auto") === "proxy") return;
+  const first = proxyDocLooksBlank(t);
+  if (!first.blank) return;
+  // Heavy SPAs hydrate late: the shell can still look empty while a multi-
+  // megabyte bundle is downloading and booting (YouTube etc.). Re-check once
+  // after a grace period and treat a growing DOM as "hydrating, not broken".
+  if (first.nodes >= 0) {
+    setTimeout(() => {
+      if (!state.tabs.includes(t) || t.view !== "page" || t.browserMode === "BROWSER_ENGINE") return;
+      if (t.compatFallbackTried?.has(key)) return;
+      const second = proxyDocLooksBlank(t);
+      if (!second.blank) return;
+      if (second.nodes > first.nodes) {
+        addLog("debug", `Proxy shell on ${hostOf(t.url)} is still hydrating (${first.nodes} \u2192 ${second.nodes} nodes); keeping the fast proxy.`);
+        return;
+      }
+      escalateBlankProxyPage(t, key);
+    }, 9000);
+    return;
   }
-  if (!blank) return;
-  t.compatFallbackTried.add(key);
-  addLog("info", `Blank proxy shell detected on ${hostOf(t.url)}; switching to Chromium.`);
-  toast("This page stayed blank under the fast proxy. Switching to Chromium…", { ms: 3500 });
-  void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
+  escalateBlankProxyPage(t, key);
 }
 function clearRemoteSurface() {
   const v = $("remoteSurface");
