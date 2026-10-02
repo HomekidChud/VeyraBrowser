@@ -910,6 +910,28 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
+  // Shared helper: switch a tab to the fast proxy iframe with a failover badge.
+  // Used when Chromium fails, capacity is hit, or the circuit breaker is open.
+  const switchToFastProxy = (tab, targetUrl, sess, reason) => {
+    if (!state.tabs.includes(tab) || tab.url !== targetUrl) return;
+    tab.browserMode = "FAST_PROXY";
+    tab.failoverReason = reason || "breaker_open";
+    tab.browserSessionId = "";
+    tab.browserStatus = "";
+    if (!tab.renderWinner) tab.renderWinner = "proxy";
+    if (loadFrame) {
+      const f = getOrCreateFrame(tab);
+      f.removeAttribute("srcdoc");
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      f.src = proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl);
+      if (activeTab() === tab) showFrameForTab(tab);
+    }
+    tab.loading = false; clearTimeout(tab.loadGuard);
+    if (activeTab() === tab) setLoading(false);
+    renderTabsSoon();
+  };
+
   const useProxy = async () => {
     if (!loadFrame) return;
     t.browserMode = "FAST_PROXY";
@@ -927,8 +949,20 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     if (activeTab() === t) showFrameForTab(t);
   };
 
-  const raceChromium = () => startBrowserSession(t, url, { background: true }).then(() => {
+  // raceChromium starts a Chromium session in the background. If the server
+  // returns a failover response (breaker open / capacity / crash), startBrowserSession
+  // resolves with { ok: false, fallback: true } instead of throwing — so we must
+  // check the return value before declaring the browser lane the winner.
+  const raceChromium = () => startBrowserSession(t, url, { background: true }).then(result => {
       if (!state.tabs.includes(t) || t.url !== url) return;
+      if (result?.ok === false) {
+        // Failover occurred — don't mark browser as winner.
+        // If no proxy iframe is visible yet, switch to fast proxy with a badge.
+        if (!t.renderWinner || t.renderWinner === "proxy") {
+          switchToFastProxy(t, url, session, result.reason);
+        }
+        return;
+      }
       if (!t.renderWinner) {
         t.renderWinner = "browser";
         clearTimeout(t.combinedGraceTimer); t.combinedGraceTimer = null;
@@ -949,12 +983,33 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     // while leaving the user staring at an unusable proxy shell.
     if (strategy.forceBrowserHost) {
       t.loadStrategy = "browser"; t.renderWinner = "";
+      // Set up the fast proxy iframe first so the user sees something immediately
+      // if Chromium fails or takes too long. The proxy shell will be replaced by
+      // the Chromium stream when (and if) it arrives.
+      if (loadFrame) {
+        t.browserMode = "FAST_PROXY";
+        const f = getOrCreateFrame(t);
+        f.removeAttribute("srcdoc");
+        f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+        f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+        f.src = proxyUrl(url, "view", session.id, previousUrl);
+        if (activeTab() === t) showFrameForTab(t);
+      }
       void raceChromium();
+      // Soft timeout: if Chromium hasn't produced a session in ~12s on lean mode
+      // (or ~25s otherwise), show the fast proxy with a failover badge so the user
+      // isn't staring at a blank spinner.
+      const softTimeoutMs = state.server.leanMode ? 12000 : 25000;
       t.loadGuard = setTimeout(() => {
         if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
-          t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+          if (!t.browserSessionId) {
+            // Chromium didn't arrive — show the proxy with a failover badge.
+            switchToFastProxy(t, url, session, "chromium_timeout");
+          } else {
+            t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+          }
         }
-      }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
+      }, softTimeoutMs);
       return renderTabs();
     }
     // On Render Free, Chromium + crawler + proxy at once can exceed the 512 MB
@@ -981,22 +1036,33 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       // Paid plan, or known-broken host: race Chromium immediately.
       void raceChromium();
     }
+    // Soft timeout for combined mode: don't let the user stare at a spinner
+    // forever if Chromium is slow to arrive on Render Free.
+    const combinedSoftMs = state.server.leanMode ? 12000 : Math.max(60000, Number(settings.requestTimeoutMs) || 30000);
     t.loadGuard = setTimeout(() => {
       if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
-        // A successful iframe document-navigation will also clear this; this is only a last-resort UI guard.
-        t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+        if (!t.browserSessionId && state.server.leanMode) {
+          switchToFastProxy(t, url, session, "chromium_timeout");
+        } else {
+          t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
+        }
       }
-    }, Math.max(60000, Number(settings.requestTimeoutMs) || 30000));
+    }, combinedSoftMs);
     return renderTabs();
   }
 
   const shouldBrowser = strategy.browser;
   if (shouldBrowser) {
     try {
-      await startBrowserSession(t, url);
-      t.renderWinner = "browser";
-      renderTabs();
-      return;
+      const result = await startBrowserSession(t, url);
+      if (result?.ok === false) {
+        // Failover occurred — fall through to proxy instead of marking browser as winner.
+        addLog("info", `Chromium failover for ${hostOf(url)}: ${result.reason}. Using fast proxy.`);
+      } else {
+        t.renderWinner = "browser";
+        renderTabs();
+        return;
+      }
     } catch (e) {
       if (e.code === "SESSION_EXPIRED") return;
       if (!state.tabs.includes(t) || t.url !== url) return;
@@ -1145,7 +1211,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
       t.browserMode = "BROWSER_ENGINE"; t.youtubeEmbed = false; t.url = url || b.session.canonicalUrl || url;
       if (!background) { t.loading = false; if (activeTab() === t) showFrameForTab(t); }
       else if (!t.renderWinner) t.browserStatus = b.session.status || "ready";
-      return;
+      return { ok: true };
     } catch (e) { if (e.code !== "BROWSER_SESSION_NOT_FOUND") { await stopBrowserSession(t); throw e; } t.browserSessionId = ""; }
   }
   let b;
@@ -1157,7 +1223,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
       t.browserMode = "FAST_PROXY"; t.failoverReason = e.reason || "breaker_open"; t.failoverRetryAfterMs = e.retryAfterMs || 60000;
       addLog("info", `Chromium in cooldown — using fast proxy. ${e.error || ""}`);
       if (activeTab() === t) renderTabs();
-      return;
+      return { ok: false, fallback: true, reason: e.reason || "breaker_open" };
     }
     if (e.code !== "BROWSER_CAPACITY" || !releaseInactiveBrowserSlot(t)) throw e;
     // Give the server a moment to close the victim context, then retry once.
@@ -1169,7 +1235,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
         t.browserMode = "FAST_PROXY"; t.failoverReason = e2.reason || "breaker_open"; t.failoverRetryAfterMs = e2.retryAfterMs || 60000;
         addLog("info", `Chromium in cooldown — using fast proxy. ${e2.error || ""}`);
         if (activeTab() === t) renderTabs();
-        return;
+        return { ok: false, fallback: true, reason: e2.reason || "breaker_open" };
       }
       throw e2;
     }
@@ -1179,6 +1245,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
   else if (!t.renderWinner) { t.browserStatus = b.session.status || "ready"; }
+  return { ok: true };
 }
 async function stopBrowserSession(t) {
   if (!t?.browserSessionId) { if (t) t.browserMode = "FAST_PROXY"; if (activeTab() === t) clearRemoteSurface(); return; }
