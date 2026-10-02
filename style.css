@@ -290,6 +290,9 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 .side-panel textarea{flex:1;margin:12px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--surface-2);padding:12px;resize:none;font:inherit;outline:none}
 .statusbar{display:flex;justify-content:space-between;gap:16px;padding:3px 12px;font-size:.76em;color:var(--muted);background:var(--bg-2);border-top:1px solid var(--line);flex:none;white-space:nowrap;overflow:hidden}
 .statusbar span{overflow:hidden;text-overflow:ellipsis}
+.statusbar #statusCenter{flex:none;overflow:visible}
+.retry-browser-btn{font-size:inherit;padding:1px 10px;border:1px solid var(--accent);border-radius:4px;background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--accent);cursor:pointer;white-space:nowrap}
+.retry-browser-btn:hover{background:color-mix(in oklab,var(--accent) 22%,transparent)}
 
 /* ---------- new tab page */
 .ntp{min-height:100%;display:flex;flex-direction:column;align-items:center;padding:clamp(24px,6vh,72px) 20px 48px;background:radial-gradient(900px 420px at 50% -8%,color-mix(in oklab,var(--accent) 11%,transparent),transparent 70%)}

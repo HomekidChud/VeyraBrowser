@@ -472,13 +472,24 @@ export function updateIdentity() {
     const secure = /^https:/.test(t.url);
     icon = state.vpn.connected ? "i-vpn" : secure ? "i-lock" : "i-info";
     chip.classList.add(state.vpn.connected ? "vpn" : secure ? "secure" : "warn");
-    label = state.vpn.connected ? "VPN" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : "";
+    label = state.vpn.connected ? "VPN" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast (limited)" : "";
   } else if (t.view !== "newtab") { icon = "i-shield"; label = "Veyra"; chip.classList.add("secure"); }
   chip.innerHTML = `<svg><use href="#${icon}"/></svg><span id="siteChipText">${esc(label)}</span>`;
   const bm = t.url && state.bookmarks.some(b => b.url === t.url);
   $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
   $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
-  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.browserMode === "BROWSER_ENGINE" ? "Chromium" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  // Show "Retry full browser" button when in failover mode
+  const sc = $("statusCenter");
+  if (sc) {
+    if (t.failoverReason && t.view === "page" && !t.loading) {
+      sc.innerHTML = `<button class="retry-browser-btn" id="retryBrowserBtn" title="Reset the circuit breaker and retry Chromium">Retry full browser</button>`;
+      const btn = $("retryBrowserBtn");
+      if (btn) btn.onclick = () => { import('./app.js').then(m => m.retryFullBrowser?.()).catch(() => {}); };
+    } else {
+      sc.innerHTML = "";
+    }
+  }
   $("statusRight").textContent = `${state.vpn.connected ? `VPN · ${state.vpn.profile?.name || "connected"} · ` : ""}${auth.user ? auth.user.email : "Guest"} · v${VERSION}`;
   hooks.renderBookmarksBar?.();
 }
@@ -1141,13 +1152,30 @@ async function startBrowserSession(t, url, { background = false } = {}) {
   try {
     b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
   } catch (e) {
+    // Handle failover: if the server says to use the fast proxy, switch gracefully
+    if (e.fallbackMode === "FAST_PROXY" || e.code === "BROWSER_FAILOVER") {
+      t.browserMode = "FAST_PROXY"; t.failoverReason = e.reason || "breaker_open"; t.failoverRetryAfterMs = e.retryAfterMs || 60000;
+      addLog("info", `Chromium in cooldown — using fast proxy. ${e.error || ""}`);
+      if (activeTab() === t) renderTabs();
+      return;
+    }
     if (e.code !== "BROWSER_CAPACITY" || !releaseInactiveBrowserSlot(t)) throw e;
     // Give the server a moment to close the victim context, then retry once.
     await new Promise(r => setTimeout(r, 150));
-    b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+    try {
+      b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
+    } catch (e2) {
+      if (e2.fallbackMode === "FAST_PROXY" || e2.code === "BROWSER_FAILOVER") {
+        t.browserMode = "FAST_PROXY"; t.failoverReason = e2.reason || "breaker_open"; t.failoverRetryAfterMs = e2.retryAfterMs || 60000;
+        addLog("info", `Chromium in cooldown — using fast proxy. ${e2.error || ""}`);
+        if (activeTab() === t) renderTabs();
+        return;
+      }
+      throw e2;
+    }
   }
   t.lastBrowserUse = Date.now();
-  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = false; t.url = url || b.session.canonicalUrl || url;
+  t.browserMode = "BROWSER_ENGINE"; t.browserSessionId = b.session.id; t.youtubeEmbed = false; t.failoverReason = null; t.failoverRetryAfterMs = 0; t.url = url || b.session.canonicalUrl || url;
   if (!background) frameFor(t)?.remove();
   if (!background) { t.loading = false; if (activeTab() === t) { showFrameForTab(t); setLoading(false); } hooks.dt?.onPageLoaded(t); hooks.applyExtensionsToTab?.(t); }
   else if (!t.renderWinner) { t.browserStatus = b.session.status || "ready"; }
@@ -1157,6 +1185,17 @@ async function stopBrowserSession(t) {
   const id = t.browserSessionId; t.browserSessionId = ""; t.browserMode = "FAST_PROXY"; t.browserStatus = ""; clearTimeout(t.browserPoll);
   if (activeTab() === t) clearRemoteSurface();
   try { await api(`/api/browser/session/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch {}
+}
+// Retry full browser: reset the circuit breaker and re-attempt Chromium
+export async function retryFullBrowser() {
+  const t = activeTab(); if (!t || t.view !== "page" || !t.url) return;
+  const sid = state.session?.id || "";
+  try { await api("/api/browser/retry", { json: { proxySessionId: sid }, timeoutMs: 10000 }); }
+  catch {}
+  t.failoverReason = null; t.failoverRetryAfterMs = 0;
+  t.browserMode = "FAST_PROXY";
+  void startBrowserSession(t, t.url, { background: false }).catch(() => {});
+  renderTabs();
 }
 async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); await refreshRemote(t, true); return true; } catch { return false; } }
 
