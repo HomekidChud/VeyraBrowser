@@ -1729,13 +1729,36 @@ async function handleMessage(e) {
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
     if (u && t.view === "page" && !isRemote(t)) {
+      // "Fast proxy" is an explicit engine choice — respect it. Log the
+      // limitation instead of silently switching engines on the user.
+      if (String(settings.runtime || "auto") === "proxy") {
+        addLog("debug", `${hostOf(u)} wanted a browser feature (${d.reason || "site feature"}); staying on the forced fast proxy.`);
+        return;
+      }
       t.compatFallbackTried ||= new Set();
       const key = `${u}|${String(d.reason || "browser-required")}`;
       if (!t.compatFallbackTried.has(key)) {
-        t.compatFallbackTried.add(key);
-        addLog("info", `Browser capability required (${d.reason || "site feature"}); switching ${hostOf(u)} to Chromium.`);
-        toast("This site needs a browser feature. Switching to Chromium…", { ms: 3000 });
-        void loadInTab(t, u, { forceBrowser: true, loadFrame: true, record: null });
+        // 'empty-spa-shell' can be a hydration race: heavy bundles (YouTube
+        // etc.) are still booting when the in-page detector samples the DOM.
+        // Give the page a grace period and treat a growing DOM as hydrating.
+        if (d.reason === "empty-spa-shell") {
+          const first = proxyDocLooksBlank(t);
+          if (first.nodes >= 0) {
+            setTimeout(() => {
+              if (!state.tabs.includes(t) || t.view !== "page" || t.browserMode === "BROWSER_ENGINE") return;
+              if (t.compatFallbackTried?.has(key)) return;
+              const second = proxyDocLooksBlank(t);
+              if (!second.blank) return;
+              if (second.nodes > first.nodes) {
+                addLog("debug", `Proxy shell on ${hostOf(u)} is still hydrating (${first.nodes} → ${second.nodes} nodes); keeping the fast proxy.`);
+                return;
+              }
+              escalateBrowserRequired(t, u, key, d.reason);
+            }, 9000);
+            return;
+          }
+        }
+        escalateBrowserRequired(t, u, key, d.reason);
       }
     }
     return;
@@ -1744,7 +1767,7 @@ async function handleMessage(e) {
     const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
-    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url) {
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && String(settings.runtime || "auto") !== "proxy") {
       t.compatFallbackTried ||= new Set();
       const key = `${t.url}|react-hydration`;
       if (!t.compatFallbackTried.has(key)) {
@@ -1800,6 +1823,12 @@ async function handleMessage(e) {
     if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
     renderTabsSoon();
   }
+}
+function escalateBrowserRequired(t, u, key, reason) {
+  t.compatFallbackTried.add(key);
+  addLog("info", `Browser capability required (${reason || "site feature"}); switching ${hostOf(u)} to Chromium.`);
+  toast("This site needs a browser feature. Switching to Chromium…", { ms: 3000 });
+  void loadInTab(t, u, { forceBrowser: true, loadFrame: true, record: null });
 }
 function canonical(value) {
   let raw = String(value || "").trim();
