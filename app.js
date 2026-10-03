@@ -5,7 +5,7 @@ import {
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
-import { initUI } from "./ui.js";
+import { initUI } from "./ui.js?v=8.28.2";
 import { initDevtools } from "./devtools.js";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
