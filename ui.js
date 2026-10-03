@@ -274,17 +274,24 @@ function renderNtpSession(left = B?.sessionRemaining()) {
   const box = $("ntpSession"); if (!box || B.activeTab()?.view !== "newtab") return;
   const s = B.state.session, limit = s?.limitMs || B.state.serverLimitMs;
   if (!limit) { box.innerHTML = `<p class="muted">Sessions on this server don't expire.</p>`; return; }
+  const quick = $("ntpSessionQuick");
+  if (quick) {
+    quick.innerHTML = s ? `<span class="ntp-quick-live"><span class="pulse-dot"></span>Session active · ${fmtClock(left)}</span>` : `<button class="btn primary sm" id="ntpQuickStart">Start a session · ${fmtClock(limit)}</button>`;
+    quick.querySelector("#ntpQuickStart")?.addEventListener("click", async () => { try { await B.ensureSession(); toast("Session started"); } catch (e) { toast(e.message, { kind: "err" }); } });
+  }
   const frac = s ? left / limit : 1; const off = (125.6 * (1 - frac)).toFixed(1);
   const vpn = B.state.vpn.connected ? `VPN · ${esc(B.state.vpn.profile?.name || "on")}` : "VPN off";
   if (!box.querySelector(".timer-ring") || box.dataset.state !== (s ? "live" : "idle")) {
     box.dataset.state = s ? "live" : "idle";
-    box.innerHTML = `<div style="display:flex;gap:16px;align-items:center"><div class="timer-ring"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span></span></div><div><b class="ntp-s-title"></b><p class="muted ntp-s-sub" style="margin:2px 0 8px"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" id="ntpEnd">End session now</button><button class="btn ghost sm" data-go="/vpn">${vpn}</button></div></div></div>`;
+    box.innerHTML = `<div style="display:flex;gap:16px;align-items:center"><div class="timer-ring"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span></span></div><div><b class="ntp-s-title"></b><p class="muted ntp-s-sub" style="margin:2px 0 8px"></p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" id="ntpStart">Start a session</button><button class="btn ghost sm" id="ntpEnd">End session now</button><button class="btn ghost sm" data-go="/vpn">${vpn}</button></div></div></div>`;
+    $("ntpStart").onclick = async () => { try { await B.ensureSession(); toast("Session started"); } catch (e) { toast(e.message, { kind: "err" }); } };
     $("ntpEnd").onclick = () => B.endSession("manual");
   }
   const ring = box.querySelector(".timer-ring"); ring.style.setProperty("--off", off); ring.querySelector("span").textContent = fmtClock(s ? left : limit);
   ring.querySelector("circle").style.stroke = s && left <= 10000 ? "var(--err)" : s && left <= 30000 ? "var(--warn)" : "";
   box.querySelector(".ntp-s-title").textContent = s ? "Session running" : "No session yet";
   box.querySelector(".ntp-s-sub").textContent = s ? `ID ${s.id.slice(0, 8)} · deleted at 0:00` : `A ${fmtClock(limit)} session starts when you open a site.`;
+  box.querySelector("#ntpStart").classList.toggle("hidden", !!s);
   $("ntpEnd").classList.toggle("hidden", !s);
 }
 hooks.onSessionTick = left => renderNtpSession(left);
