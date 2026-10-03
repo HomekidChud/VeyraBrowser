@@ -665,6 +665,7 @@ function stopDeviceStream() {
 function renderInternetView() {
   const view = $("view-internet");
   if (!view) return;
+  const sessionId = B?.state?.session?.id || "ui";
   const profiles = [
     { id: "auto", name: "Automatic", desc: "Veyra selects the best available connection", icon: "i-bolt" },
     { id: "lan", name: "Local Area Network", desc: "Connect via LAN/Ethernet. Fastest, most stable.", icon: "i-layers" },
@@ -691,18 +692,22 @@ function renderInternetView() {
     </div>
   </div>`;
   view.querySelectorAll("[data-net]").forEach(el => {
-    el.onclick = () => {
-      settings.internetProfile = el.dataset.net;
+    el.onclick = async () => {
+      const next = el.dataset.net;
+      settings.internetProfile = next;
       saveSettings();
-      renderInternetView();
-      showInternetConfig(el.dataset.net);
+      try {
+        await api("/api/internet/profile", { json: { sessionId, profile: next }, timeoutMs: 8000 });
+        renderInternetView();
+      } catch (e) { toast(`Could not save connection profile: ${e.message}`, { kind: "err" }); }
+      showInternetConfig(next);
     };
   });
   $("netTestBtn").onclick = async () => {
     $("netTestResult").textContent = "Testing…";
     try {
-      const r = await api("/api/internet/test", { json: { profile: settings.internetProfile }, timeoutMs: 10000 });
-      $("netTestResult").textContent = `${r.ok ? "Server reachable" : "Server test failed"}${r.latency != null ? ` · ${r.latency}ms` : ""}`;
+      const r = await api("/api/internet/test", { method: "POST", json: { sessionId }, timeoutMs: 10000 });
+      $("netTestResult").textContent = `${r.ok ? "Profile available" : "No profile selected"}${r.latency != null ? ` · ${r.latency}ms` : ""}${r.note ? ` · ${r.note}` : ""}`;
     } catch (e) {
       $("netTestResult").textContent = "Test failed: " + e.message;
     }

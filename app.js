@@ -789,7 +789,13 @@ async function startNewSession() {
   addLog("info", `Session ${body.sessionId.slice(0, 8)} started${limit ? ` (${fmtClock(limit)} limit)` : ""}.`);
   startSessionTimer();
   updateSessionPreferences({ silent: true }).catch(e => addLog("warn", `Could not apply session privacy preferences: ${e.message}`));
-  if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(() => {});
+  if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(e => {
+    // Do not retry a dead automatic exit for every new page while the
+    // kill-switch reports an opaque proxy failure.
+    settings.vpnAutoProfile = "";
+    saveSettings();
+    addLog("warn", `Automatic VPN was disabled: ${e.message}`);
+  });
   hooks.onSessionChanged?.();
   return state.session;
 }
