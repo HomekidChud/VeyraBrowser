@@ -358,6 +358,9 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 .search-hero input{flex:1;border:0;background:transparent;outline:none;font-size:1.05em;min-width:0}
 .search-meta{display:flex;gap:10px;align-items:baseline;margin:18px 4px;flex-wrap:wrap}
 .search-meta span{color:var(--muted);font-size:.9em}
+.search-correction{margin:-8px 4px 16px;padding:10px 12px;border:1px solid color-mix(in oklab,var(--accent) 35%,var(--line));border-radius:12px;background:var(--accent-soft);color:var(--text-2);font-size:.9em}
+.search-correction b{color:var(--text)}
+.search-correction button{border:0;background:none;color:var(--accent);font:inherit;font-weight:700;margin-left:8px;padding:0;cursor:pointer}
 .search-results{display:grid;gap:22px;margin-bottom:22px}
 .result a.r-title{font:700 1.12rem/1.3 var(--font-ui);color:var(--accent);text-decoration:none}
 .result a.r-title:hover{text-decoration:underline}
@@ -853,6 +856,7 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
 .ai-badge svg{color:var(--accent)}
 .ai-thinking{color:var(--muted);font-size:.85em}
 .ai-answer-body{padding:10px 18px 16px;font-size:.98em;line-height:1.6;color:var(--text)}
+.ai-answer-body,.ai-answer-body li{overflow-wrap:anywhere;word-break:normal}
 .ai-answer-body mark{background:var(--accent-soft);border-radius:3px}
 .ai-key-points,.ai-caveats{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
 .ai-key-points ul,.ai-caveats ul{margin:6px 0 0;padding-left:20px;display:grid;gap:5px}
@@ -1013,9 +1017,26 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
   .split-container{grid-template-columns:1fr;grid-template-rows:50% 6px 50%}
   .split-divider{width:100%;height:6px;cursor:row-resize}
   /* Fix search page on mobile */
-  .search-hero{flex-wrap:wrap;height:auto;padding:10px}
-  .search-hero input{width:100%}
-  .search-hero .btn{width:100%}
+  .search-hero{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;height:auto;padding:13px 14px;border-radius:20px}
+  .search-hero svg{grid-row:1;align-self:center}
+  .search-hero input{width:auto;min-height:30px;font-size:1rem}
+  .search-hero .btn{grid-column:1/-1;width:100%;height:42px;border-radius:13px}
+  .search-tabs{margin-top:14px;overflow-x:auto;scrollbar-width:none}
+  .search-tabs::-webkit-scrollbar{display:none}
+  .search-tabs [data-src]{padding:10px 12px;white-space:nowrap}
+  .search-meta{margin:14px 2px;gap:5px 8px}
+  .search-meta span{width:100%;font-size:.82em;line-height:1.35}
+  .search-correction{margin:-5px 0 14px;font-size:.83em;line-height:1.45}
+  .search-correction button{display:block;margin:5px 0 0}
+  .search-results{gap:16px;margin-bottom:18px}
+  .result{padding:0 2px}
+  .result a.r-title{font-size:1rem;line-height:1.35}
+  .result p{font-size:.92rem;line-height:1.5}
+  .ai-answer-card{border-radius:18px}
+  .ai-answer-header{align-items:flex-start;flex-wrap:wrap;padding:13px 14px 0;gap:6px 10px}
+  .ai-answer-body{padding:10px 14px 14px;font-size:.94rem;line-height:1.55}
+  .ai-answer-sources{padding:0 14px 13px;gap:6px}
+  .ai-answer-sources .r-url{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Fix ntp tiles on mobile */
   .ntp-tiles{grid-template-columns:repeat(3,1fr);max-width:100%}
   /* Fix page shell on mobile */

@@ -185,7 +185,7 @@ function makeTab(extra = {}) {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
     jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(),
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
-    searchQuery: "", searchData: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
+    searchQuery: "", searchData: null, searchCorrection: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
 }
 export const activeTab = () => state.tabs.find(t => t.id === state.activeId) || null;
@@ -1367,16 +1367,33 @@ export function closeFind() { $("findBar").classList.add("hidden"); pageCommand(
 export function showSearch(query = "", { tab = null, push = true, pushHist = true, source = "", engine = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view === "page") teardownTab(t);
-  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, loading: false, browserSessionId: "", searchSource: source || t.searchSource || settings.searchSource || "web", searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
+  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, loading: false, browserSessionId: "", searchSource: source || t.searchSource || settings.searchSource || "web", searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
   if (pushHist) pushTabHistory(t, "veyra:search:" + query);
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
   if (query) runSearch(query);
 }
 const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave Search API", none: "no provider" };
-async function runSearch(query, offset = 0) {
+async function runSearch(query, offset = 0, opts = {}) {
   const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
   const source = t.searchSource || "web";
+  if (!offset && !opts.corrected && query.trim()) {
+    try {
+      const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500 });
+      if (correction.changed && correction.corrected && correction.corrected.toLowerCase() !== query.toLowerCase()) {
+        t.searchCorrection = { original: query, corrected: correction.corrected };
+        t.searchQuery = correction.corrected;
+        return runSearch(correction.corrected, 0, { corrected: true });
+      }
+    } catch {}
+  }
+  const correction = t.searchCorrection;
+  const correctionEl = $("searchCorrection");
+  if (correctionEl) {
+    correctionEl.classList.toggle("hidden", !correction);
+    correctionEl.innerHTML = correction ? `Showing results for <b>${esc(correction.corrected)}</b><button type="button" data-original="${esc(correction.original)}">Search instead for “${esc(correction.original)}”</button>` : "";
+    correctionEl.querySelector("[data-original]")?.addEventListener("click", () => { t.searchCorrection = null; t.searchQuery = correction.original; runSearch(correction.original, 0, { corrected: true }); });
+  }
   renderSearchTabs(t);
   $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
   $("aiAnswer").classList.add("hidden");
@@ -1859,7 +1876,7 @@ function wire() {
   $("sessionPill").onclick = () => hooks.openSessionPopover?.($("sessionPill"));
   $("sessionRestart").onclick = async () => { $("sessionOverlay").classList.add("hidden"); try { await ensureSession(); toast("New session started"); } catch (e) { toast(e.message, { kind: "err" }); } const last = state.history.find(h => h.kind === "page"); if (last) { /* offer the last page again */ toast(`Open ${hostOf(last.url)} again?`, { action: () => go(last.url), actionLabel: "Open", ms: 6000 }); } };
   $("sessionHome").onclick = () => { $("sessionOverlay").classList.add("hidden"); goHome(); };
-  $("searchForm").onsubmit = e => { e.preventDefault(); const q = $("searchInput").value.trim(); const t = activeTab(); pushTabHistory(t, "veyra:search:" + q); t.searchQuery = q; t.title = q ? `${q} - Veyra Search` : "Veyra Search"; renderTabs(); syncRoute(); runSearch(q); };
+  $("searchForm").onsubmit = e => { e.preventDefault(); const q = $("searchInput").value.trim(); const t = activeTab(); pushTabHistory(t, "veyra:search:" + q); t.searchQuery = q; t.searchCorrection = null; t.title = q ? `${q} - Veyra Search` : "Veyra Search"; renderTabs(); syncRoute(); runSearch(q); };
   $("searchInput").oninput = e => loadSuggestions(e.target.value);
   $("searchTabs").addEventListener("click", e => {
     const b = e.target.closest("[data-src]"); const t = activeTab(); if (!b || !t || t.view !== "search") return;
