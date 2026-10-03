@@ -343,6 +343,7 @@ function wireOmnibox() {
 function renderBookmarksBar() {
   const bar = $("bookmarksBar"); if (!settings.showBookmarksBar) { bar.classList.add("hidden"); return; }
   bar.classList.remove("hidden");
+  bar.classList.toggle("empty", !B.state.bookmarks.length);
   bar.innerHTML = B.state.bookmarks.length ? B.state.bookmarks.map((b, i) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")
     : `<span class="muted" style="font-size:.84em;padding:0 10px">Bookmark pages with ${esc(kbdFor("bookmark"))} and they'll appear here.</span>`;
   bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) B.go(B.state.bookmarks[Number(b.dataset.i)].url, { newTab: e.ctrlKey || e.metaKey }); };

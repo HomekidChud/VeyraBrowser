@@ -1221,3 +1221,10 @@ body{letter-spacing:-.006em}
 .ad-gate-card{max-width:760px!important;text-align:left!important;justify-items:stretch!important}.ad-gate-header{display:flex;justify-content:space-between;gap:16px;align-items:baseline;border-bottom:1px solid var(--hairline);padding-bottom:12px}.ad-gate-header>b{font:600 1.15rem var(--font-mono);color:var(--accent)}.ad-gate-card h2{margin:18px 0 6px}.ad-gate-media{min-height:220px;display:grid;place-items:center;overflow:hidden;border:1px solid #2d394b;border-radius:12px;background:#090c11}.ad-gate-media video,.ad-gate-media iframe{display:block;max-width:100%}.ad-gate-copy{padding:60px 20px;color:#aeb9c6;text-align:center}.ad-gate-footer{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:14px}.ad-billing-gate{display:flex;justify-content:space-between;gap:22px;align-items:center;margin:0 0 18px;padding:20px 22px;border:1px solid #6b5631;border-radius:14px;background:linear-gradient(120deg,#241e14,#151a22)}.ad-billing-gate h2{margin:5px 0;font:750 1.1rem var(--font-display)}.ad-billing-gate p{margin:5px 0 0;color:#b5ad9c;font-size:.78rem;line-height:1.55;max-width:720px}.ad-billing-gate code{color:#e8d09b}.ad-row.expired{opacity:.62}.ad-row.expired .ad-type-badge{filter:grayscale(1)}
 @media(max-width:720px){.ad-billing-gate{display:block}.ad-billing-gate .btn,.ad-billing-gate .pill{display:inline-flex;margin-top:14px}.ad-gate-footer{display:block}.ad-gate-footer .pill{display:inline-flex;margin-top:8px}.ad-gate-media iframe{height:250px!important}}
 .result-relevance{display:inline-flex;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:.72em;font-weight:700}.ai-followups{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);display:grid;gap:8px}.ai-followups>div{display:flex;gap:7px;flex-wrap:wrap}.ai-followups .btn{height:auto;min-height:28px;white-space:normal;text-align:left}
+
+@media (max-width:768px){
+  .bookmarks-bar.empty{display:none!important}
+  .toolbar{padding-left:5px;padding-right:5px}
+  .toolbar>.icon-btn{flex:0 0 28px}
+  .omnibox{flex:1 1 auto}
+}
