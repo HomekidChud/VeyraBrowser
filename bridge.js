@@ -19,7 +19,10 @@ export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
     const id = uid();
     const timer = setTimeout(() => { pending.delete(id); reject(new Error("The page did not answer. It may still be loading, or it blocks the Veyra runtime.")); }, timeoutMs);
     pending.set(id, { resolve, reject, timer, tabId: tab.id });
-    try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params }, API_ORIGIN); }
+    // Sandboxed proxied frames have an opaque origin, which requires a wildcard
+    // target origin. The caller is still bound to this exact frame and tab.
+    const targetOrigin = frame.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
+    try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params }, targetOrigin); }
     catch (e) { clearTimeout(timer); pending.delete(id); reject(e); }
   });
 }
@@ -28,6 +31,7 @@ export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
 export function handleBridgeMessage(tab, d) {
   if (d.type === "veyra:dt-result") {
     const p = pending.get(d.id); if (!p) return true;
+    if (!tab || p.tabId !== tab.id) return true;
     clearTimeout(p.timer); pending.delete(d.id);
     if (d.ok) p.resolve(d.result); else p.reject(new Error(d.error?.message || d.error || "DevTools call failed."));
     return true;

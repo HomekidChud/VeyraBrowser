@@ -14,12 +14,36 @@ function safeCss(css) {
   const v = String(css ?? "");
   if (!v.trim()) throw new Error("css is required.");
   if (v.length > 120000) throw new Error("CSS is too large (120 KB max).");
-  if (/[/]\*[^]*?\*[/]/g.test(v)) { /* comments are fine; keep scanning below */ }
-  if (/@import\b|url\s*\(|javascript\s*:|expression\s*\(|-moz-binding|behavior\s*:|@font-face|@namespace\b/i.test(v)) throw new Error("This extension can only contain isolated CSS; imports, URLs, scripts and font/network loaders are blocked.");
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v)) throw new Error("CSS contains unsupported control characters.");
-  let depth = 0;
-  for (let i = 0; i < v.length; i++) { if (v[i] === "{") depth++; else if (v[i] === "}" && --depth < 0) throw new Error("CSS braces are unbalanced."); }
-  if (depth !== 0) throw new Error("CSS braces are unbalanced.");
+  // Scan CSS outside strings and comments. Names are unescaped before policy
+  // checks, so forms such as u\\72l(...) cannot bypass the no-network rule.
+  let code = "", depth = 0, quote = "", comment = false;
+  const unescape = (input, i) => {
+    if (input[i] !== "\\") return [input[i], i + 1];
+    const m = input.slice(i + 1).match(/^[0-9a-f]{1,6}[ \t\r\n\f]?/i);
+    if (m) return [String.fromCodePoint(parseInt(m[0], 16)), i + 1 + m[0].length];
+    return [input[i + 1] || "", i + 2];
+  };
+  for (let i = 0; i < v.length;) {
+    const c = v[i], n = v[i + 1];
+    if (comment) { if (c === "*" && n === "/") { comment = false; i += 2; code += " "; } else i++; continue; }
+    if (quote) {
+      if (c === "\\") { i += 2; continue; }
+      if (c === quote) quote = "";
+      i++; continue;
+    }
+    if (c === "/" && n === "*") { comment = true; i += 2; code += " "; continue; }
+    if (c === "'" || c === '"') { quote = c; code += " "; i++; continue; }
+    if (c === "\\") { const [decoded, next] = unescape(v, i); code += decoded; i = next; continue; }
+    if (c === "{") depth++;
+    if (c === "}" && --depth < 0) throw new Error("CSS braces are unbalanced.");
+    code += c; i++;
+  }
+  if (comment || quote || depth !== 0) throw new Error("CSS braces are unbalanced.");
+  const compact = code.toLowerCase();
+  if (/@\s*(?:import|font-face|namespace)\b|(?:^|[^\w-])url\s*\(|(?:^|[^\w-])expression\s*\(|(?:^|[^\w-])-moz-binding\s*:|(?:^|[^\w-])behavior\s*:|javascript\s*:/i.test(compact)) {
+    throw new Error("This extension can only contain isolated CSS; imports, URLs, scripts and font/network loaders are blocked.");
+  }
   return v;
 }
 function normalizePackage(m, source = "local") {
@@ -48,11 +72,24 @@ function clearLegacyBuiltins() {
   const s = state(); let changed = false; for (const id of LEGACY_BUILTIN_IDS) if (id in s) { delete s[id]; changed = true; } if (changed) setState(s);
 }
 
-// Match patterns like "*.example.com", "example.com", "<all_urls>".
-function matches(ext, url) {
+// Match patterns such as "*.example.com", "https://example.com/private/*"
+// and "<all_urls>" without silently broadening scheme or path scope.
+function matches(ext, rawUrl) {
   const list = Array.isArray(ext.matches) && ext.matches.length ? ext.matches : ["<all_urls>"];
-  const h = hostOf(url);
-  return list.some(p => { p = String(p).trim().toLowerCase(); if (p === "<all_urls>" || p === "*") return true; p = p.replace(/^\*:\/\//, "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""); if (p.startsWith("*.")) { const base = p.slice(2); return h === base || h.endsWith("." + base); } return h === p || h === "www." + p; });
+  let url; try { url = new URL(rawUrl); } catch { return false; }
+  return list.some(raw => {
+    const pattern = String(raw || "").trim().toLowerCase();
+    if (pattern === "<all_urls>" || pattern === "*") return /^https?:$/.test(url.protocol);
+    const parsed = pattern.match(/^(?:(\*|https?):\/\/)?([^/]+)(\/.*)?$/);
+    if (!parsed) return false;
+    const [, scheme = "*", host = "", path = "/*"] = parsed;
+    if (scheme !== "*" && url.protocol !== `${scheme}:`) return false;
+    const hostname = url.hostname.toLowerCase();
+    const hostOk = host.startsWith("*.") ? hostname === host.slice(2) || hostname.endsWith(`.${host.slice(2)}`) : hostname === host || hostname === `www.${host}`;
+    if (!hostOk) return false;
+    const re = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
+    return re.test(url.pathname + url.search);
+  });
 }
 export function validateManifest(m) {
   if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("The manifest must be a JSON object.");
@@ -63,7 +100,7 @@ export function validateManifest(m) {
   if (m.permissions != null) { const perms = Array.isArray(m.permissions) ? m.permissions.map(x => String(x)) : []; if (perms.some(x => x !== "styles")) throw new Error("Only the styles permission is available to Veyra extensions."); }
   const css = safeCss(m.css ?? m.page_css ?? "");
   const matchesList = m.matches == null ? [] : Array.isArray(m.matches) ? m.matches.map(String).slice(0, 30) : (() => { throw new Error("matches must be an array of host patterns."); })();
-  if (matchesList.some(x => x.length > 120 || /[\r\n]/.test(x))) throw new Error("matches contains an invalid host pattern.");
+  if (matchesList.some(x => x.length > 120 || /[\r\n]/.test(x) || !/^(?:<all_urls>|\*|(?:(?:\*|https?):\/\/)?(?:\*\.)?[a-z0-9.-]+(?:\/[^\s]*)?)$/i.test(x))) throw new Error("matches contains an invalid host or URL pattern.");
   return { id, name, version: String(m.version || "1.0.0").slice(0, 20), description: String(m.description || "").slice(0, 300), css, matches: matchesList, enabled: m.enabled !== false, installedAt: Date.now() };
 }
 
@@ -73,7 +110,7 @@ export async function applyToTab(t) {
   const s = state();
   const calls = [];
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
-  for (const d of devExts()) calls.push(["ext.css", { key: d.id, css: d.enabled && matches(d, t.url) ? d.css : "" }]);
+  for (const d of devExts()) calls.push(["ext.css", { key: d.id, css: d.enabled && matches(d, t.url) ? safeCss(d.css) : "" }]);
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
   for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("debug", `Extension call ${m} failed: ${e.message}`); break; } }
   hooks.onExtensionsApplied?.(t);

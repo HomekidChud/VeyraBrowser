@@ -46,7 +46,8 @@ function accountSection() {
     ${row("Display name", "Shown on your profile and new tab page.", `<input class="input" id="accName" value="${esc(u.name || "")}" maxlength="60" aria-label="Display name"><button class="btn" data-act="saveName">Save</button>`)}
     ${button("Password", "Changing it signs out your other devices.", "changePassword", "Change password")}
     ${button("Sync now", "Pushes settings, bookmarks, extensions and notes to your account.", "syncNow", "Sync")}
-    ${button("Sign out", "Your local data stays in this browser.", "signOut", "Sign out")}
+    ${button("Sign out", "Your local data stays in this browser. Use the next option on a shared device.", "signOut", "Sign out")}
+    ${button("Sign out and remove local account data", "Removes synced bookmarks, notes, extensions and shortcut tiles from this device.", "signOutLocal", "Sign out and remove data", "btn danger")}
     ${button("Sign out everywhere", "Revokes every token issued for this account.", "signOutAll", "Sign out everywhere")}
     ${button("Delete account", "Permanently removes your account and synced data.", "deleteAccount", "Delete account", "btn danger")}`);
 }
@@ -87,8 +88,8 @@ function privacySection() {
     ${button("Incognito window", "History, downloads, notes and sign-in stay in memory; the server skips site logging and shared caching. Ctrl+Shift+N.", "incognito", "Open incognito window")}
     ${toggle("challengeHandoff", "Hand security checks to real Chromium", "When a site shows a Cloudflare or captcha check, reopen it in Chromium so you can complete it yourself. Veyra never solves checks for you.")}
     ${toggle("blockTrackers", "Block trackers", "The server refuses requests to known ad and tracking hosts.")}
-    ${toggle("doNotTrack", "Send a Do Not Track request", "Adds DNT and Sec-GPC headers to proxied requests.")}
-    ${toggle("clearOnSessionEnd", "Clear page cookies when a session ends", "")}
+    ${toggle("doNotTrack", "Send a Do Not Track request", "Sends the preference to the active session. Veyra warns if the server does not acknowledge support.")}
+    ${toggle("clearHistoryOnSessionEnd", "Clear local history when a session ends", "Server session cookies are always deleted when the session closes.")}
     ${toggle("warnBeforeClose", "Warn before closing with several tabs open", "")}`);
 }
 function sessionsSection() {
@@ -99,7 +100,7 @@ function sessionsSection() {
     ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? fmtClock(left) + " left" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
     ${toggle("sessionWarnings", "Warn before a session ends", "Shows a warning 30 and 10 seconds before the limit.")}
     ${toggle("autoRestartSession", "Start a new session automatically", "When the timer ends, reopen your tabs in a fresh session.")}
-    ${toggle("clearOnSessionEnd", "Clear cookies when a session ends", "")}`);
+    ${toggle("clearHistoryOnSessionEnd", "Clear local history when a session ends", "Server session cookies are always deleted when the session closes.")}`);
 }
 function downloadsSection() {
   return section("downloads", "Downloads and history", "", `
@@ -274,7 +275,10 @@ function setValue(el) {
   if (["fontScale", "zoomDefault"].includes(key)) v = Number(v);
   if (key === "customSearch" && v && !/%s/.test(v)) { toast("Custom search URL needs %s", { kind: "err" }); return; }
   settings[key] = v; saveSettings();
-  if (key === "blockTrackers" || key === "doNotTrack") hooks.applyExtensionsToTab?.(B.activeTab());
+  if (key === "blockTrackers" || key === "doNotTrack") {
+    hooks.applyExtensionsToTab?.(B.activeTab());
+    hooks.updateSessionPreferences?.().catch(e => toast(`Couldn't update active-session privacy controls: ${e.message}`, { kind: "err" }));
+  }
   if (["searchEngine", "startup", "extensionDeveloperMode"].includes(key)) render(B.activeTab()?.section || "");
   else toast("Setting saved", { ms: 1200 });
 }
@@ -303,6 +307,7 @@ async function act(a, el) {
     case "syncNow": try { await pushSync(); toast("Synced"); } catch (e) { toast(e.message, { kind: "err" }); } return;
     case "incognito": hooks.openIncognitoWindow?.(); return;
     case "signOut": await signOut(); return render(curSection());
+    case "signOutLocal": await signOut({ forgetLocal: true }); return render(curSection());
     case "signOutAll": if (await confirmDialog("Sign out everywhere?", "Every device using this account will be signed out.", "Sign out everywhere")) { await signOut({ everywhere: true }); render(curSection()); } return;
     case "deleteAccount": {
       const v = await promptDialog({ title: "Delete account", ok: "Delete forever", fields: [{ name: "password", label: "Confirm with your password", type: "password" }] });

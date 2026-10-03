@@ -38,12 +38,13 @@ let castPollTimer = null;
 let castSessionId = null;
 let castConnectionGeneration = 0;
 let castFallbackStarted = false;
+let castPollInFlight = false;
 
 function stopPollingFallback() {
   if (castPollTimer) { clearInterval(castPollTimer); castPollTimer = null; }
 }
 
-function startPollingFallback(sessionId = "") {
+function startPollingFallback(sessionId = "", generation = castConnectionGeneration) {
   if (castFallbackStarted || castPollTimer) return;
   castFallbackStarted = true;
   if (castWs) { try { castWs.close(); } catch {} castWs = null; }
@@ -52,6 +53,7 @@ function startPollingFallback(sessionId = "") {
     ? Promise.resolve({ ok: true, sessionId: castSession.id, pairingCode: castSession.pairingCode, qrPayload: castSession.qrPayload, qrUrl: castSession.qrUrl, existing: true })
     : api("/api/cast/create", { method: "POST", json: {}, timeoutMs: 10000 });
   createOrReuse.then(result => {
+    if (generation !== castConnectionGeneration) return;
     if (!result.ok) throw new Error(result.error || "Cast server rejected the session");
     castSessionId = result.sessionId;
     if (!castSession || castSession.id !== result.sessionId) castSession = {
@@ -60,12 +62,15 @@ function startPollingFallback(sessionId = "") {
     };
     renderCastView();
     castPollTimer = setInterval(async () => {
+      if (castPollInFlight || generation !== castConnectionGeneration || !castSession?.id) return;
+      castPollInFlight = true;
       try {
         const msgs = await api(`/api/cast/poll/${encodeURIComponent(castSession.id)}`, { timeoutMs: 5000 });
-        if (msgs.ok && msgs.messages) for (const msg of msgs.messages) handleMessage(msg);
-      } catch {}
+        if (generation === castConnectionGeneration && msgs.ok && msgs.messages) for (const msg of msgs.messages) handleMessage(msg);
+      } catch {} finally { castPollInFlight = false; }
     }, 500);
   }).catch(e => {
+    if (generation !== castConnectionGeneration) return;
     castFallbackStarted = false;
     toast("Cast polling failed: " + e.message, { kind: "err" });
   });
@@ -81,7 +86,7 @@ function connectCastServer(sessionId = "") {
   try {
     castWs = new WebSocket(wsUrl);
   } catch (e) {
-    startPollingFallback(sessionId);
+    startPollingFallback(sessionId, generation);
     return;
   }
 
@@ -104,14 +109,14 @@ function connectCastServer(sessionId = "") {
   castWs.onerror = (e) => {
     if (generation !== castConnectionGeneration) return;
     addLog("warn", "CAST", "WebSocket error — falling back to HTTP polling");
-    startPollingFallback(sessionId);
+    startPollingFallback(sessionId, generation);
   };
 
   castWs.onclose = (event) => {
     if (generation !== castConnectionGeneration) return;
     addLog("info", "CAST", `WebSocket closed (code ${event.code})`);
     if (event.code !== 1000 && event.code !== 1001) {
-      startPollingFallback(sessionId);
+      startPollingFallback(sessionId, generation);
     } else {
       if (castSession?.status === "streaming") stopStreaming();
       castWs = null;
@@ -122,6 +127,7 @@ function connectCastServer(sessionId = "") {
 }
 
 function handleMessage(msg) {
+  if (msg.type !== "session_created" && msg.sessionId && msg.sessionId !== castSession?.id) return;
   switch (msg.type) {
     case "session_created":
       castSessionId = msg.sessionId;
@@ -158,8 +164,9 @@ function handleMessage(msg) {
       if (castSession) {
         castSession.frameCount++;
         castSession.lastFrame = Date.now();
-        frameBuffer.push(msg.data);
-        if (frameBuffer.length > 3) frameBuffer.shift();
+        // Only the newest frame is useful; retaining stale images grows memory
+        // and makes the canvas visibly lag behind the device.
+        frameBuffer = [msg.data];
         fpsCounter.count++;
         const now = Date.now();
         if (now - fpsCounter.lastReset > 1000) {
@@ -176,7 +183,7 @@ function handleMessage(msg) {
         castSession.status = "disconnected";
         toast("Device disconnected: " + (msg.reason || "unknown"), { kind: "warn" });
       }
-      stopStreaming();
+      stopStreaming({ preserveStatus: true });
       renderCastView();
       break;
 
@@ -222,6 +229,10 @@ function disconnectCastSession(reason = "client_closed") {
   castCanvas = null;
   castCtx = null;
 }
+function cleanupCastResources() {
+  stopDeviceStream(); stopDevicePolling();
+  if (castSession || castSessionId || castWs) disconnectCastSession("view_left");
+}
 
 // ---------------------------------------------------------------- frame rendering
 function renderFrame() {
@@ -234,8 +245,12 @@ function renderFrame() {
   if (typeof frame === "string" && frame.startsWith("data:")) {
     const img = new Image();
     img.onload = () => {
+      if (frameBuffer[frameBuffer.length - 1] !== frame) return;
+      if (castCanvas.width !== img.naturalWidth || castCanvas.height !== img.naturalHeight) {
+        castCanvas.width = img.naturalWidth; castCanvas.height = img.naturalHeight;
+      }
       ctx.clearRect(0, 0, castCanvas.width, castCanvas.height);
-      ctx.drawImage(img, 0, 0, castCanvas.width, castCanvas.height);
+      ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
     };
     img.src = frame;
   } else if (typeof frame === "string") {
@@ -283,9 +298,9 @@ function startStreaming() {
   renderCastView();
 }
 
-function stopStreaming() {
+function stopStreaming({ preserveStatus = false } = {}) {
   if (castSession) sendCastMessage({ type: "stop_streaming" });
-  if (castSession) castSession.status = "paired";
+  if (castSession && !preserveStatus) castSession.status = "paired";
   stopRenderLoop();
   renderCastView();
 }
@@ -294,17 +309,6 @@ function setQuality(q, fps) {
   if (!sendCastMessage({ type: "set_quality", quality: q, fps })) return;
   if (castSession) { castSession.quality = q; castSession.fps = fps; }
   toast(`Quality set to ${q} (${fps} FPS)`, { ms: 2000 });
-}
-
-function setInputEnabled(enabled) {
-  sendCastMessage({ type: "set_input", enabled });
-  if (castSession) castSession.inputEnabled = enabled;
-}
-
-// ---------------------------------------------------------------- touch/input relay
-function sendTouchInput(x, y, type = "tap") {
-  if (!castSession?.inputEnabled) return;
-  sendCastMessage({ type: "input", input: { x, y, type, timestamp: Date.now() } });
 }
 
 // ---------------------------------------------------------------- render
@@ -406,10 +410,6 @@ function castStreamingView() {
             <button class="dt-chip ${s.quality === "high" ? "on" : ""}" data-q="high" data-fps="60">High (60 FPS)</button>
           </div>
         </div>
-        <div class="cast-input-section">
-          <h4>Input</h4>
-          <label class="switch-row"><span>Touch input relay</span><input type="checkbox" class="switch" id="castInputToggle" ${s.inputEnabled !== false ? "checked" : ""}></label>
-        </div>
       </div>
     </div>
   </div>`;
@@ -430,6 +430,10 @@ let deviceStream = null;
 let deviceCanvas = null;
 let deviceTimer = null;
 let deviceJoined = false;
+let deviceVideo = null;
+let deviceFrameFps = 15;
+let deviceUploadInFlight = false;
+let devicePendingFrame = null;
 
 function renderDeviceJoinView(view, sessionId, code) {
   view.innerHTML = `<div class="cast-page"><div class="cast-center">
@@ -476,7 +480,7 @@ function connectDevice(sessionId, code, body) {
       const msg = JSON.parse(ev.data);
       if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
       else if (msg.type === "stop_streaming") stopDeviceStream();
-      else if (msg.type === "set_quality") { if (deviceTimer) { stopDeviceStream(); startDeviceStream(msg.fps || 15); } }
+      else if (msg.type === "set_quality") { if (deviceTimer) setDeviceFrameRate(msg.fps || 15); }
     } catch {}
   };
   deviceWs.onerror = () => {
@@ -515,7 +519,8 @@ function renderDevicePaired(body) {
     </div>`;
   } else {
     shareButtons = `<button class="btn primary lg" id="djShare">Share this screen</button>
-    <p class="muted small">Screen sharing uses your browser's built-in screen capture. The Veyra browser will automatically start receiving frames.</p>`;
+    <button class="btn ghost lg" id="djShareBack">Share camera instead</button>
+    <p class="muted small">Screen sharing uses your browser's built-in screen capture. Camera sharing is available only when you choose it.</p>`;
   }
   body.innerHTML = shareButtons + `
     <div id="djStatus" class="muted small"></div>
@@ -530,6 +535,7 @@ function renderDevicePaired(body) {
 
 // HTTP polling fallback for device connections (mobile/Android)
 let devicePollTimer = null;
+let devicePollInFlight = false;
 function startDevicePolling(sessionId, code, body) {
   if (devicePollTimer) clearInterval(devicePollTimer);
   deviceSessionId = sessionId; // Store for HTTP frame delivery
@@ -545,16 +551,18 @@ function startDevicePolling(sessionId, code, body) {
     addLog("info", "CAST", "Device joined cast session via HTTP polling");
     // Poll for commands from the browser
     devicePollTimer = setInterval(async () => {
+      if (devicePollInFlight) return;
+      devicePollInFlight = true;
       try {
         const msgs = await api(`/api/cast/device/poll/${encodeURIComponent(result.deviceId)}`, { timeoutMs: 5000 });
         if (msgs.ok && msgs.messages) {
           for (const msg of msgs.messages) {
             if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
             else if (msg.type === "stop_streaming") stopDeviceStream();
-            else if (msg.type === "set_quality") { if (deviceTimer) { stopDeviceStream(); startDeviceStream(msg.fps || 15); } }
+            else if (msg.type === "set_quality") { if (deviceTimer) setDeviceFrameRate(msg.fps || 15); }
           }
         }
-      } catch {}
+      } catch {} finally { devicePollInFlight = false; }
     }, 500);
   }).catch(e => {
     body.innerHTML = `<p class="muted">Connection failed: ${esc(e.message)}</p>`;
@@ -591,25 +599,10 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
     try {
       deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
     } catch (e) {
-      // getDisplayMedia failed — try getUserMedia as fallback
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-          deviceStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
-            audio: false
-          });
-        } catch (e2) {
-          const st = $("djStatus");
-          if (st) st.textContent = `Screen capture unavailable. getDisplayMedia: ${e.message}. getUserMedia: ${e2.message}`;
-          addLog("warn", "CAST", `Screen capture failed: ${e2.message}`);
-          return;
-        }
-      } else {
-        const st = $("djStatus");
-        if (st) st.textContent = `Screen capture unavailable: ${e.message}`;
-        addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
-        return;
-      }
+      const st = $("djStatus");
+      if (st) st.textContent = `Screen sharing was not started: ${e.message}. Choose “Share camera instead” if you want to use a camera.`;
+      addLog("warn", "CAST", `Screen capture failed: ${e.message}`);
+      return;
     }
   } else {
     // Mobile without getDisplayMedia — default to back camera
@@ -627,31 +620,43 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
   }
   deviceCanvas = $("djCanvas");
   if (deviceCanvas) { deviceCanvas.style.display = "block"; }
-  const ctx = deviceCanvas?.getContext("2d");
   const video = document.createElement("video");
   video.muted = true; video.srcObject = deviceStream; video.play().catch(() => {});
+  deviceVideo = video;
   const st = $("djStatus"); if (st) st.textContent = "Sharing your screen…";
   deviceStream.getVideoTracks()[0]?.addEventListener("ended", () => stopDeviceStream());
-  const interval = Math.max(66, Math.round(1000 / Math.max(1, fps)));
-  deviceTimer = setInterval(() => {
-    if (!ctx || video.videoWidth === 0) return;
-    const w = 360, h = Math.round(video.videoHeight * (w / video.videoWidth)) || 640;
-    deviceCanvas.width = w; deviceCanvas.height = h;
-    ctx.drawImage(video, 0, 0, w, h);
-    const frameData = deviceCanvas.toDataURL("image/jpeg", 0.6);
-    // Send via WebSocket if available, otherwise via HTTP polling
-    if (deviceWs && deviceWs.readyState === 1) {
-      try { deviceWs.send(JSON.stringify({ type: "frame", data: frameData })); } catch {}
-    } else if (deviceSessionId) {
-      // HTTP polling fallback — push frame to session buffer
-      void api(`/api/cast/push/${encodeURIComponent(deviceSessionId)}`, { method: "POST", json: { type: "frame", data: frameData }, timeoutMs: 3000 }).catch(() => {});
-    }
-  }, interval);
+  setDeviceFrameRate(fps);
+}
+
+function pushDeviceFrame(frameData) {
+  if (!deviceSessionId) return;
+  if (deviceUploadInFlight) { devicePendingFrame = frameData; return; }
+  deviceUploadInFlight = true;
+  void api(`/api/cast/push/${encodeURIComponent(deviceSessionId)}`, { method: "POST", json: { type: "frame", data: frameData }, timeoutMs: 3000 })
+    .catch(() => {})
+    .finally(() => { deviceUploadInFlight = false; const next = devicePendingFrame; devicePendingFrame = null; if (next) pushDeviceFrame(next); });
+}
+function captureDeviceFrame() {
+  const ctx = deviceCanvas?.getContext("2d"), video = deviceVideo;
+  if (!ctx || !video || video.videoWidth === 0) return;
+  const w = deviceFrameFps >= 50 ? 960 : deviceFrameFps >= 30 ? 640 : 360;
+  const h = Math.round(video.videoHeight * (w / video.videoWidth)) || 640;
+  deviceCanvas.width = w; deviceCanvas.height = h;
+  ctx.drawImage(video, 0, 0, w, h);
+  const frameData = deviceCanvas.toDataURL("image/jpeg", deviceFrameFps >= 50 ? 0.82 : deviceFrameFps >= 30 ? 0.72 : 0.6);
+  if (deviceWs?.readyState === 1) { try { deviceWs.send(JSON.stringify({ type: "frame", data: frameData })); } catch {} }
+  else pushDeviceFrame(frameData);
+}
+function setDeviceFrameRate(fps) {
+  deviceFrameFps = Math.max(1, Math.min(60, Number(fps) || 15));
+  if (deviceTimer) clearInterval(deviceTimer);
+  deviceTimer = setInterval(captureDeviceFrame, Math.max(16, Math.round(1000 / deviceFrameFps)));
 }
 
 function stopDeviceStream() {
   if (deviceTimer) { clearInterval(deviceTimer); deviceTimer = null; }
   if (deviceStream) { try { deviceStream.getTracks().forEach(t => t.stop()); } catch {} deviceStream = null; }
+  deviceVideo = null; devicePendingFrame = null;
   const st = $("djStatus"); if (st) st.textContent = "";
   if (deviceCanvas) deviceCanvas.style.display = "none";
 }
@@ -663,25 +668,25 @@ function renderInternetView() {
   const profiles = [
     { id: "auto", name: "Automatic", desc: "Veyra selects the best available connection", icon: "i-bolt" },
     { id: "lan", name: "Local Area Network", desc: "Connect via LAN/Ethernet. Fastest, most stable.", icon: "i-layers" },
-    { id: "wifi", name: "Wi-Fi", desc: "Connect via Wi-Fi network. Requires SSID + password.", icon: "i-vpn" },
-    { id: "cellular", name: "Cellular / Mobile", desc: "Connect via mobile data (4G/5G). Requires APN settings.", icon: "i-globe" },
-    { id: "custom", name: "Custom Connection", desc: "Manually configure proxy, DNS, and routing.", icon: "i-settings" },
+    { id: "wifi", name: "Wi-Fi", desc: "Shows Wi-Fi connection information when available from the system.", icon: "i-vpn" },
+    { id: "cellular", name: "Cellular / Mobile", desc: "Shows cellular connection information when available from the system.", icon: "i-globe" },
+    { id: "custom", name: "Custom Connection", desc: "Configuration requires an operating-system or managed-network integration.", icon: "i-settings" },
     { id: "bridge", name: "Bridge Mode", desc: "Share the phone's internet connection with Veyra.", icon: "i-link" },
     { id: "mesh", name: "Mesh Network", desc: "Connect through multiple nodes for redundancy.", icon: "i-grid" },
   ];
   const current = settings.internetProfile || "auto";
   view.innerHTML = `<div class="cast-page">
-    <div class="cast-header"><h2>Internet Connection</h2><span class="muted small">Current: ${esc(profiles.find(p => p.id === current)?.name || "Automatic")}</span></div>
+    <div class="cast-header"><h2>Internet Connection</h2><span class="muted small">Selected for preview: ${esc(profiles.find(p => p.id === current)?.name || "Automatic")}</span></div>
     <div class="internet-profiles">
       ${profiles.map(p => `<div class="internet-card ${p.id === current ? "active" : ""}" data-net="${p.id}">
         <span class="net-icon"><svg><use href="#${p.icon}"/></svg></span>
         <div><h3>${esc(p.name)}</h3><p class="muted small">${esc(p.desc)}</p></div>
-        <span class="net-status ${p.id === current ? "on" : ""}">${p.id === current ? "Active" : ""}</span>
+        <span class="net-status ${p.id === current ? "on" : ""}">${p.id === current ? "Selected" : ""}</span>
       </div>`).join("")}
     </div>
     <div class="internet-config" id="internetConfig"></div>
     <div class="internet-test">
-      <button class="btn primary sm" id="netTestBtn">Test connection</button>
+      <button class="btn primary sm" id="netTestBtn">Test server connection</button>
       <span id="netTestResult" class="muted small"></span>
     </div>
   </div>`;
@@ -697,7 +702,7 @@ function renderInternetView() {
     $("netTestResult").textContent = "Testing…";
     try {
       const r = await api("/api/internet/test", { json: { profile: settings.internetProfile }, timeoutMs: 10000 });
-      $("netTestResult").textContent = `Latency: ${r.latency}ms · Bandwidth: ${r.bandwidth} Mbps · ${r.ok ? "Connected" : "Failed"}`;
+      $("netTestResult").textContent = `${r.ok ? "Server reachable" : "Server test failed"}${r.latency != null ? ` · ${r.latency}ms` : ""}`;
     } catch (e) {
       $("netTestResult").textContent = "Test failed: " + e.message;
     }
@@ -708,35 +713,7 @@ function renderInternetView() {
 function showInternetConfig(profileId) {
   const el = $("internetConfig");
   if (!el) return;
-  if (profileId === "wifi") {
-    el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>SSID</b><span>Wi-Fi network name</span></div><input class="input" id="wifiSsid" placeholder="Network name" value="${esc(settings.wifiSsid || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Password</b><span>WPA2/WPA3 key</span></div><input class="input" type="password" id="wifiPass" placeholder="Password" value="${esc(settings.wifiPass || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Frequency</b><span>2.4 or 5 GHz</span></div><select class="input" id="wifiFreq"><option value="auto">Auto</option><option value="2.4">2.4 GHz</option><option value="5">5 GHz</option></select></div></div>`;
-    el.querySelector("#wifiSsid").oninput = e => { settings.wifiSsid = e.target.value; saveSettings(); };
-    el.querySelector("#wifiPass").oninput = e => { settings.wifiPass = e.target.value; saveSettings(); };
-    el.querySelector("#wifiFreq").onchange = e => { settings.wifiFreq = e.target.value; saveSettings(); };
-  } else if (profileId === "cellular") {
-    el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>APN</b><span>Access Point Name</span></div><input class="input" id="cellApn" placeholder="internet.com" value="${esc(settings.cellApn || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Carrier</b><span>Mobile carrier</span></div><input class="input" id="cellCarrier" placeholder="Vodafone" value="${esc(settings.cellCarrier || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Network type</b><span>3G/4G/5G</span></div><select class="input" id="cellType"><option value="4g">4G LTE</option><option value="5g">5G</option><option value="3g">3G</option></select></div></div>`;
-    el.querySelector("#cellApn").oninput = e => { settings.cellApn = e.target.value; saveSettings(); };
-    el.querySelector("#cellCarrier").oninput = e => { settings.cellCarrier = e.target.value; saveSettings(); };
-    el.querySelector("#cellType").onchange = e => { settings.cellType = e.target.value; saveSettings(); };
-  } else if (profileId === "custom") {
-    el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>Proxy</b><span>HTTP/SOCKS5 proxy URL</span></div><input class="input" id="customProxy" placeholder="socks5://host:port" value="${esc(settings.customProxy || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>DNS servers</b><span>Comma-separated</span></div><input class="input" id="customDns" placeholder="1.1.1.1, 8.8.8.8" value="${esc(settings.customDns || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Gateway</b><span>Custom gateway IP</span></div><input class="input" id="customGateway" placeholder="192.168.1.1" value="${esc(settings.customGateway || "")}"></div></div>`;
-    el.querySelector("#customProxy").oninput = e => { settings.customProxy = e.target.value; saveSettings(); };
-    el.querySelector("#customDns").oninput = e => { settings.customDns = e.target.value; saveSettings(); };
-    el.querySelector("#customGateway").oninput = e => { settings.customGateway = e.target.value; saveSettings(); };
-  } else if (profileId === "bridge") {
-    el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>Bridge interface</b><span>Network interface to bridge</span></div><input class="input" id="bridgeIf" placeholder="eth0" value="${esc(settings.bridgeInterface || "")}"></div>
-      <div class="s-row"><div class="s-label"><b>Share from</b><span>Device to share internet from</span></div><select class="input" id="bridgeFrom"><option value="phone">Phone (USB tethering)</option><option value="wifi">Wi-Fi adapter</option><option value="ethernet">Ethernet</option></select></div></div>`;
-    el.querySelector("#bridgeIf").oninput = e => { settings.bridgeInterface = e.target.value; saveSettings(); };
-    el.querySelector("#bridgeFrom").onchange = e => { settings.bridgeFrom = e.target.value; saveSettings(); };
-  } else {
-    el.innerHTML = "";
-  }
+  el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>Connection selection is unavailable in this browser</b><span>The selected profile is a display preference only. Veyra cannot configure your device Wi-Fi, cellular service, proxy, DNS, bridge, or mesh network from this page.</span></div></div></div>`;
 }
 
 // ---------------------------------------------------------------- event wiring
@@ -759,13 +736,6 @@ function wireCastStreaming() {
   const disconnect = $("castDisconnectBtn");
   if (disconnect) disconnect.onclick = () => { disconnectCastSession(); renderCastView(); };
   document.querySelectorAll("[data-q]").forEach(b => b.onclick = () => setQuality(b.dataset.q, parseInt(b.dataset.fps)));
-  const inputToggle = $("castInputToggle");
-  if (inputToggle) inputToggle.onchange = e => setInputEnabled(e.target.checked);
-  // Touch input relay
-  if (castCanvas) {
-    castCanvas.ontouchstart = e => { const r = castCanvas.getBoundingClientRect(); const t = e.touches[0]; sendTouchInput((t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height, "tap"); };
-    castCanvas.onclick = e => { const r = castCanvas.getBoundingClientRect(); sendTouchInput((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height, "tap"); };
-  }
 }
 
 // ---------------------------------------------------------------- init
@@ -786,3 +756,5 @@ export const cast = {
 
 hooks.renderCast = renderCastView;
 hooks.renderInternet = renderInternetView;
+hooks.cleanupCast = cleanupCastResources;
+window.addEventListener("pagehide", cleanupCastResources, { once: true });

@@ -9,8 +9,17 @@ export function bootParam(name) {
     return new URLSearchParams(r.slice(r.indexOf("?") + 1).split("#")[0]).get(name);
   } catch { return null; }
 }
-const apiOverride = (() => { try { const q = bootParam("api"); if (q && /^https?:\/\//.test(q)) localStorage.setItem("veyra-api", q); if (q === "reset") localStorage.removeItem("veyra-api"); return localStorage.getItem("veyra-api") || ""; } catch { return ""; } })();
-export const API = (window.VEYRA_API || apiOverride || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
+// The backend is a deployment-time setting, never a URL parameter. A query
+// parameter must not be able to redirect existing credentials to a new origin.
+const DEFAULT_API = "https://veyraserver-xscy.onrender.com";
+function deploymentApi() {
+  try {
+    const raw = document.querySelector('meta[name="veyra-api"]')?.content || DEFAULT_API;
+    const u = new URL(raw); if (!/^https?:$/.test(u.protocol) || u.username || u.password || u.search || u.hash) throw new Error("invalid API metadata");
+    return u.href.replace(/\/$/, "");
+  } catch { return DEFAULT_API; }
+}
+export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
 export const VERSION = "8.28.3";
 export const $ = id => document.getElementById(id);
@@ -39,7 +48,11 @@ export const INCOGNITO = (() => {
     return sessionStorage.getItem("veyra-incognito") === "1";
   } catch { return false; }
 })();
-const EPHEMERAL_KEYS = new Set(["veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes"]);
+const EPHEMERAL_KEYS = new Set([
+  "veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes",
+  "veyra-settings", "veyra-bookmarks", "veyra-extensions", "veyra-dev-extensions",
+  "veyra-tab-groups", "veyra-live-session"
+]);
 const memoryStore = new Map();
 const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS.has(key);
 export function load(key, fallback) {
@@ -72,11 +85,11 @@ export const DEFAULT_SETTINGS = {
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   ntpShortcuts: true, ntpRecent: true, ntpClock: true,
-  blockTrackers: false, doNotTrack: true, clearOnSessionEnd: true, warnBeforeClose: false,
+  blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: true, warnBeforeClose: false,
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 5,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 6,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
@@ -86,12 +99,14 @@ export const DEFAULT_SETTINGS = {
   neuralCrawlerParallelSearch: true, neuralCrawlerBlockTrackers: true, neuralCrawlerProgressiveRender: true,
   neuralCrawlerRetrainOnFeedback: true, neuralCrawlerModelPath: "",
   // Device cast + internet settings
-  internetProfile: "auto", wifiSsid: "", wifiPass: "", wifiFreq: "auto",
+  internetProfile: "auto", wifiSsid: "", wifiFreq: "auto",
   cellApn: "", cellCarrier: "", cellType: "4g",
   customProxy: "", customDns: "", customGateway: "",
   bridgeInterface: "", bridgeFrom: "phone", castQuality: "auto", castFps: 30
 };
 export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
+delete settings.wifiPass;
+delete settings.clearOnSessionEnd;
 // Migrate settings saved by older frontends. Version 4 keeps the foreground-first page pipeline defaults.
 export function migrateSettings(obj) {
   if (!obj || typeof obj !== "object") return obj;
@@ -122,9 +137,19 @@ export function migrateSettings(obj) {
     obj.neuralCrawlerRetrainOnFeedback = obj.neuralCrawlerRetrainOnFeedback !== false;
     obj.settingsVersion = 5;
   }
+  if (Number(obj.settingsVersion) < 6) {
+    // Older versions presented a cookie switch that only removed local history.
+    // Keep the user's intended history preference under an accurate setting and
+    // remove Wi-Fi credentials that were never applied by the product.
+    if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = obj.clearOnSessionEnd !== false;
+    delete obj.clearOnSessionEnd;
+    delete obj.wifiPass;
+    obj.settingsVersion = 6;
+  }
   return obj;
 }
-{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 5) { Object.assign(settings, migrateSettings(stored)); save("veyra-settings", settings); } }
+{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 6) { Object.assign(settings, migrateSettings(stored)); delete settings.clearOnSessionEnd; delete settings.wifiPass; save("veyra-settings", settings); } }
+{ const stored = load("veyra-settings", null); if (stored && ("wifiPass" in stored || "clearOnSessionEnd" in stored)) save("veyra-settings", settings); }
 export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
@@ -146,8 +171,22 @@ export function engineUrl(q) {
 }
 
 // ---------------------------------------------------------------- auth token
-export const auth = { token: load("veyra-auth", null)?.token || "", user: load("veyra-auth", null)?.user || null, admin: false, config: null };
-export function setAuth(token, user) { auth.token = token || ""; auth.user = user || null; if (token) save("veyra-auth", { token, user }); else remove("veyra-auth"); hooks.onAuthChanged?.(); }
+const readSessionAuth = () => {
+  try { return safeJsonParse(sessionStorage.getItem("veyra-auth"), null); } catch { return null; }
+};
+export const auth = { token: readSessionAuth()?.token || "", user: readSessionAuth()?.user || null, admin: false, config: null };
+try { localStorage.removeItem("veyra-auth"); } catch {}
+export function setAuth(token, user) {
+  auth.token = token || ""; auth.user = user || null;
+  // Do not persist bearer tokens in localStorage. Session storage limits their
+  // lifetime to the current browser session while the server owns revocation.
+  try {
+    if (token) sessionStorage.setItem("veyra-auth", JSON.stringify({ token, user }));
+    else sessionStorage.removeItem("veyra-auth");
+    localStorage.removeItem("veyra-auth"); // clear legacy persistent tokens
+  } catch {}
+  hooks.onAuthChanged?.();
+}
 export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin"); }
 
 // ---------------------------------------------------------------- API client
@@ -216,7 +255,7 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
 
 // ---------------------------------------------------------------- neural feedback
 export async function sendNeuralFeedback(url, positive, weight = 1.0) {
-  if (!settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
+  if (INCOGNITO || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
   try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}
 }
 export async function getNeuralStats() {
@@ -230,10 +269,8 @@ export async function testAdminLogin() {
     if (!cfg.testMode) return { ok: false, reason: "Test mode is off on this server" };
     const result = await api("/api/auth/test-login", { method: "POST", json: {}, timeoutMs: 10000 });
     if (result.ok && result.token) {
-      auth.token = result.token;
-      auth.user = result.user;
+      setAuth(result.token, result.user);
       auth.admin = true;
-      save("veyra-auth", { token: auth.token, user: auth.user });
     }
     return result;
   } catch (e) { return { ok: false, reason: e.message }; }
@@ -247,11 +284,22 @@ export function addLog(level, message, meta = {}) {
 }
 
 // ---------------------------------------------------------------- UI helpers
-// Toast notifications removed — too intrusive. Function kept as a no-op so
-// callers don't crash, but nothing is ever shown to the user.
 export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200 } = {}) {
-  // No-op: popup notifications permanently removed per user request.
-  if (action) { try { action(); } catch {} }
+  const host = $("toasts");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`.trim();
+  el.setAttribute("role", kind === "err" ? "alert" : "status");
+  const text = document.createElement("span"); text.textContent = String(message || ""); el.appendChild(text);
+  let timer = 0;
+  const dismiss = () => { clearTimeout(timer); el.remove(); };
+  if (typeof action === "function" && actionLabel) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = actionLabel;
+    button.addEventListener("click", () => { dismiss(); try { action(); } catch {} });
+    el.appendChild(button);
+  }
+  host.appendChild(el);
+  timer = setTimeout(dismiss, Math.max(1200, Number(ms) || 3200));
 }
 // Promise-based modal prompt. fields: [{name,label,value,type,placeholder}]
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {

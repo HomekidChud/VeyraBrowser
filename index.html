@@ -3,30 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="veyra-api" content="https://veyraserver-xscy.onrender.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; img-src 'self' data: blob: https://veyraserver-xscy.onrender.com; connect-src 'self' https://veyraserver-xscy.onrender.com wss://veyraserver-xscy.onrender.com; frame-src https://veyraserver-xscy.onrender.com; font-src 'self' data: https://api.fontshare.com https://fonts.gstatic.com; media-src 'self' blob:; form-action 'self' https://veyraserver-xscy.onrender.com; worker-src 'self' blob:">
   <meta name="theme-color" content="#0d0f13">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>Veyra — browse through a clean session</title>
-  <script>/* Resolve assets from the app root even on deep links like /settings/about. */(function(){var m=location.pathname.match(/^(.*?)\/(?:browse|search|calculator|downloads|history|extensions|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/.*)?$/);var b=m?m[1]+'/':location.pathname.replace(/[^\/]*$/,'');window.VEYRA_BASE=b;if(/\/incognito\/?$/.test(location.pathname)){location.replace(b+'browse?incognito=1');return;}var l=document.createElement('link');l.rel='stylesheet';l.href=b+'style.css?v=8.28.3';document.head.appendChild(l);})();</script>
-  <script>(function(){var b=window.VEYRA_BASE||'./';[['icon','assets/favicon.svg','image/svg+xml'],['icon','assets/favicon.ico',''],['apple-touch-icon','assets/apple-touch-icon.png','']].forEach(function(x){var l=document.createElement('link');l.rel=x[0];l.href=b+x[1];if(x[2])l.type=x[2];document.head.appendChild(l);});})();</script>
-  <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Veyra">
-  <meta property="og:title" content="Veyra Browser — private browsing in a disposable session">
-  <meta property="og:description" content="Open any site through a fresh isolated session with Veyra Shield, private web search, incognito windows and real Chromium when a site needs it.">
-  <meta property="og:url" content="https://homekidchud.github.io/VeyraBrowser/">
-  <meta property="og:image" content="https://homekidchud.github.io/VeyraBrowser/assets/og.png">
-  <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://homekidchud.github.io/VeyraBrowser/assets/og.png">
-  <link rel="preconnect" href="https://veyraserver-xscy.onrender.com" crossorigin>
-  <link rel="dns-prefetch" href="https://veyraserver-xscy.onrender.com">
-  <link rel="preconnect" href="https://api.fontshare.com">
-  <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=cabinet-grotesk@500,700,800&display=swap">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
-  <script>
-    // Apply theme before first paint (no flash).
-    (function(){try{var s=JSON.parse(localStorage.getItem("veyra-settings")||"{}");var t=s.theme||"dark";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;if(s.accent)document.documentElement.style.setProperty("--accent",s.accent);if(s.fontScale)document.documentElement.style.setProperty("--ui-scale",s.fontScale);}catch(e){}})();
-  </script>
+  <script src="./bootstrap.js"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -389,8 +371,8 @@
   <div class="overlay hidden" id="sessionOverlay" role="alertdialog" aria-labelledby="sessionOverTitle">
     <div class="overlay-card">
       <div class="timer-ring done"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span>0:00</span></div>
-      <h2 id="sessionOverTitle">Session ended and deleted</h2>
-      <p class="muted" id="sessionOverText">Your two minutes are up. Veyra deleted the session on the server: cookies, tabs, Chromium context and VPN tunnel.</p>
+      <h2 id="sessionOverTitle">Session ended</h2>
+      <p class="muted" id="sessionOverText">Your session ended. Veyra closed local tabs and requested server cleanup.</p>
       <div class="overlay-actions"><button class="btn primary" id="sessionRestart">Start a new session</button><button class="btn ghost" id="sessionHome">Back to new tab</button></div>
     </div>
   </div>
@@ -407,7 +389,7 @@
 
   <div class="fatal hidden" id="fatalOverlay"><div class="overlay-card"><h2>Veyra hit an error</h2><pre id="fatalMessage"></pre><button class="btn primary" onclick="location.reload()">Reload</button></div></div>
 
-  <script>(function(){var s=document.createElement("script");s.type="module";s.src=(window.VEYRA_BASE||"./")+"app.js?v=8.28.3";document.body.appendChild(s);})();</script>
+
   <noscript><p style="padding:24px">Veyra needs JavaScript.</p></noscript>
 </body>
 </html>

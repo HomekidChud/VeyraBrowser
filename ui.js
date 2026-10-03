@@ -193,11 +193,13 @@ async function submitAuth(e) {
   } catch (ex) { err.textContent = ex.message; }
   finally { btn.disabled = false; btn.textContent = authMode === "signup" ? "Create account" : "Sign in"; }
 }
-export async function signOut({ everywhere = false } = {}) {
-  try { await api("/api/auth/logout", { json: { everywhere } }); } catch {}
+export async function signOut({ everywhere = false, forgetLocal = false } = {}) {
+  let remoteSignedOut = true;
+  try { await api("/api/auth/logout", { json: { everywhere } }); } catch (e) { remoteSignedOut = false; addLog("warn", `Remote sign-out was not confirmed: ${e.message}`); }
+  if (forgetLocal) B.clearLocalAccountData?.();
   setAuth("", null); auth.admin = false;
   try { const c = await api("/api/auth/config"); auth.config = c; auth.admin = !!c.admin; } catch {}
-  onAuthChanged(); toast("Signed out");
+  onAuthChanged(); toast(remoteSignedOut ? (forgetLocal ? "Signed out and local account data removed" : "Signed out") : "Signed out locally. Server sign-out was not confirmed.", { kind: remoteSignedOut ? "" : "warn", ms: 5000 });
   const v = B.activeTab()?.view; if (v === "dev" || v === "console") B.goHome();
 }
 function onAuthChanged() {
@@ -210,20 +212,34 @@ function onAuthChanged() {
 }
 hooks.onAuthChanged = onAuthChanged;
 
-// Settings sync (signed-in users). Admin token and local-only data never leave the device.
+// Settings sync (signed-in users). Credentials and unimplemented network
+// configuration are deliberately local-only and never leave the device.
 let syncing = false;
-function syncPayload() { const s = { ...settings }; delete s.adminToken; return { v: 1, settings: s, bookmarks: B.state.bookmarks.slice(0, 300), extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now() }; }
-export async function pushSync() {
-  if (!auth.token) return; try { let body = syncPayload(); if (JSON.stringify(body).length > 60000) { body.notes = {}; body.devExtensions = []; } await api("/api/auth/data", { method: "PUT", json: { data: body } }); hooks.lastSync = Date.now(); } catch (e) { addLog("warn", `Sync failed: ${e.message}`); }
+function syncPayload() {
+  const s = { ...settings };
+  for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
+  return { v: 2, settings: s, bookmarks: B.state.bookmarks.slice(0, 300), extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now() };
 }
-const pushSoon = debounce(pushSync, 1500);
+export async function pushSync() {
+  if (!auth.token) return false;
+  try {
+    const body = syncPayload();
+    if (JSON.stringify(body).length > 60000) throw new Error("Sync data is over the 60 KB limit. Nothing was uploaded; reduce notes or extensions and try again.");
+    await api("/api/auth/data", { method: "PUT", json: { data: body } }); hooks.lastSync = Date.now(); return true;
+  } catch (e) { addLog("warn", `Sync failed: ${e.message}`); throw e; }
+}
+const pushSoon = debounce(() => { void pushSync().catch(e => addLog("warn", `Background sync pending: ${e.message}`)); }, 1500);
 hooks.scheduleSync = () => { if (auth.token && !syncing) pushSoon(); };
 export async function pullSync() {
   if (!auth.token) return;
   try {
     const r = await api("/api/auth/data"); const d = r.data; if (!d || typeof d !== "object") return;
     syncing = true;
-    if (d.settings) { const keep = settings.adminToken; Object.assign(settings, migrateSettings({ ...d.settings }), { adminToken: keep }); save("veyra-settings", settings); }
+    if (d.settings) {
+      const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
+      for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
+      Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
+    }
     if (Array.isArray(d.bookmarks)) { B.state.bookmarks = d.bookmarks.filter(b => b?.url); save("veyra-bookmarks", B.state.bookmarks); }
     if (d.extensions) save("veyra-extensions", d.extensions);
     if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);
@@ -382,7 +398,7 @@ function openMainMenu() {
     menuItem("i-star", settings.showBookmarksBar ? "Hide bookmarks bar" : "Show bookmarks bar", "bookmarksBar", () => { settings.showBookmarksBar = !settings.showBookmarksBar; saveSettings(); }),
     "zoom",
     menuItem("i-printer", "Print page", "print", () => B.printPage()),
-    menuItem("i-find", "Find in page", "find", () => B.openFind(), { disabled: !onPage }),
+    menuItem("i-find", "Find in page", "find", () => B.openFind(), { disabled: !onPage || t?.browserMode === "BROWSER_ENGINE" }),
     "-",
     menuItem("i-vpn", "Veyra VPN", "vpn", () => B.openInternal("vpn"), { badge: B.state.vpn.connected ? "ON" : "" }),
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
@@ -427,8 +443,8 @@ async function openSiteInfo() {
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>`, anchor, p => {
-    p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); if (s) await api(`/api/session/${s.id}/prefs`, { json: { blockTrackers: e.target.checked } }).catch(() => {}); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); };
-    p.querySelector("#popClear").onclick = async () => { if (!s) return; const r = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }).catch(() => null); await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }).catch(() => {}); toast(`Cleared ${r?.deleted ?? 0} cookies`); closeFloating(); };
+    p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
+    p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popDirect").onclick = () => { window.open(t.url, "_blank", "noopener"); closeFloating(); };
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
@@ -468,7 +484,7 @@ function openProfilePop() {
   pop(`<div class="menu-head" style="padding:0 0 10px"><span class="avatar signed">${esc(initials())}</span><div><b>${esc(auth.user.name || "Veyra user")}</b><span>${esc(auth.user.email)}${isAdmin() ? " · admin" : ""}</span></div></div>
     <p class="pop-sub">Sync is on. ${hooks.lastSync ? `Last synced ${esc(timeAgo(hooks.lastSync))}.` : ""}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" id="ppSync">Sync now</button><button class="btn ghost sm" data-go="/settings/account">Manage account</button><button class="btn ghost sm" id="ppOut">Sign out</button></div>`, $("profileBtn"), p => {
-    p.querySelector("#ppSync").onclick = async () => { await pushSync(); toast("Synced"); closeFloating(); };
+    p.querySelector("#ppSync").onclick = async () => { try { await pushSync(); toast("Synced"); closeFloating(); } catch (e) { toast(`Sync failed: ${e.message}`, { kind: "err" }); } };
     p.querySelector("#ppOut").onclick = () => { closeFloating(); signOut(); };
     p.querySelector("[data-go]").addEventListener("click", closeFloating);
   });
@@ -482,7 +498,7 @@ export async function openClearData() {
     <label class="switch-row" style="justify-content:space-between;margin:10px 0"><span>Browsing history</span><input type="checkbox" class="switch" name="history" checked></label>
     <label class="switch-row" style="justify-content:space-between;margin:10px 0"><span>Download list</span><input type="checkbox" class="switch" name="downloads"></label>
     <label class="switch-row" style="justify-content:space-between;margin:10px 0"><span>Cookies in the current session</span><input type="checkbox" class="switch" name="cookies" checked></label>
-    <label class="switch-row" style="justify-content:space-between;margin:10px 0"><span>Engine cache</span><input type="checkbox" class="switch" name="cache" checked></label>`;
+    <label class="switch-row" style="justify-content:space-between;margin:10px 0"><span>Renderer capability decisions</span><input type="checkbox" class="switch" name="cache" checked></label>`;
   dlg.returnValue = ""; dlg.showModal();
   dlg.addEventListener("close", function done() { dlg.removeEventListener("close", done); if (dlg.returnValue !== "ok") return; const f = n => dlg.querySelector(`[name=${n}]`);
     B.clearBrowsingData({ history: f("history").checked, downloads: f("downloads").checked, cookies: f("cookies").checked, cache: f("cache").checked, since: Number(f("range").value) }); toast("Browsing data cleared"); });

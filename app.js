@@ -1,7 +1,7 @@
 // Veyra browser shell: tabs, navigation, sessions, page runtime messages.
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
-  settings, saveSettings, load, save, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
+  settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
@@ -59,7 +59,8 @@ export const state = {
   // Tab grouping: map of groupId -> { id, name, color, collapsed }
   tabGroups: load("veyra-tab-groups", []),
   // Split screen: { active: bool, leftTabId, rightTabId }
-  splitScreen: { active: false, leftTabId: null, rightTabId: null }
+  splitScreen: { active: false, leftTabId: null, rightTabId: null },
+  historyRenderLimit: 600
 };
 const INTERNAL = {
   newtab: { title: "New tab", icon: "i-home", path: "/browse" },
@@ -83,6 +84,19 @@ const saveHistory = () => save("veyra-history", state.history.slice(0, settings.
 const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
 const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
 const saveTabGroups = () => save("veyra-tab-groups", state.tabGroups);
+function cleanupUnfinishedSessionHistory() {
+  const previous = load("veyra-live-session", null);
+  if (previous?.id && settings.clearHistoryOnSessionEnd) {
+    state.history = state.history.filter(h => h.sid !== previous.id);
+    saveHistory();
+  }
+  if (previous) remove("veyra-live-session");
+}
+export function clearLocalAccountData() {
+  state.bookmarks = []; saveBookmarks();
+  save("veyra-notes", {}); save("veyra-extensions", {}); save("veyra-dev-extensions", []);
+  settings.ntpTiles = null; saveSettings();
+}
 
 // ---------------------------------------------------------------- tab groups
 const GROUP_COLORS = ["#5b7fd6", "#c2566b", "#3f9a78", "#b0772f", "#8a5cc9", "#2f8fa8"];
@@ -117,6 +131,8 @@ export function toggleSplitScreen() {
   const ss = state.splitScreen;
   if (ss.active) {
     // Close split screen
+    const wrap = $("frameWrap");
+    qsa("#splitContainer .tab-frame").forEach(frame => wrap?.insertBefore(frame, $("frameLoader")));
     ss.active = false; ss.leftTabId = null; ss.rightTabId = null;
     // Remove any split view elements
     qsa(".split-pane").forEach(el => el.remove());
@@ -125,8 +141,9 @@ export function toggleSplitScreen() {
     // Open split screen with current tab on left
     const t = activeTab();
     if (!t || t.view !== "page") return;
+    if (isRemote(t)) return toast("Split view currently supports Fast proxy tabs only. Streamed Chromium tabs use one secure surface.", { kind: "warn", ms: 5000 });
     // Find or create a second tab for the right pane
-    const otherTabs = state.tabs.filter(x => x.id !== t.id && x.view === "page");
+    const otherTabs = state.tabs.filter(x => x.id !== t.id && x.view === "page" && !isRemote(x));
     const rightTab = otherTabs[0] || newTab({ url: t.url, background: true });
     ss.active = true; ss.leftTabId = t.id; ss.rightTabId = rightTab.id;
     renderSplitScreen();
@@ -149,6 +166,13 @@ function renderSplitScreen() {
   }
   const leftTab = tabById(ss.leftTabId);
   const rightTab = tabById(ss.rightTabId);
+  // Detach live frames before replacing split chrome; assigning innerHTML first
+  // destroys the iframe and its page state.
+  const leftFrame = leftTab ? frameFor(leftTab) : null;
+  const rightFrame = rightTab ? frameFor(rightTab) : null;
+  const preservedFrames = document.createDocumentFragment();
+  if (leftFrame) preservedFrames.appendChild(leftFrame);
+  if (rightFrame) preservedFrames.appendChild(rightFrame);
   splitContainer.innerHTML = `
     <div class="split-pane split-left" id="splitLeft">
       <div class="split-header"><span class="split-title">${esc(leftTab?.title || "Left")}</span><button class="icon-btn sm" id="splitClose" title="Close split view"><svg><use href="#i-x"/></svg></button></div>
@@ -161,8 +185,8 @@ function renderSplitScreen() {
     </div>
   `;
   // Move frames into split panes
-  if (leftTab) { const f = frameFor(leftTab); if (f) document.getElementById("splitLeftContent")?.appendChild(f); }
-  if (rightTab) { const f = frameFor(rightTab); if (f) document.getElementById("splitRightContent")?.appendChild(f); }
+  if (leftFrame) document.getElementById("splitLeftContent")?.appendChild(leftFrame);
+  if (rightFrame) document.getElementById("splitRightContent")?.appendChild(rightFrame);
   document.getElementById("splitClose")?.addEventListener("click", () => toggleSplitScreen());
   document.getElementById("splitSwap")?.addEventListener("click", () => {
     const tmp = ss.leftTabId; ss.leftTabId = ss.rightTabId; ss.rightTabId = tmp;
@@ -178,7 +202,7 @@ function renderSplitScreen() {
       const rect = splitContainer.getBoundingClientRect();
       const pct = ((e.clientX - rect.left) / rect.width) * 100;
       const clamped = Math.max(20, Math.min(80, pct));
-      splitContainer.style.gridTemplateColumns = `${clamped}% 6px ${100 - clamped}%`;
+      splitContainer.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
     });
     document.addEventListener("mouseup", () => { dragging = false; });
   }
@@ -236,7 +260,7 @@ export function renderTabs() {
     // Skip rendering individual tabs if their group is collapsed
     const group = t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null;
     if (group && group.collapsed) continue;
-    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
+    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
       <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
       <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
     // Close group div after last tab in group
@@ -250,6 +274,12 @@ export function renderTabs() {
   list.querySelectorAll(".tab").forEach(el => {
     el.onmousedown = e => { if (e.button === 1) { e.preventDefault(); closeTab(el.dataset.tab); } };
     el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); };
+    el.onkeydown = e => {
+      const tabs = [...list.querySelectorAll(".tab[data-tab]")]; const i = tabs.indexOf(el);
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length]?.focus(); return; }
+      if (e.key === "Home" || e.key === "End") { e.preventDefault(); tabs[e.key === "Home" ? 0 : tabs.length - 1]?.focus(); return; }
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab(el.dataset.tab); }
+    };
     el.oncontextmenu = e => { e.preventDefault(); tabContextMenu(el.dataset.tab, e.clientX, e.clientY); };
     el.ondragstart = e => { e.dataTransfer.setData("text/veyra-tab", el.dataset.tab); el.classList.add("dragging"); };
     el.ondragend = () => el.classList.remove("dragging");
@@ -315,7 +345,7 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
   const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
   if (!background) state.activeId = t.id;
   renderTabs();
-  if (url) go(url, { tab: t });
+  if (url) go(url, { tab: t, activate: !background });
   else if (view) openInternal(view, { tab: t, section });
   else if (settings.homepage) go(settings.homepage, { tab: t });
   else { t.view = "newtab"; if (!background) renderActive({ push: true }); }
@@ -327,6 +357,7 @@ function teardownTab(t) {
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
   if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
   if (t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
+  if (t.view === "cast") hooks.cleanupCast?.();
   rejectTab(t.id); frameFor(t)?.remove();
 }
 export function closeTab(id, { silent = false } = {}) {
@@ -434,6 +465,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
   }
   if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
   if (t.view === "page") teardownTab(t);
+  else if (t.view === "cast" && view !== "cast") hooks.cleanupCast?.();
   t.view = view; t.section = view === "settings" ? String(section || "") : section || ""; t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
   if (view === "calculator" && calc) t.calcExpression = calc;
   pushTabHistory(t, `veyra:${view}${section ? "/" + section : ""}`);
@@ -514,6 +546,9 @@ let tabsRaf = 0; function renderTabsSoon() { if (tabsRaf) return; tabsRaf = requ
 function getOrCreateFrame(t) {
   let f = frameFor(t); if (f) return f;
   f = document.createElement("iframe"); f.id = "frame-" + t.id; f.name = "veyraFrame_" + t.id; f.className = "tab-frame"; f.title = "Page content";
+  // Proxied destination pages share the server origin, so isolate every page
+  // in an opaque sandbox rather than allowing shared server-origin storage.
+  f.setAttribute("sandbox", "allow-scripts allow-forms allow-popups allow-downloads");
   f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
   $("frameWrap").insertBefore(f, $("frameLoader"));
@@ -594,6 +629,7 @@ function escalateBlankProxyPage(t, key) {
   toast("This page stayed blank under the fast proxy. Switching to Chromium\u2026", { ms: 3500 });
   void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
 }
+const browserFallbackAllowed = () => settings.browserFallback !== false && ["auto", "crawler"].includes(String(settings.runtime || "auto"));
 function detectBlankProxyPage(t) {
   if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
   if (t.browserMode === "BROWSER_ENGINE") return;
@@ -603,7 +639,7 @@ function detectBlankProxyPage(t) {
   // "Fast proxy" is an explicit engine choice: respect it and keep the proxy
   // page instead of silently restarting the tab on Chromium. (The Chromium
   // fallback toggle documents Automatic and Proxy + accelerator modes only.)
-  if (String(settings.runtime || "auto") === "proxy") return;
+  if (!browserFallbackAllowed()) return;
   const first = proxyDocLooksBlank(t);
   if (!first.blank) return;
   // Heavy SPAs hydrate late: the shell can still look empty while a multi-
@@ -636,9 +672,9 @@ function clearRemoteSurface() {
 }
 function ensureRemoteSurface() {
   let v = $("remoteSurface"); if (v) return v;
-  v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0;
+  v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0; v.setAttribute("role", "application"); v.setAttribute("aria-describedby", "remoteA11yNotice"); v.setAttribute("aria-label", "Streamed Chromium browser surface");
   v.style.position = "relative";
-  v.innerHTML = `<img id="remoteImg" alt="Remote Chromium page" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none;visibility:hidden" draggable="false"><div id="remoteLoading" style="position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:var(--bg);color:var(--text-2);z-index:3"><div class="spinner"></div><span class="muted">Starting Chromium…</span></div><div id="remoteError" style="position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--text-2);z-index:3;text-align:center;padding:24px"><svg width="40" height="40" style="color:var(--line-2)"><use href="#i-info"/></svg><b>Remote Chromium unavailable</b><span class="muted small" id="remoteErrorText">The browser session could not be loaded.</span><button class="btn ghost sm" id="remoteRetryBtn">Retry</button></div><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
+  v.innerHTML = `<p id="remoteA11yNotice" class="sr-only">This streamed Chromium page is currently a visual surface; its page structure is not available to assistive technology. Use Fast proxy where possible for an accessible document.</p><img id="remoteImg" alt="Visual stream of a remote Chromium page; page content is not exposed as an accessibility tree." style="width:100%;height:100%;object-fit:contain;display:block;user-select:none;visibility:hidden;touch-action:none" draggable="false"><div id="remoteLoading" style="position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:var(--bg);color:var(--text-2);z-index:3"><div class="spinner"></div><span class="muted">Starting Chromium…</span></div><div id="remoteError" style="position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--text-2);z-index:3;text-align:center;padding:24px"><svg width="40" height="40" style="color:var(--line-2)"><use href="#i-info"/></svg><b>Remote Chromium unavailable</b><span class="muted small" id="remoteErrorText">The browser session could not be loaded.</span><button class="btn ghost sm" id="remoteRetryBtn">Retry</button></div><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
   $("frameWrap").insertBefore(v, $("frameLoader"));
   const img = v.querySelector("img");
   // Server viewport — kept in sync with browser-engine.js contextOptions.viewport.
@@ -680,13 +716,20 @@ function ensureRemoteSurface() {
   img.addEventListener("load", () => { img.style.visibility = "visible"; const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "none"; if (er) er.style.display = "none"; });
   img.addEventListener("error", () => { img.style.visibility = "hidden"; const ld = $("remoteLoading"); if (ld) ld.style.display = "grid"; });
   v.addEventListener("click", e => { if (e.target.id === "remoteRetryBtn" || e.target.closest("#remoteRetryBtn")) { const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "grid"; if (er) er.style.display = "none"; const t = activeTab(); if (t?.browserSessionId) refreshRemote(t, true); } });
-  img.addEventListener("click", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; send({ type: "click", ...pos(e), button: "left" }); });
-  img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e) }));
-  img.addEventListener("contextmenu", e => { e.preventDefault(); send({ type: "click", ...pos(e), button: "right" }); });
-  img.addEventListener("wheel", e => { e.preventDefault(); send({ type: "wheel", ...pos(e), deltaY: e.deltaY, deltaX: e.deltaX }); }, { passive: false });
+  const modifiers = e => ({ altKey: !!e.altKey, ctrlKey: !!e.ctrlKey, metaKey: !!e.metaKey, shiftKey: !!e.shiftKey });
+  let activePointer = null, dragged = false;
+  img.addEventListener("pointerdown", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; activePointer = e.pointerId; dragged = false; img.setPointerCapture?.(e.pointerId); send({ type: "pointer", phase: "down", pointerType: e.pointerType, button: e.button, ...pos(e), ...modifiers(e) }); });
+  img.addEventListener("pointermove", e => { if (activePointer === e.pointerId) { dragged = true; send({ type: "pointer", phase: "move", pointerType: e.pointerType, buttons: e.buttons, ...pos(e), ...modifiers(e) }, { delay: 120 }); } });
+  img.addEventListener("pointerup", e => { if (activePointer !== e.pointerId) return; send({ type: "pointer", phase: "up", pointerType: e.pointerType, button: e.button, ...pos(e), ...modifiers(e) }); if (!dragged) send({ type: "click", ...pos(e), button: e.button === 2 ? "right" : "left", ...modifiers(e) }); activePointer = null; });
+  img.addEventListener("pointercancel", e => { if (activePointer === e.pointerId) { send({ type: "pointer", phase: "cancel", pointerType: e.pointerType, ...pos(e), ...modifiers(e) }); activePointer = null; } });
+  img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e), ...modifiers(e) }));
+  img.addEventListener("contextmenu", e => e.preventDefault());
+  img.addEventListener("wheel", e => { e.preventDefault(); send({ type: "wheel", ...pos(e), deltaY: e.deltaY, deltaX: e.deltaX, ...modifiers(e) }); }, { passive: false });
   img.addEventListener("mousemove", e => { hooks.dt?.hoverRemote(pos(e)); const c = $("remoteCursor"); if (c) { const p = pos(e); const r = img.getBoundingClientRect(); const containerAspect = r.width / r.height; const imageAspect = VW / VH; let imgW, imgH, offsetX, offsetY; if (containerAspect > imageAspect) { imgH = r.height; imgW = r.height * imageAspect; offsetX = (r.width - imgW) / 2; offsetY = 0; } else { imgW = r.width; imgH = r.width / imageAspect; offsetX = 0; offsetY = (r.height - imgH) / 2; } c.style.left = (offsetX + p.x * imgW / VW) + "px"; c.style.top = (offsetY + p.y * imgH / VH) + "px"; c.style.opacity = "0.7"; } });
   img.addEventListener("mouseleave", () => { const c = $("remoteCursor"); if (c) c.style.opacity = "0"; });
-  v.addEventListener("keydown", e => { if (e.ctrlKey || e.metaKey || e.altKey || e.key === "F12") return; e.preventDefault(); send({ type: "key", key: e.key }); });
+  v.addEventListener("keydown", e => { if (e.key === "F12") return; e.preventDefault(); send({ type: "key", key: e.key, code: e.code, repeat: e.repeat, ...modifiers(e) }); });
+  v.addEventListener("paste", e => { const text = e.clipboardData?.getData("text/plain"); if (text != null) { e.preventDefault(); send({ type: "paste", text, ...modifiers(e) }); } });
+  for (const type of ["compositionstart", "compositionupdate", "compositionend"]) v.addEventListener(type, e => send({ type: "composition", phase: type.slice(11), text: e.data || "" }, { delay: 120 }));
   return v;
 }
 function showFrameForTab(t) {
@@ -715,7 +758,7 @@ export async function wakeServer(maxMs = 100000) {
   return false;
 }
 async function createSessionWithWake() {
-  const json = state.incognito ? { incognito: true } : {};
+  const json = { incognito: !!state.incognito };
   try { return await api("/api/session", { json, timeoutMs: 20000 }); }
   catch (e) {
     if (!WAKE_CODES.has(e.code) && ![502, 503, 504].includes(e.status)) throw e;
@@ -741,15 +784,25 @@ async function startNewSession() {
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
   state.session = { id: body.sessionId, startedAt: Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
+  save("veyra-live-session", { id: body.sessionId, startedAt: state.session.startedAt });
   state.sessionWarned = {};
   addLog("info", `Session ${body.sessionId.slice(0, 8)} started${limit ? ` (${fmtClock(limit)} limit)` : ""}.`);
   startSessionTimer();
-  if (settings.blockTrackers) api(`/api/session/${state.session.id}/prefs`, { json: { blockTrackers: true } }).catch(() => {});
+  updateSessionPreferences({ silent: true }).catch(e => addLog("warn", `Could not apply session privacy preferences: ${e.message}`));
   if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(() => {});
   hooks.onSessionChanged?.();
   return state.session;
 }
 function startSessionTimer() { clearInterval(state.sessionTimer); state.sessionTimer = setInterval(tickSession, 250); tickSession(); }
+export async function updateSessionPreferences({ silent = false } = {}) {
+  const session = state.session;
+  if (!session) return { pending: true };
+  const requested = { blockTrackers: !!settings.blockTrackers, doNotTrack: !!settings.doNotTrack };
+  const result = await api(`/api/session/${session.id}/prefs`, { json: requested });
+  if (!silent && typeof result?.prefs?.doNotTrack !== "boolean") toast("This server has not acknowledged Do Not Track yet; the preference is saved and will apply when supported.", { kind: "warn", ms: 6500 });
+  return result;
+}
+hooks.updateSessionPreferences = updateSessionPreferences;
 export function sessionRemaining() { const s = state.session; return s ? Math.max(0, s.expiresAt - Date.now()) : 0; }
 function tickSession() {
   const pill = $("sessionPill"), txt = $("sessionTime"); const s = state.session;
@@ -775,28 +828,38 @@ export async function endSession(reason = "timer") {
     state.session = null; clearInterval(state.sessionTimer);
     // Close every website tab: frames, crawl jobs, Chromium sessions.
     const pageTabs = state.tabs.filter(t => t.view === "page");
+    const restoreUrls = [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
     for (const t of pageTabs) { teardownTab(t); hooks.dt?.onTabClosed(t); }
     state.tabs = state.tabs.filter(t => t.view !== "page");
     if (!state.tabs.length) state.tabs.push(makeTab());
     if (!tabById(state.activeId)) state.activeId = state.tabs[0].id;
     state.closed = state.closed.filter(c => !c.url);
-    if (settings.clearOnSessionEnd) { state.history = state.history.filter(h => h.sid !== s.id); saveHistory(); }
+    if (settings.clearHistoryOnSessionEnd) { state.history = state.history.filter(h => h.sid !== s.id); saveHistory(); }
+    remove("veyra-live-session");
     state.vpn.connected = false; state.vpn.profile = null;
-    try { navigator.sendBeacon?.(`${API}/api/session/${encodeURIComponent(s.id)}/close`, "") || api(`/api/session/${encodeURIComponent(s.id)}/close`, { method: "POST" }).catch(() => {}); } catch {}
+    let closeConfirmed = false;
+    try { const closed = await api(`/api/session/${encodeURIComponent(s.id)}/close`, { method: "POST", timeoutMs: 5000 }); closeConfirmed = !!closed?.ok; } catch {}
     addLog("info", `Session ${s.id.slice(0, 8)} ended (${reason}).`);
     renderTabs(); renderActive({ push: true, replace: true }); tickSession(); hooks.onSessionChanged?.();
-    if (reason === "manual") toast("Session ended and deleted");
-    else if (settings.autoRestartSession) toast("Session expired. A new one starts when you open a site");
+    if (reason === "manual") toast(closeConfirmed ? "Session ended; server cleanup confirmed" : "Session closed locally. Server cleanup could not be confirmed.", { kind: closeConfirmed ? "" : "warn", ms: 5000 });
+    else if (settings.autoRestartSession && restoreUrls.length) {
+      try {
+        await ensureSession();
+        const first = restoreUrls.shift(); if (first) await go(first, { tab: activeTab(), push: true });
+        restoreUrls.forEach((url, i) => setTimeout(() => newTab({ url, background: true }), i * 75));
+        toast("Session restarted; restoring your tabs.");
+      } catch (e) { toast(`Session ended. Couldn't restart automatically: ${e.message}`, { kind: "err" }); }
+    }
     else {
       const active = activeTab();
       const hadPage = pageTabs.length > 0;
       $("sessionOverText").textContent = reason === "server"
-        ? "The server reports this session has expired. Veyra deleted its cookies, tabs, Chromium context and VPN tunnel."
-        : `Your ${fmtClock(s.limitMs)} are up. Veyra deleted the session on the server: cookies, tabs, Chromium context and VPN tunnel.`;
+        ? "The server reports this session has expired. Local tabs are closed; any server cleanup is controlled by the server."
+        : `Your ${fmtClock(s.limitMs)} session ended. Local tabs are closed${closeConfirmed ? "; server cleanup was confirmed." : "; server cleanup could not be confirmed."}`;
       // After expiry the page tabs are already removed and a New Tab is restored.
       // Keep that New Tab usable rather than covering it with a modal.
       if (hadPage && active?.view === "page") { $("sessionOverlay").classList.remove("hidden"); $("sessionRestart").focus(); }
-      else toast(reason === "server" ? "Session expired" : "Session ended — deleted for privacy", { kind: "warn" });
+      else toast(reason === "server" ? "Session expired" : (closeConfirmed ? "Session ended; server cleanup confirmed" : "Session ended locally; server cleanup was not confirmed"), { kind: closeConfirmed ? "" : (reason === "server" ? "warn" : "err") });
     }
   } finally { state.sessionEnding = false; }
 }
@@ -826,7 +889,7 @@ export function classify(input) {
   if (looksLikeCalc(v)) return { kind: "calc", expression: v };
   return { kind: "search", query: v };
 }
-export async function go(input, { tab = null, push = true, newTab: inNew = false } = {}) {
+export async function go(input, { tab = null, push = true, newTab: inNew = false, activate = true } = {}) {
   const r = classify(input); if (!r) return;
   if (inNew) { newTab({ url: input }); return; }
   if (r.kind === "internal") { openInternal(r.view, { tab, section: r.section, push }); return; }
@@ -834,16 +897,16 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   if (r.kind === "calc") { openInternal("calculator", { tab, calc: r.expression, push }); return; }
   if (r.kind === "search") {
     const ext = engineUrl(r.query);
-    if (ext) return navigate(ext, { tab, push, record: { kind: "search", title: `${r.query} - ${engineName()}` } });
+    if (ext) return navigate(ext, { tab, push, activate, record: { kind: "search", title: `${r.query} - ${engineName()}` } });
     return showSearch(r.query, { tab, push });
   }
   let url; try { url = new URL(r.url).href; } catch { toast("That address isn't valid", { kind: "err" }); return; }
-  return navigate(url, { tab, push });
+  return navigate(url, { tab, push, activate });
 }
-export async function navigate(url, { tab = null, push = true, pushHist = true, record = null } = {}) {
+export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
-  state.activeId === t.id || (state.activeId = t.id);
+  if (activate) state.activeId = t.id;
   if (pushHist) pushTabHistory(t, url);
   sendNeuralFeedback(url, true, 0.5); // Light positive signal for navigation
   await loadInTab(t, url, { loadFrame: true, record });
@@ -896,7 +959,7 @@ function resolveStrategy(url) {
   // Known-broken Fast-proxy hosts: try Chromium first (still fall back to proxy
   // if capacity is full). This is what makes Roblox signup/login and browser.lol
   // session creation possible.
-  if (hostNeedsRealBrowser(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
+  if (hostNeedsRealBrowser(url) && browserFallbackAllowed()) {
     return { key: "combined", proxy: true, crawler: false, browser: true, race: true, auto: true, forceBrowserHost: true };
   }
   if (!base.auto) return base;
@@ -904,7 +967,7 @@ function resolveStrategy(url) {
   // A cached verdict for this host picks the pipeline immediately; otherwise
   // the probe runs in parallel and can still escalate a slow page to Chromium.
   const cached = state.capabilityCache.get(hostOf(url));
-  if (cached === "BROWSER_ENGINE") return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
+  if (cached === "BROWSER_ENGINE" && browserFallbackAllowed()) return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
   if (cached === "ACCELERATED_PROXY") return { ...base, accelerate: true };
   return { ...base, probe: !cached };
 }
@@ -1159,7 +1222,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (mode === "ACCELERATED_PROXY" && !state.server.leanMode) scheduleDeferredCrawler(t, url, session, true, 150);
       // Still loading after the probe says "needs a real browser": race Chromium.
-      else if (mode === "BROWSER_ENGINE" && t.loading && !state.server.leanMode) {
+      else if (mode === "BROWSER_ENGINE" && browserFallbackAllowed() && t.loading && !state.server.leanMode) {
         t.loadStrategy = "combined"; t.renderWinner = "";
         void raceChromium();
       }
@@ -1362,7 +1425,11 @@ export async function stopLoad() {
   setLoading(false); toast("Stopped loading");
 }
 export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
-export function pageCommand(type, payload = {}, t = activeTab()) { const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false; try { f.contentWindow.postMessage({ type, ...payload }, API_ORIGIN); return true; } catch { return false; } }
+export function pageCommand(type, payload = {}, t = activeTab()) {
+  const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false;
+  const targetOrigin = f.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
+  try { f.contentWindow.postMessage({ type, ...payload }, targetOrigin); return true; } catch { return false; }
+}
 export function printPage() { const t = activeTab(); if (t?.view !== "page" || !t.url) { window.print(); return; } if (isRemote(t)) { window.open(`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot`, "_blank", "noopener"); return; } if (!pageCommand("veyra:print")) toast("This page can't be printed yet", { kind: "warn" }); }
 export function setZoom(z, t = activeTab()) {
   if (!t || t.view !== "page") { const s = Math.max(.8, Math.min(1.4, Number(z) || 1)); settings.fontScale = s; saveSettings(); document.documentElement.style.setProperty("--ui-scale", s); toast(`Veyra UI ${Math.round(s * 100)}%`); return; }
@@ -1496,7 +1563,11 @@ function renderSearch() {
 }
 async function loadIndexStats() { try { const b = await api("/api/search/stats", { timeoutMs: 6000 }); $("searchCoverage").textContent = `Veyra Index: ${Number(b.documents || 0).toLocaleString()} pages · ${Number(b.domains || 0).toLocaleString()} domains`; } catch { $("searchCoverage").textContent = ""; } }
 let suggestTimer = 0;
-function loadSuggestions(q) { clearTimeout(suggestTimer); suggestTimer = setTimeout(async () => { if (!q.trim()) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160); }
+function loadSuggestions(q) {
+  clearTimeout(suggestTimer);
+  if (!settings.suggestions) { $("searchSuggestions").innerHTML = ""; return; }
+  suggestTimer = setTimeout(async () => { if (!settings.suggestions || !q.trim()) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); if (settings.suggestions) $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160);
+}
 export async function omniSuggest(q) {
   if (!settings.suggestions || !q.trim()) return [];
   try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=5`, { timeoutMs: 3000 }); return b.suggestions || []; } catch { return []; }
@@ -1504,16 +1575,27 @@ export async function omniSuggest(q) {
 
 // ---------------------------------------------------------------- calculator (no eval)
 function tokenize(s) {
-  const out = []; let i = 0; s = String(s).replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").replace(/,/g, "");
-  while (i < s.length) { const c = s[i]; if (/\s/.test(c)) { i++; continue; } if (/[0-9.]/.test(c)) { let j = i; while (j < s.length && /[0-9.]/.test(s[j])) j++; const raw = s.slice(i, j); if ((raw.match(/\./g) || []).length > 1 || raw === ".") throw new Error("Invalid number."); out.push({ t: "n", v: Number(raw) }); i = j; continue; } if ("+-*/%^()".includes(c)) { out.push({ t: "o", v: c }); i++; continue; } throw new Error(`Unsupported character “${c}”.`); }
+  const out = []; let i = 0; s = String(s).replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+  while (i < s.length) {
+    const c = s[i]; if (/\s/.test(c)) { i++; continue; }
+    if (/[0-9.]/.test(c)) {
+      const raw = s.slice(i).match(/^(?:(?:\d{1,3}(?:,\d{3})+)|\d+)(?:\.\d+)?(?:e[+-]?\d+)?|^\.\d+(?:e[+-]?\d+)?/i)?.[0];
+      if (!raw) throw new Error("Invalid number.");
+      out.push({ t: "n", v: Number(raw.replace(/,/g, "")) }); i += raw.length; continue;
+    }
+    if ("+-*/%^()".includes(c)) { out.push({ t: "o", v: c }); i++; continue; }
+    if (c === ",") throw new Error("Use decimal points; thousands separators must group three digits.");
+    throw new Error(`Unsupported character “${c}”.`);
+  }
   out.push({ t: "e" }); return out;
 }
 export function evaluate(expr) {
   const tk = tokenize(expr); let p = 0; const peek = () => tk[p], take = () => tk[p++];
+  const primary = () => { const x = take(); if (x.t === "n") return x.v; if (x.v === "(") { const v = expr0(); if (take().v !== ")") throw new Error("Missing closing parenthesis."); return v; } throw new Error("Expected a number."); };
+  const postfix = () => { let v = primary(); while (peek().v === "%") { take(); v /= 100; } return v; };
   const unary = () => { if (peek().v === "-") { take(); return -unary(); } if (peek().v === "+") { take(); return unary(); } return power(); };
-  const power = () => { let b = primary(); if (peek().v === "^") { take(); b = Math.pow(b, unary()); } return b; };
-  const primary = () => { const x = take(); if (x.t === "n") { if (peek().v === "%" && (tk[p + 1].t === "e" || ["+", "-", ")"].includes(tk[p + 1].v))) { take(); return x.v / 100; } return x.v; } if (x.v === "(") { const v = expr0(); if (take().v !== ")") throw new Error("Missing closing parenthesis."); return v; } throw new Error("Expected a number."); };
-  const term = () => { let v = unary(); while (["*", "/", "%"].includes(peek().v)) { const o = take().v, r = unary(); if (o === "/" && r === 0) throw new Error("Division by zero."); v = o === "*" ? v * r : o === "/" ? v / r : v % r; } return v; };
+  const power = () => { let b = postfix(); if (peek().v === "^") { take(); b = Math.pow(b, unary()); } return b; };
+  const term = () => { let v = unary(); while (["*", "/"].includes(peek().v)) { const o = take().v, r = unary(); if (o === "/" && r === 0) throw new Error("Division by zero."); v = o === "*" ? v * r : v / r; } return v; };
   const expr0 = () => { let v = term(); while (["+", "-"].includes(peek().v)) { const o = take().v, r = term(); v = o === "+" ? v + r : v - r; } return v; };
   const v = expr0(); if (peek().t !== "e") throw new Error("Unexpected token."); if (!Number.isFinite(v)) throw new Error("Result isn't finite."); return v;
 }
@@ -1523,7 +1605,7 @@ function renderCalculator() {
   if (document.activeElement !== input) input.value = t.calcExpression || "";
   const v = input.value.trim(); t.calcExpression = v;
   if (!v) { $("calcResult").textContent = "0"; $("calcStatus").textContent = "Supports + − × ÷ % ^, parentheses and negative numbers."; return; }
-  try { $("calcResult").textContent = fmtNum(evaluate(v)); $("calcStatus").textContent = "Calculated on your device."; } catch (e) { $("calcResult").textContent = "—"; $("calcStatus").textContent = e.message; }
+  try { const result = evaluate(v); $("calcResult").textContent = fmtNum(result); $("calcStatus").textContent = Number.isInteger(result) && !Number.isSafeInteger(result) ? "Calculated on your device. Large integer precision may be limited." : "Calculated on your device."; } catch (e) { $("calcResult").textContent = "—"; $("calcStatus").textContent = e.message; }
 }
 function setupCalculator() {
   const keys = ["C", "(", ")", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "%", "0", ".", "="];
@@ -1536,11 +1618,25 @@ function setupCalculator() {
 }
 
 // ---------------------------------------------------------------- downloads
+const MAX_IN_MEMORY_DOWNLOAD = 100 * 1024 * 1024;
+function safeDownloadName(value, fallback = "download") {
+  let name = String(value || "").split("/").pop().split("?")[0] || fallback;
+  try { name = decodeURIComponent(name); } catch {}
+  name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim();
+  return name.slice(0, 180) || fallback;
+}
+function trimDownloads() {
+  const max = Math.max(10, Number(settings.downloadsMax) || 200);
+  if (state.downloads.length <= max) return;
+  const live = state.downloads.filter(d => state.downloadControllers.has(d.id) || ["starting", "downloading"].includes(d.status));
+  const settled = state.downloads.filter(d => !live.includes(d)).slice(0, Math.max(0, max - live.length));
+  const keep = new Set([...live, ...settled]); state.downloads = state.downloads.filter(d => keep.has(d));
+}
 export async function startDownload(url, name = "") {
   if (!/^https?:\/\//i.test(url || "")) return;
   let session; try { session = await ensureSession(); } catch (e) { toast(e.message, { kind: "err" }); return; }
-  const item = { id: uid(), time: new Date().toISOString(), url, name: name || decodeURIComponent(pathOf(url).split("/").pop().split("?")[0] || hostOf(url)) || "download", status: "starting", received: 0, total: 0 };
-  state.downloads.unshift(item); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.();
+  const item = { id: uid(), time: new Date().toISOString(), url, name: safeDownloadName(name || pathOf(url), hostOf(url) || "download"), status: "starting", received: 0, total: 0 };
+  state.downloads.unshift(item); trimDownloads(); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.();
   if (settings.downloadsOpenOnStart) toast(`Downloading ${item.name}`, { action: () => openInternal("downloads"), actionLabel: "Show" });
   const controller = new AbortController(); state.downloadControllers.set(item.id, controller);
   const timeoutMs = Math.max(30000, Number(settings.requestTimeoutMs) || 30000);
@@ -1549,15 +1645,30 @@ export async function startDownload(url, name = "") {
     const res = await rawFetch(proxyUrl(url, "download", session.id), { signal: controller.signal });
     if (!res.ok) { let m = `HTTP ${res.status}`; try { m = (await res.json()).error || m; } catch {} throw new Error(m); }
     item.total = Number(res.headers.get("content-length") || 0);
-    const cd = res.headers.get("content-disposition") || ""; const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i); if (m) try { item.name = decodeURIComponent(m[1]); } catch {}
+    const cd = res.headers.get("content-disposition") || ""; const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i); if (m) item.name = safeDownloadName(m[1], item.name);
     const reader = res.body?.getReader(); const chunks = [];
-    if (reader) for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); item.received += value.byteLength; item.status = "downloading"; renderDownloadsSoon(); }
-    else { const buf = new Uint8Array(await res.arrayBuffer()); chunks.push(buf); item.received = buf.byteLength; }
-    const blob = new Blob(chunks, { type: res.headers.get("content-type") || "application/octet-stream" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: item.name }); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    let writer = null;
+    if (reader && window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({ suggestedName: item.name, types: [{ description: "Download", accept: { "application/octet-stream": [".*"] } }] });
+      writer = await handle.createWritable();
+    } else if (item.total > MAX_IN_MEMORY_DOWNLOAD) {
+      throw new Error("This download is over the 100 MB browser-memory limit. Use a browser with streaming file saving to continue.");
+    }
+    if (reader) for (;;) {
+      const { done, value } = await reader.read(); if (done) break;
+      item.received += value.byteLength; item.status = "downloading"; renderDownloadsSoon();
+      if (writer) await writer.write(value);
+      else { if (item.received > MAX_IN_MEMORY_DOWNLOAD) throw new Error("Download exceeded the 100 MB browser-memory limit."); chunks.push(value); }
+    }
+    else {
+      if (item.total > MAX_IN_MEMORY_DOWNLOAD) throw new Error("This download is over the 100 MB browser-memory limit.");
+      const buf = new Uint8Array(await res.arrayBuffer()); if (buf.byteLength > MAX_IN_MEMORY_DOWNLOAD) throw new Error("Download exceeded the 100 MB browser-memory limit."); chunks.push(buf); item.received = buf.byteLength;
+    }
+    if (writer) await writer.close();
+    else { const blob = new Blob(chunks, { type: res.headers.get("content-type") || "application/octet-stream" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: item.name }); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000); }
     item.status = "complete"; item.total = item.total || item.received;
   } catch (e) { item.status = e.name === "AbortError" ? "cancelled" : "failed"; item.error = e.message; if (e.name !== "AbortError") toast(`Download failed: ${e.message}`, { kind: "err" }); }
-  finally { clearTimeout(timeout); state.downloadControllers.delete(item.id); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.(); }
+  finally { clearTimeout(timeout); state.downloadControllers.delete(item.id); trimDownloads(); saveDownloads(); renderDownloads(); hooks.onDownloadsChanged?.(); }
 }
 let dlRaf = 0; function renderDownloadsSoon() { if (dlRaf) return; dlRaf = requestAnimationFrame(() => { dlRaf = 0; renderDownloads(); }); }
 function renderDownloads() {
@@ -1578,8 +1689,9 @@ function renderDownloads() {
 function renderHistory() {
   const box = $("historyList"); if (!box) return;
   const q = $("historyFilter").value.toLowerCase();
-  const list = state.history.filter(h => !q || (h.title + " " + h.url).toLowerCase().includes(q)).slice(0, 600);
-  if (!list.length) { box.innerHTML = `<div class="empty"><svg><use href="#i-history"/></svg><b>${q ? "Nothing matches" : "Your history is empty"}</b><span>${settings.clearOnSessionEnd ? "History from a session is removed when it ends. You can change this in Settings > Privacy." : "Pages you visit show up here."}</span></div>`; return; }
+  const all = state.history.filter(h => !q || (h.title + " " + h.url).toLowerCase().includes(q));
+  const list = all.slice(0, state.historyRenderLimit);
+  if (!list.length) { box.innerHTML = `<div class="empty"><svg><use href="#i-history"/></svg><b>${q ? "Nothing matches" : "Your history is empty"}</b><span>${settings.clearHistoryOnSessionEnd ? "History from a session is removed when it ends. You can change this in Settings > Privacy." : "Pages you visit show up here."}</span></div>`; return; }
   let lastDay = ""; let html = "";
   for (const h of list) {
     const day = new Date(h.time).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
@@ -1587,8 +1699,8 @@ function renderHistory() {
     const li = letterIcon(h.url);
     html += `<div class="row-item"><time>${new Date(h.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><b style="display:grid;place-items:center;width:20px;height:20px;border-radius:5px;background:${li.color};color:#fff;font-size:11px;flex:none">${esc(li.letter)}</b><div class="ri-main" style="cursor:pointer" data-open="${esc(h.url)}"><b>${esc(h.title)}</b><span>${esc(displayUrl(h.url))}</span></div><button class="icon-btn sm" title="Remove" data-rm="${h.id}"><svg><use href="#i-x"/></svg></button></div>`;
   }
-  box.innerHTML = html;
-  box.onclick = e => { const o = e.target.closest("[data-open]"); if (o) { go(o.dataset.open.startsWith("veyra://search?q=") ? decodeURIComponent(o.dataset.open.split("q=")[1]) : o.dataset.open, { newTab: e.ctrlKey || e.metaKey }); return; } const r = e.target.closest("[data-rm]"); if (r) { state.history = state.history.filter(h => h.id !== r.dataset.rm); saveHistory(); renderHistory(); } };
+  box.innerHTML = html + (list.length < all.length ? `<button class="btn ghost" id="historyMore">Show ${Math.min(600, all.length - list.length).toLocaleString()} more</button>` : "");
+  box.onclick = e => { const o = e.target.closest("[data-open]"); if (o) { go(o.dataset.open.startsWith("veyra://search?q=") ? decodeURIComponent(o.dataset.open.split("q=")[1]) : o.dataset.open, { newTab: e.ctrlKey || e.metaKey }); return; } if (e.target.closest("#historyMore")) { state.historyRenderLimit += 600; renderHistory(); return; } const r = e.target.closest("[data-rm]"); if (r) { state.history = state.history.filter(h => h.id !== r.dataset.rm); saveHistory(); renderHistory(); } };
 }
 export function clearBrowsingData({ history = true, downloads = false, cookies = false, cache = false, since = 0 } = {}) {
   const cutoff = since ? Date.now() - since : 0;
@@ -1870,8 +1982,11 @@ function tabForSource(src) {
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
-  if (e.origin !== API_ORIGIN) return;
-  const t = tabForSource(e.source) || activeTab(); if (!t) return;
+  // Sandboxed proxy frames report an opaque "null" origin. Accept that only
+  // after binding the sender to an exact live tab frame; never fall back to the
+  // active tab for an unknown sender.
+  if (e.origin !== API_ORIGIN && e.origin !== "null") return;
+  const t = tabForSource(e.source); if (!t) return;
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
@@ -1880,7 +1995,7 @@ async function handleMessage(e) {
     if (u && t.view === "page" && !isRemote(t)) {
       // "Fast proxy" is an explicit engine choice — respect it. Log the
       // limitation instead of silently switching engines on the user.
-      if (String(settings.runtime || "auto") === "proxy") {
+      if (!browserFallbackAllowed()) {
         addLog("debug", `${hostOf(u)} wanted a browser feature (${d.reason || "site feature"}); staying on the forced fast proxy.`);
         return;
       }
@@ -1916,7 +2031,7 @@ async function handleMessage(e) {
     const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
-    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !isYouTubeUrl(t.url) && String(settings.runtime || "auto") !== "proxy") {
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {
       t.compatFallbackTried ||= new Set();
       const key = `${t.url}|react-hydration`;
       if (!t.compatFallbackTried.has(key)) {
@@ -2035,7 +2150,7 @@ function wire() {
 export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
-  ensureSession, endSession, sessionRemaining, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel,
+  ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
   omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading
 };
 hooks.B = B;
@@ -2045,8 +2160,11 @@ function applyStartup(params) {
   if (currentRoute() !== "/browse" || params.get("url") || params.get("q") || location.hash) return;
   if (settings.startup === "url" && settings.startupUrl) { go(settings.startupUrl, { tab: activeTab(), push: false }); return; }
   if (settings.startup === "continue") {
-    const urls = load("veyra-last-tabs", []).filter(u => /^https?:/.test(u)).slice(0, 8);
-    urls.forEach((u, i) => i === 0 ? go(u, { tab: activeTab(), push: false }) : newTab({ url: u, background: true }));
+    const urls = load("veyra-last-tabs", []).filter(u => /^https?:/.test(u));
+    const first = urls.shift(); if (first) go(first, { tab: activeTab(), push: false });
+    // Restore the remainder gradually without silently discarding an arbitrary
+    // tail of the saved workspace.
+    urls.forEach((u, i) => setTimeout(() => newTab({ url: u, background: true }), (i + 1) * 75));
   }
 }
 setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs", state.tabs.filter(t => t.view === "page" && t.url).map(t => t.url)); }, 3000);
@@ -2054,6 +2172,7 @@ setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs",
 async function boot() {
   try {
     wire();
+    cleanupUnfinishedSessionHistory();
     const params = new URLSearchParams(location.search);
     const r = params.get("veyra_route");
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }

@@ -1,0 +1,4 @@
+{
+  "apiBase": "https://veyraserver-xscy.onrender.com",
+  "note": "Deployment configuration. Keep this value aligned with the veyra-api metadata in index.html and browse/index.html; runtime query parameters are intentionally ignored."
+}
