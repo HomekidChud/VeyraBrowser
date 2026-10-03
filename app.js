@@ -40,6 +40,10 @@ function youtubeEmbedUrl(raw) {
     return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.toString()}`;
   } catch { return null; }
 }
+function isYouTubeUrl(raw) {
+  try { return /(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(new URL(String(raw)).hostname.toLowerCase()); }
+  catch { return false; }
+}
 
 // ---------------------------------------------------------------- state
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -980,6 +984,16 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
     f.src = proxyUrl(url, "view", session.id, previousUrl);
     if (activeTab() === t) showFrameForTab(t);
+    // YouTube keeps long-running requests open, so iframe load is not a
+    // reliable first-paint signal. Never leave the browser chrome covered by
+    // the spinner when the proxy document is already available.
+    if (isYouTubeUrl(url)) setTimeout(() => {
+      if (state.tabs.includes(t) && t.url === url && t.browserMode === "FAST_PROXY" && t.loading) {
+        t.loading = false;
+        if (activeTab() === t) setLoading(false);
+        renderTabsSoon();
+      }
+    }, 3500);
   };
 
   // raceChromium starts a Chromium session in the background. If the server
@@ -1786,7 +1800,7 @@ async function handleMessage(e) {
     const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
-    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && String(settings.runtime || "auto") !== "proxy") {
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !isYouTubeUrl(t.url) && String(settings.runtime || "auto") !== "proxy") {
       t.compatFallbackTried ||= new Set();
       const key = `${t.url}|react-hydration`;
       if (!t.compatFallbackTried.has(key)) {
