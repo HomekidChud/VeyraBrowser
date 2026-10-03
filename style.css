@@ -1057,7 +1057,10 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
   .tab-group-header{max-width:120px}
   .tab-group-name{max-width:80px}
   /* Hide popover elements that stick out */
-  .popover,.menu,.ctx-menu{max-width:calc(100vw - 24px)}
+  .popover,.menu,.ctx-menu{max-width:calc(100vw - 24px);box-sizing:border-box}
+  .popover{width:auto;left:12px!important;right:12px!important}
+  .popover>div[style*="display:flex"]{display:flex!important;flex-wrap:wrap!important}
+  .popover>div[style*="display:flex"]>.btn{flex:1 1 100%;min-width:0;white-space:normal}
   /* Fix VPN popover on mobile */
   .vpn-list{max-height:300px;overflow-y:auto}
   /* Fix side panel on mobile */
