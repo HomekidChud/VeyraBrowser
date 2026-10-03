@@ -1,6 +1,6 @@
 // Veyra settings page: browser-style sections, search, rebindable shortcuts, account and admin.
 import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin } from "./core.js";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.2";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.3";
 
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -140,6 +140,7 @@ function vpnSection() {
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" data-act="addCustomVpn">Add VPN provider</button>
         <button class="btn ghost" data-act="importVpnConfig">Import WireGuard config</button>
+        <button class="btn ghost" data-act="importVeyraNodeCode">Paste Veyra Node code</button>
         <button class="btn ghost" data-act="runVeyraNode">Run VeyraVPN Node</button>
       </div>
     </div>`);
@@ -346,6 +347,19 @@ async function act(a, el) {
       renderVpnList();
       return;
     }
+    case "importVeyraNodeCode": {
+      const r = await promptDialog({ title: "Paste Veyra Node code", ok: "Add node", fields: [
+        { name: "code", label: "Temporary node code", value: "", placeholder: "VNODE1.…", required: true }
+      ] });
+      if (!r?.code) return;
+      try {
+        const p = await decodeVeyraNodeCode(r.code);
+        await api("/api/vpn/custom", { method: "POST", json: { name: p.name, type: "socks5", server: p.server, username: p.username, password: p.password, region: p.region, publicIp: p.publicIp, source: "node" } });
+        toast(`${p.name || "Veyra Node"} added`);
+      } catch (e) { toast(`Invalid or expired node code: ${e.message}`, { kind: "err" }); }
+      renderVpnList();
+      return;
+    }
     case "runVeyraNode": {
       showVeyraNodeGuide();
       return;
@@ -409,6 +423,24 @@ async function renderVpnList() {
   `).join("");
 }
 
+async function decodeVeyraNodeCode(input) {
+  const parts = String(input || "").trim().split(".");
+  if (parts.length !== 3 || parts[0] !== "VNODE1") throw new Error("unrecognised format");
+  const body = parts[1], expected = parts[2].toLowerCase();
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)));
+  const actual = [...bytes].map(x => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  if (actual !== expected) throw new Error("checksum failed");
+  let payload;
+  try {
+    const raw = atob(body.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - body.length % 4) % 4));
+    payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(raw, c => c.charCodeAt(0))));
+  } catch { throw new Error("invalid payload"); }
+  if (payload.v !== 1 || !payload.expiresAt || Date.now() >= Number(payload.expiresAt)) throw new Error("code expired");
+  if (payload.type !== "socks5" || !/^socks5:\/\//i.test(String(payload.server || ""))) throw new Error("unsupported node profile");
+  if (!payload.username || !payload.password) throw new Error("missing credentials");
+  return payload;
+}
+
 function showVeyraNodeGuide() {
   const modal = document.createElement("dialog");
   modal.className = "vpn-node-guide";
@@ -424,8 +456,8 @@ function showVeyraNodeGuide() {
             <li>Install Node.js 18+ on any machine (home server, VPS, Raspberry Pi)</li>
             <li>Download <code style="background:#0d0f13;padding:2px 6px;border-radius:4px">veyra-node.js</code> from the <a href="https://github.com/HomekidChud/VeyraServer" target="_blank" rel="noopener" style="color:var(--accent)">VeyraServer repo</a></li>
             <li>Run: <code style="background:#0d0f13;padding:2px 6px;border-radius:4px">node veyra-node.js</code></li>
-            <li>It prints your server address, username, and password</li>
-            <li>Copy those into "Add VPN provider" here</li>
+            <li>Copy the temporary <code style="background:#0d0f13;padding:2px 6px;border-radius:4px">VNODE1.…</code> code it prints</li>
+            <li>Use <b>Paste Veyra Node code</b> below; it expires automatically</li>
           </ol>
         </div>
 

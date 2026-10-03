@@ -4,7 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js";
+import { initSettings } from "./settings.js?v=8.28.3";
 
 let B;
 
