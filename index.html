@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0d0f13">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>Veyra — browse through a clean session</title>
-  <script>/* Resolve assets from the app root even on deep links like /settings/about. */(function(){var m=location.pathname.match(/^(.*?)\/(?:browse|search|calculator|downloads|history|extensions|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/.*)?$/);var b=m?m[1]+'/':location.pathname.replace(/[^\/]*$/,'');window.VEYRA_BASE=b;if(/\/incognito\/?$/.test(location.pathname)){location.replace(b+'browse?incognito=1');return;}var l=document.createElement('link');l.rel='stylesheet';l.href=b+'style.css?v=8.21.0';document.head.appendChild(l);})();</script>
+  <script>/* Resolve assets from the app root even on deep links like /settings/about. */(function(){var m=location.pathname.match(/^(.*?)\/(?:browse|search|calculator|downloads|history|extensions|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/.*)?$/);var b=m?m[1]+'/':location.pathname.replace(/[^\/]*$/,'');window.VEYRA_BASE=b;if(/\/incognito\/?$/.test(location.pathname)){location.replace(b+'browse?incognito=1');return;}var l=document.createElement('link');l.rel='stylesheet';l.href=b+'style.css?v=8.22.0';document.head.appendChild(l);})();</script>
   <script>(function(){var b=window.VEYRA_BASE||'./';[['icon','assets/favicon.svg','image/svg+xml'],['icon','assets/favicon.ico',''],['apple-touch-icon','assets/apple-touch-icon.png','']].forEach(function(x){var l=document.createElement('link');l.rel=x[0];l.href=b+x[1];if(x[2])l.type=x[2];document.head.appendChild(l);});})();</script>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Veyra">
@@ -83,6 +83,8 @@
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></symbol>
     <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4l8.5 4.5L12 13 3.5 8.5z"/><path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/></symbol>
     <symbol id="i-app" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-4L3 9m0 0V4m0 5h5M4 13a8 8 0 0 0 14.7 4L21 15m0 0v5m0-5h-5"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
     <symbol id="i-platform" viewBox="0 0 24 24"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M12 3.5v8.7m7.5-4.5L12 12.2 4.5 7.7M12 12.2v8.3"/></symbol>
     <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M4.5 7.5h14a2 2 0 0 1 2 2v8.2a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1.2"/><path d="M16 12.5h4.5v3H16a1.5 1.5 0 0 1 0-3z"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8.5" cy="14.5" r="4.5"/><path d="M12 11l8-8m-3 3l2 2m-5 1l2 2"/></symbol>
@@ -397,7 +399,7 @@
 
   <div class="fatal hidden" id="fatalOverlay"><div class="overlay-card"><h2>Veyra hit an error</h2><pre id="fatalMessage"></pre><button class="btn primary" onclick="location.reload()">Reload</button></div></div>
 
-  <script>(function(){var s=document.createElement("script");s.type="module";s.src=(window.VEYRA_BASE||"./")+"app.js?v=8.21.0";document.body.appendChild(s);})();</script>
+  <script>(function(){var s=document.createElement("script");s.type="module";s.src=(window.VEYRA_BASE||"./")+"app.js?v=8.22.0";document.body.appendChild(s);})();</script>
   <noscript><p style="padding:24px">Veyra needs JavaScript.</p></noscript>
 </body>
 </html>
