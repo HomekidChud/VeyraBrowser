@@ -1228,3 +1228,10 @@ body{letter-spacing:-.006em}
   .toolbar>.icon-btn{flex:0 0 28px}
   .omnibox{flex:1 1 auto}
 }
+
+@media(max-width:560px){
+  .land-nav{flex-wrap:nowrap;gap:10px}
+  .land-actions{width:auto;margin-left:auto;flex:none;gap:6px}
+  .land-actions .btn{height:32px;padding:0 10px;font-size:.78rem}
+  .land-actions .btn.ghost{display:inline-flex}
+}
