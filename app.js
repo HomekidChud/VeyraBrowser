@@ -1389,20 +1389,22 @@ async function runSearch(query, offset = 0) {
     b.source = source;
     if (offset && t.searchData) t.searchData.results.push(...(b.results || [])); else t.searchData = b;
     renderSearch();
-    // Fetch AI answer in parallel (non-blocking)
-    if (!offset && source === "web" && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results);
+    // Fetch a grounded answer for both web results and the local Veyra index.
+    if (!offset && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results, source);
   } catch (e) { $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
 }
-async function fetchAIAnswer(t, query, results) {
+async function fetchAIAnswer(t, query, results, source = "web") {
   const ai = $("aiAnswer");
   if (!ai) return;
   ai.classList.remove("hidden");
-  ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Analyzing results…</span></div><div class="ai-answer-body"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div></div></div>`;
+  ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Reading ${source === "index" ? "Veyra Index sources" : "the top sources"}…</span></div><div class="ai-answer-body"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div></div></div>`;
   try {
-    const r = await api("/api/search/answer", { json: { query, results: results.slice(0, 5).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 15000 });
+    const r = await api("/api/search/answer", { json: { query, source, results: results.slice(0, 8).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 20000 });
     if (activeTab() !== t || t.searchQuery !== query) return;
     if (r.hasAnswer) {
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
+      const points = (r.keyPoints || []).filter(Boolean).slice(0, 4);
+      const caveats = (r.caveats || []).filter(Boolean).slice(0, 3);
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}${points.length ? `<div class="ai-key-points"><b>Key points</b><ul>${points.map(p => `<li>${highlightTerms(p, query)}</li>`).join("")}</ul></div>` : ""}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(s.id ? `${s.id} · ` : "")}${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
       ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
     } else {
       ai.classList.add("hidden");
