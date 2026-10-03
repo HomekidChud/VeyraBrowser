@@ -1,6 +1,6 @@
 "use strict";
 /** Session renewal ads: automatic, labeled, time-bounded sponsor gate. */
-import { $, esc, api, toast, addLog, fmtClock, hooks } from "./core.js";
+import { $, esc, api, proxyUrl, toast, addLog, fmtClock, hooks } from "./core.js";
 
 let active = false;
 let lastSessionId = "";
@@ -55,11 +55,15 @@ function playAd(watchId, ad, rewardMs) {
     <div id="renewMedia" class="ad-gate-media" aria-label="Sponsored advertisement"></div>
     <div class="ad-gate-footer"><span class="muted small" id="renewState">Playing · no action required</span><span class="pill">Ad ${adCursor} · rotating inventory</span></div>`;
   const media = $("renewMedia");
-  if (ad.type === "youtube" && ad.youtubeId) media.innerHTML = `<iframe width="100%" height="340" src="https://www.youtube-nocookie.com/embed/${esc(ad.youtubeId)}?autoplay=1&rel=0&modestbranding=1" title="Sponsored advertisement" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-  else if (ad.type === "video" && ad.url) media.innerHTML = `<video src="${esc(ad.url)}" autoplay playsinline style="width:100%;max-height:380px"></video>`;
-  else if (ad.type === "banner" && (ad.imageUrl || ad.url)) media.innerHTML = `<a href="${esc(ad.url || "#")}" target="_blank" rel="noopener"><img src="${esc(ad.imageUrl || ad.url)}" alt="Sponsored advertisement" style="max-width:100%;max-height:380px;object-fit:contain"></a>`;
-  else if (ad.url) media.innerHTML = `<iframe src="${esc(ad.url)}" title="Sponsored advertisement" style="width:100%;height:340px;border:0" sandbox="allow-scripts allow-same-origin allow-popups"></iframe>`;
+  const sid = hooks.currentSessionId?.() || "";
+  const mediaUrl = ad.url ? proxyUrl(ad.url, "resource", sid) : "";
+  const sponsorUrl = ad.url ? proxyUrl(ad.url, "view", sid) : "#";
+  if (ad.type === "youtube" && ad.youtubeId) media.innerHTML = `<iframe width="100%" height="340" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(ad.youtubeId)}?autoplay=1&rel=0&modestbranding=1" title="Sponsored advertisement" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+  else if (ad.type === "video" && ad.url) media.innerHTML = `<video src="${esc(mediaUrl)}" autoplay muted playsinline controls style="width:100%;max-height:380px"></video>`;
+  else if (ad.type === "banner" && (ad.imageUrl || ad.url)) media.innerHTML = `<a href="${esc(sponsorUrl)}" target="_blank" rel="noopener"><img src="${esc(ad.imageUrl ? proxyUrl(ad.imageUrl, "resource", sid) : mediaUrl)}" alt="Sponsored advertisement" style="max-width:100%;max-height:380px;object-fit:contain"></a>`;
+  else if (ad.url) media.innerHTML = `<div class="ad-gate-copy"><p>${esc(ad.description || "Visit the sponsor website to continue.")}</p><a class="btn primary" href="${esc(sponsorUrl)}" target="_blank" rel="noopener" id="renewSponsorLink">Open sponsor website</a></div>`;
   else media.innerHTML = `<div class="ad-gate-copy">${esc(ad.description || "Sponsored content")}</div>`;
+  media.querySelector("video")?.addEventListener("error", () => { media.innerHTML = `<div class="ad-gate-copy">This sponsor video could not be loaded. <a href="${esc(sponsorUrl)}" target="_blank" rel="noopener">Open sponsor website</a></div>`; });
   media.querySelector("a")?.addEventListener("click", () => api(`/api/renew/click/${encodeURIComponent(ad.id)}`, { method: "POST" }).catch(() => {}), { once: true });
   const tick = setInterval(() => {
     const left = durationSec - Math.floor((Date.now() - started) / 1000), c = $("renewCount");
