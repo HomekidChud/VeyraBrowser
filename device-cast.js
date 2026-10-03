@@ -696,10 +696,12 @@ function renderInternetView() {
       const next = el.dataset.net;
       settings.internetProfile = next;
       saveSettings();
-      try {
-        await api("/api/internet/profile", { json: { sessionId, profile: next }, timeoutMs: 8000 });
-        renderInternetView();
-      } catch (e) { toast(`Could not save connection profile: ${e.message}`, { kind: "err" }); }
+      if (["auto", "lan"].includes(next) || settings.customProxy) {
+        try {
+          await api("/api/internet/profile", { json: { sessionId, profile: next, config: settings.customProxy ? { proxy: settings.customProxy } : {} }, timeoutMs: 30000 });
+          renderInternetView();
+        } catch (e) { toast(`Could not connect this transport: ${e.message}`, { kind: "err" }); }
+      } else renderInternetView();
       showInternetConfig(next);
     };
   });
@@ -718,7 +720,18 @@ function renderInternetView() {
 function showInternetConfig(profileId) {
   const el = $("internetConfig");
   if (!el) return;
-  el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>Connection selection is unavailable in this browser</b><span>The selected profile is a display preference only. Veyra cannot configure your device Wi-Fi, cellular service, proxy, DNS, bridge, or mesh network from this page.</span></div></div></div>`;
+  const needsTransport = !["auto", "lan"].includes(profileId);
+  el.innerHTML = `<div class="s-card"><div class="s-row"><div class="s-label"><b>${needsTransport ? "Transport endpoint" : "Direct server connection"}</b><span>${needsTransport ? "Enter the proxy endpoint or bridge gateway that Veyra should use. Supported transports: HTTP, HTTPS, SOCKS5, or WireGuard." : "Veyra will use the server's normal network route for this session."}</span></div>${needsTransport ? `<div class="s-ctl"><input class="input" id="internetProxy" placeholder="socks5://user:password@host:1080" value="${esc(settings.customProxy || "")}"><button class="btn primary sm" id="internetApply">Apply transport</button></div>` : ""}</div></div>`;
+  $("internetApply")?.addEventListener("click", async () => {
+    const endpoint = $("internetProxy")?.value.trim();
+    if (!endpoint) return toast("Enter a proxy endpoint first", { kind: "warn" });
+    settings.customProxy = endpoint; saveSettings();
+    const sid = B?.state?.session?.id || "ui";
+    try {
+      await api("/api/internet/profile", { json: { sessionId: sid, profile: profileId, config: { proxy: endpoint } }, timeoutMs: 30000 });
+      toast("Internet transport connected; Veyra traffic now uses this route");
+    } catch (e) { toast(`Transport connection failed: ${e.message}`, { kind: "err" }); }
+  });
 }
 
 // ---------------------------------------------------------------- event wiring
