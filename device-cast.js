@@ -48,20 +48,15 @@ function startPollingFallback(sessionId = "") {
   castFallbackStarted = true;
   if (castWs) { try { castWs.close(); } catch {} castWs = null; }
   addLog("info", "CAST", "Using HTTP polling for cast connection");
-  api("/api/cast/create", { method: "POST", json: {}, timeoutMs: 10000 }).then(result => {
+  const createOrReuse = sessionId && castSession?.id === sessionId
+    ? Promise.resolve({ ok: true, sessionId: castSession.id, pairingCode: castSession.pairingCode, qrPayload: castSession.qrPayload, qrUrl: castSession.qrUrl, existing: true })
+    : api("/api/cast/create", { method: "POST", json: {}, timeoutMs: 10000 });
+  createOrReuse.then(result => {
     if (!result.ok) throw new Error(result.error || "Cast server rejected the session");
     castSessionId = result.sessionId;
-    castSession = {
-      id: result.sessionId,
-      pairingCode: result.pairingCode,
-      qrPayload: result.qrPayload,
-      qrUrl: result.qrUrl,
-      status: "waiting",
-      deviceName: "",
-      deviceType: "",
-      connectionType: "",
-      networkStrength: 0,
-      frameCount: 0,
+    if (!castSession || castSession.id !== result.sessionId) castSession = {
+      id: result.sessionId, pairingCode: result.pairingCode, qrPayload: result.qrPayload, qrUrl: result.qrUrl,
+      status: "waiting", deviceName: "", deviceType: "", connectionType: "", networkStrength: 0, frameCount: 0,
     };
     renderCastView();
     castPollTimer = setInterval(async () => {

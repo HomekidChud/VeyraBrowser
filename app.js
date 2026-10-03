@@ -914,7 +914,10 @@ function openCrawl(t, url, session, enabled = true) {
   const engineMode = t.loadStrategy || settings.runtime || "auto";
   return api("/api/open", { json: { url, sessionId: session.id, engineMode } }).then(b => {
     if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return null; }
-    t.jobId = b?.jobId || null; if (t.jobId) startPolling(t); return b;
+    t.jobId = b?.jobId || null;
+    t.done = b?.state === "cached" || !t.jobId;
+    if (t.jobId) startPolling(t);
+    return b;
   }).catch(e => {
     if (e.code !== "SESSION_EXPIRED") addLog("debug", `Background index skipped: ${e.message}`);
     return null;
@@ -1396,8 +1399,8 @@ async function runSearch(query, offset = 0, opts = {}) {
       const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500 });
       if (correction.changed && correction.corrected && correction.corrected.toLowerCase() !== query.toLowerCase()) {
         t.searchCorrection = { original: query, corrected: correction.corrected };
-        t.searchQuery = correction.corrected;
-        return runSearch(correction.corrected, 0, { corrected: true });
+        // Keep the user’s original query and offer the correction without
+        // silently changing what they searched for.
       }
     } catch {}
   }
@@ -1405,8 +1408,14 @@ async function runSearch(query, offset = 0, opts = {}) {
   const correctionEl = $("searchCorrection");
   if (correctionEl) {
     correctionEl.classList.toggle("hidden", !correction);
-    correctionEl.innerHTML = correction ? `Showing results for <b>${esc(correction.corrected)}</b><button type="button" data-original="${esc(correction.original)}">Search instead for “${esc(correction.original)}”</button>` : "";
-    correctionEl.querySelector("[data-original]")?.addEventListener("click", () => { t.searchCorrection = null; t.searchQuery = correction.original; runSearch(correction.original, 0, { corrected: true }); });
+    correctionEl.innerHTML = correction ? `Did you mean: <a href="#" data-corrected="${esc(correction.corrected)}">${esc(correction.corrected)}</a>` : "";
+    correctionEl.querySelector("[data-corrected]")?.addEventListener("click", e => {
+      e.preventDefault();
+      const corrected = e.currentTarget.dataset.corrected;
+      t.searchCorrection = null; t.searchQuery = corrected;
+      const input = $("searchInput"); if (input) input.value = corrected;
+      runSearch(corrected, 0, { corrected: true });
+    });
   }
   renderSearchTabs(t);
   $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";

@@ -672,6 +672,7 @@ textarea.el-edit{display:block;width:calc(100% - 20px);min-height:90px;margin:2p
 .con-eager{color:var(--muted);font:11.5px var(--font-mono);padding:0 8px 4px 28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .con-comp{position:absolute;background:var(--surface);border:1px solid var(--line-2);border-radius:6px;box-shadow:var(--shadow);max-height:180px;overflow:auto;font:12px var(--font-mono);z-index:10;min-width:180px}
 .con-comp div{padding:2px 10px;cursor:pointer}.con-comp div.on{background:var(--accent-soft)}
+.search-correction{margin:10px 0 2px;padding:0 2px;color:var(--text-2);font-size:13px}.search-correction a{color:#4d8dff;text-decoration:none;font-weight:650}.search-correction a:hover{text-decoration:underline}.search-correction a:focus-visible{outline:2px solid #4d8dff;outline-offset:2px;border-radius:3px}
 /* object tree */
 .ob{display:inline}
 .ob-k{color:var(--code-tag)}.ob-k.np{opacity:.65}
