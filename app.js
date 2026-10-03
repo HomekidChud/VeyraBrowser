@@ -879,6 +879,13 @@ function hostNeedsRealBrowser(url) {
 }
 function resolveStrategy(url) {
   const base = desiredStrategy(url);
+  // YouTube home/search/channel pages work with the rewritten fast proxy and
+  // must not race Chromium on Render Free, where the browser process may be
+  // unavailable or evicted. Explicit Browser mode remains an opt-in escape
+  // hatch for larger deployments.
+  if (isYouTubeUrl(url) && String(settings.runtime || "auto") !== "browser") {
+    return { key: "youtube-proxy", proxy: true, crawler: false, browser: false, race: false, youtubeProxy: true };
+  }
   // Google search needs real JavaScript and rejects datacenter proxies:
   // go straight to Chromium (with Veyra web results as the fallback).
   if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
@@ -991,7 +998,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     // reliable first-paint signal. Never leave the browser chrome covered by
     // the spinner when the proxy document is already available.
     if (isYouTubeUrl(url)) setTimeout(() => {
-      if (state.tabs.includes(t) && t.url === url && t.browserMode === "FAST_PROXY" && t.loading) {
+      // YouTube canonicalizes m.youtube.com to www.youtube.com while the
+      // document is loading, so comparing the pre-canonical URL can leave the
+      // iframe permanently covered by the parent loader.
+      if (state.tabs.includes(t) && t.browserMode === "FAST_PROXY" && t.loading) {
         t.loading = false;
         if (activeTab() === t) setLoading(false);
         renderTabsSoon();
