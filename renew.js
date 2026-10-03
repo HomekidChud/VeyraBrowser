@@ -14,16 +14,21 @@ import { $, esc, api, toast, addLog, fmtClock, hooks } from "./core.js";
 let offerShown = false;
 let active = false;
 let lastSessionId = "";
+let urgentShown = false;
+let adCursor = 0;
 
 /** Called from the session ticker: shows the offer once per session. */
 export function maybeOfferRenew(session, remainingMs) {
-  if (!session || session.id !== lastSessionId) { lastSessionId = session?.id || ""; offerShown = false; }
-  if (offerShown || active || !session || remainingMs > 60000) return;
+  if (!session || session.id !== lastSessionId) { lastSessionId = session?.id || ""; offerShown = false; urgentShown = false; adCursor = 0; }
+  if (active || !session || remainingMs > 60000) return;
+  if (remainingMs <= 10000 && !urgentShown) {
+    urgentShown = true;
+    void loadAds().then(ads => { if (ads.length) showExpiryNotice(ads); }).catch(() => {});
+    return;
+  }
+  if (offerShown || remainingMs <= 10000) return;
   offerShown = true;
-  void loadAds().then(ads => {
-    if (!ads.length) return;
-    showOfferCard(ads);
-  }).catch(() => {});
+  void loadAds().then(ads => { if (ads.length) showOfferCard(ads); }).catch(() => {});
 }
 
 /** Force-show the renew flow (session pill click). */
@@ -60,6 +65,14 @@ function showOfferCard(ads) {
   setTimeout(() => dismissOfferCard(), 55000);
 }
 function dismissOfferCard() { const el = $("renewOffer"); if (el) el.remove(); }
+function showExpiryNotice(ads) {
+  dismissOfferCard();
+  const el = document.createElement("div"); el.id = "renewOffer"; el.className = "renew-expiry-notice";
+  el.innerHTML = `<div class="renew-expiry-icon"><svg><use href="#i-timer"/></svg></div><div class="renew-expiry-copy"><b>Your session ends in about 10 seconds</b><p>Restore it by watching a short sponsor message. Your tabs and cookies stay open.</p><div class="renew-expiry-actions"><button class="btn primary sm" id="renewRestore">Restore session</button><button class="btn ghost sm" id="renewNo">Not now</button></div></div>`;
+  document.body.appendChild(el);
+  $("renewRestore").onclick = () => { dismissOfferCard(); const ad = ads[adCursor++ % ads.length]; startWatch(ad.id); };
+  $("renewNo").onclick = dismissOfferCard;
+}
 
 // ---------------------------------------------------------------- ad picker
 function showAdPicker(ads) {
@@ -118,6 +131,7 @@ function playAd(watchId, ad, rewardMs) {
   } else {
     media.innerHTML = `<div style="padding:60px 20px;color:#aeb9c6">${esc(ad.description || "Sponsored content")}</div>`;
   }
+  media.querySelector("a")?.addEventListener("click", () => { api(`/api/renew/click/${encodeURIComponent(ad.id)}`, { method: "POST" }).catch(() => {}); }, { once: true });
   const tick = setInterval(() => {
     const left = durationSec - Math.floor((Date.now() - started) / 1000);
     const c = $("renewCount");

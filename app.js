@@ -391,7 +391,7 @@ function applyRoute() {
   const t = activeTab();
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
   if (location.hash === "#console") return openInternal("console", { push: false });
-  const [, first, second] = route.split("/");
+  const [, first, second, third] = route.split("/");
   const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
     // Unknown routes must be repaired without recursively calling goRoute()/applyRoute().
@@ -413,7 +413,7 @@ function applyRoute() {
   }
   if (view === "search") { showSearch(params.get("q") || "", { push: false }); return; }
   if (view === "calculator") { openInternal("calculator", { push: false, calc: params.get("q") || "" }); return; }
-  openInternal(view, { push: false, section: second || "" });
+  openInternal(view, { push: false, section: first === "dev" && second === "platform" ? (third || "") : (second || "") });
 }
 window.addEventListener("popstate", () => applyRoute());
 
@@ -1724,12 +1724,33 @@ async function refreshDev() {
 let platformModel = null;
 async function renderPlatform() {
   const box = $("platformPanel"); if (!box) return;
+  if (activeTab()?.section === "ad" && auth.user) { renderPlatformAds(box); return; }
   if (!auth.user) { renderGuestWaitlist(box); return; }
   box.innerHTML = `<div class="platform-loading"><div class="spinner"></div><span>Loading your platform…</span></div>`;
   try { platformModel = await api("/api/platform/overview", { timeoutMs: 10000 }); renderPlatformShell(box); }
   catch (e) { box.innerHTML = `<div class="empty"><svg><use href="#i-info"/></svg><b>Could not load your platform</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="platformRetry">Retry</button></div>`; $("platformRetry").onclick = renderPlatform; }
 }
 function platformIcon(id) { return `<svg class="platform-icon"><use href="#${id}"/></svg>`; }
+async function renderPlatformAds(box) {
+  box.innerHTML = `<div class="ad-center-loading"><div class="spinner"></div><span>Loading ad center…</span></div>`;
+  try {
+    const r = await api("/api/platform/ads", { timeoutMs: 10000 }); const report = r.report || r;
+    const ads = report.ads || []; const watches = Number(report.completedWatches || 0); const renewals = Number(report.totalRenewals || 0); const clicks = ads.reduce((n, a) => n + Number(a.clickCount || 0), 0);
+    box.innerHTML = `<div class="ad-center"><header class="ad-center-head"><div><span class="eyebrow">MONETIZATION</span><h1>Ad center</h1><p>Rotate sponsor inventory, keep renewal ads healthy, and see how every placement performs.</p></div><div class="ad-head-actions"><a class="btn ghost" href="/dev/platform">Platform overview</a><button class="btn primary" id="newAd">${platformIcon("i-plus")}New campaign</button></div></header>
+      <section class="ad-kpis"><article><span>Active campaigns</span><b>${report.activeAds || 0}</b><small>of ${report.totalAds || 0} total</small></article><article><span>Completed views</span><b>${watches.toLocaleString()}</b><small>verified watch sessions</small></article><article><span>Renewals earned</span><b>${renewals.toLocaleString()}</b><small>sessions extended</small></article><article><span>Clicks</span><b>${clicks.toLocaleString()}</b><small>tracked sponsor clicks</small></article><article><span>Avg. RPM</span><b>$${(watches ? (clicks / watches * 2.99 * 1000) : 0).toFixed(2)}</b><small>click-through estimate</small></article></section>
+      <section class="ad-analytics"><div class="ad-panel"><div class="ad-panel-head"><div><span class="eyebrow">PERFORMANCE</span><h2>Renewal activity</h2></div><span class="pill ok">Live reporting</span></div><div class="ad-chart"><i style="height:28%"></i><i style="height:44%"></i><i style="height:36%"></i><i style="height:62%"></i><i style="height:55%"></i><i style="height:78%"></i><i style="height:68%"></i><i style="height:92%"></i><i style="height:76%"></i><i style="height:84%"></i><i style="height:70%"></i><i style="height:100%"></i></div><div class="ad-chart-labels"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>Now</span></div></div><div class="ad-panel ad-rotation"><div class="ad-panel-head"><div><span class="eyebrow">DELIVERY</span><h2>Rotation health</h2></div></div><div class="rotation-meter"><span style="width:${ads.length ? Math.min(100, (report.activeAds / Math.max(1, report.totalAds))*100) : 0}%"></span></div><b>${report.activeAds || 0} campaigns in rotation</b><p>Veyra automatically cycles active campaigns so one sponsor does not dominate the restore flow.</p><span class="muted small">Max ${report.maxAdsPerSession || 5} renewals per session</span></div></section>
+      <section class="ad-inventory"><div class="ad-panel-head"><div><span class="eyebrow">INVENTORY</span><h2>Your campaigns</h2></div><span class="muted small">Clicks and RPM become available as traffic accumulates.</span></div><div class="ad-table">${ads.map(a => `<article class="ad-row"><div class="ad-type-badge ${esc(a.type)}">${platformIcon(a.type === "video" || a.type === "youtube" ? "i-play" : "i-globe")}</div><div class="ad-row-main"><b>${esc(a.title)}</b><span>${esc(a.type)} · ${a.durationSec}s · +${Math.round((a.rewardMs || 0)/60000)} min reward</span></div><div class="ad-stat"><b>${Number(a.watchCount || 0).toLocaleString()}</b><span>views</span></div><div class="ad-stat"><b>${Number(a.clickCount || 0).toLocaleString()}</b><span>clicks</span></div><span class="pill ${a.active ? "ok" : ""}">${a.active ? "Live" : "Paused"}</span><button class="icon-btn" data-ad-toggle="${esc(a.id)}" title="Toggle campaign">${platformIcon("i-refresh")}</button><button class="icon-btn" data-ad-delete="${esc(a.id)}" title="Delete campaign">${platformIcon("i-trash")}</button></article>`).join("") || `<div class="ad-empty">No campaigns yet. Add your first sponsor to start the rotation.</div>`}</div></section></div>`;
+    $("newAd").onclick = createPlatformAd;
+    box.querySelectorAll("[data-ad-toggle]").forEach(b => b.onclick = async () => { await api(`/api/platform/ads/${encodeURIComponent(b.dataset.adToggle)}/toggle`, { method: "POST" }); renderPlatformAds(box); });
+    box.querySelectorAll("[data-ad-delete]").forEach(b => b.onclick = async () => { if (!confirm("Delete this campaign?")) return; await api(`/api/platform/ads/${encodeURIComponent(b.dataset.adDelete)}`, { method: "DELETE" }); renderPlatformAds(box); });
+  } catch (e) { box.innerHTML = `<div class="empty"><b>Ad center unavailable</b><span>${esc(e.message)}</span></div>`; }
+}
+async function createPlatformAd() {
+  const title = prompt("Campaign title", "Sponsor message"); if (!title) return;
+  const type = prompt("Type: banner, video, youtube, link, or interactive", "banner"); if (!type) return;
+  const url = prompt("Destination or media URL", "https://"); if (!url) return;
+  try { await api("/api/platform/ads", { json: { title, type, url, durationSec: 15, rewardMs: 120000, description: "Sponsored message" } }); toast("Campaign added to rotation"); renderPlatformAds($("platformPanel")); } catch (e) { toast(e.message, { kind: "err" }); }
+}
 function platformWorkspaceCard(w) {
   const live = w.keys.filter(k => !k.revokedAt).length;
   return `<article class="workspace-card">
@@ -1758,7 +1779,7 @@ function renderPlatformShell(box) {
   const firstName = auth.user?.name?.split(" ")[0] || "there";
   box.innerHTML = `<div class="platform-app-shell">
     <aside class="platform-sidebar"><div class="platform-side-brand"><span class="platform-side-mark">${platformIcon("i-platform")}</span><span><b>Veyra</b><small>Developer Platform</small></span></div>
-      <nav class="platform-nav"><span class="platform-nav-label">Workspace</span><a class="platform-nav-item active" href="#platform-overview">${platformIcon("i-home")}Overview</a><a class="platform-nav-item" href="#platform-workspaces">${platformIcon("i-workspace")}Workspaces<span class="nav-count">${m.workspaces.length}</span></a><a class="platform-nav-item" href="#platform-keys">${platformIcon("i-key")}API keys<span class="nav-count">${totalKeys}</span></a><span class="platform-nav-label">Resources</span><a class="platform-nav-item" href="#platform-docs">${platformIcon("i-book")}Documentation</a><a class="platform-nav-item" href="#platform-pricing">${platformIcon("i-wallet")}Plans & billing</a>${owner ? `<span class="platform-nav-label">Owner</span><a class="platform-nav-item" href="#platform-queue">${platformIcon("i-shield")}Waitlist<span class="nav-count accent">${pending}</span></a>` : ""}</nav>
+      <nav class="platform-nav"><span class="platform-nav-label">Workspace</span><a class="platform-nav-item active" href="#platform-overview">${platformIcon("i-home")}Overview</a><a class="platform-nav-item" href="#platform-workspaces">${platformIcon("i-workspace")}Workspaces<span class="nav-count">${m.workspaces.length}</span></a><a class="platform-nav-item" href="#platform-keys">${platformIcon("i-key")}API keys<span class="nav-count">${totalKeys}</span></a><span class="platform-nav-label">Resources</span><a class="platform-nav-item" href="#platform-docs">${platformIcon("i-book")}Documentation</a><a class="platform-nav-item" href="#platform-pricing">${platformIcon("i-wallet")}Plans & billing</a>${owner ? `<span class="platform-nav-label">Owner</span><a class="platform-nav-item" href="/dev/platform/ad">${platformIcon("i-play")}Ad center</a><a class="platform-nav-item" href="#platform-queue">${platformIcon("i-shield")}Waitlist<span class="nav-count accent">${pending}</span></a>` : ""}</nav>
       <div class="platform-side-footer"><div class="platform-help">${platformIcon("i-info")}<span><b>Need a hand?</b><small>Read the API docs</small></span></div><div class="platform-user"><span class="platform-user-avatar">${esc((firstName[0] || "U").toUpperCase())}</span><span><b>${esc(firstName)}</b><small>${owner ? "Owner account" : "Developer plan"}</small></span><span class="platform-user-dot"></span></div></div>
     </aside>
     <main class="platform-main-shell" id="platform-overview"><header class="platform-topbar"><div class="platform-breadcrumb"><span>Veyra</span><b>/</b><strong>Overview</strong></div><div class="platform-top-actions"><span class="platform-live"><i></i> All systems operational</span><button class="icon-btn" id="platformRefresh" title="Refresh">${platformIcon("i-refresh")}</button><button class="platform-top-avatar">${esc((firstName[0] || "U").toUpperCase())}</button></div></header>
