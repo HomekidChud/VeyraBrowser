@@ -387,6 +387,7 @@ function openMainMenu() {
     menuItem("i-code", "Developer tools", "devtools", () => hooks.dt?.toggle()),
     menuItem("i-file", "View source resources", "viewSource", () => B.openInternal("resources"), { disabled: !onPage }),
     menuItem("i-link", "View all links", "", () => B.openInternal("links"), { disabled: !onPage }),
+    menuItem("i-platform", "Developer platform", "", () => B.openInternal("platform")),
     ...(isAdmin() ? ["-", menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
     "-",
     menuItem("i-settings", "Settings", "settings", () => B.openInternal("settings")),
