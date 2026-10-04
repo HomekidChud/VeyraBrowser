@@ -61,7 +61,10 @@ function playAd(watchId, ad, rewardMs) {
   if (ad.type === "youtube" && ad.youtubeId) media.innerHTML = `<iframe width="100%" height="340" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(ad.youtubeId)}?autoplay=1&rel=0&modestbranding=1" title="Sponsored advertisement" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
   else if (ad.type === "video" && ad.url) media.innerHTML = `<video src="${esc(mediaUrl)}" autoplay muted playsinline controls style="width:100%;max-height:380px"></video>`;
   else if (ad.type === "banner" && (ad.imageUrl || ad.url)) media.innerHTML = `<a href="${esc(sponsorUrl)}" target="_blank" rel="noopener"><img src="${esc(ad.imageUrl ? proxyUrl(ad.imageUrl, "resource", sid) : mediaUrl)}" alt="Sponsored advertisement" style="max-width:100%;max-height:380px;object-fit:contain"></a>`;
-  else if (ad.url) media.innerHTML = `<div class="ad-gate-copy"><p>${esc(ad.description || "Visit the sponsor website to continue.")}</p><a class="btn primary" href="${esc(sponsorUrl)}" target="_blank" rel="noopener" id="renewSponsorLink">Open sponsor website</a></div>`;
+  else if (ad.url) {
+    const interactive = ad.type === "interactive";
+    media.innerHTML = `<div class="ad-gate-embed-label">${interactive ? "Interactive sponsor experience" : "Sponsor website"}</div><iframe src="${esc(sponsorUrl)}" title="${esc(ad.title || "Sponsored website")}" class="renew-site-frame" sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-downloads" referrerpolicy="no-referrer" allow="fullscreen; autoplay"></iframe><p class="muted small renew-site-fallback">If the site is unavailable inside the frame, <a href="${esc(sponsorUrl)}" target="_blank" rel="noopener">view it in a separate tab</a>.</p>`;
+  }
   else media.innerHTML = `<div class="ad-gate-copy">${esc(ad.description || "Sponsored content")}</div>`;
   media.querySelector("video")?.addEventListener("error", () => { media.innerHTML = `<div class="ad-gate-copy">This sponsor video could not be loaded. <a href="${esc(sponsorUrl)}" target="_blank" rel="noopener">Open sponsor website</a></div>`; });
   media.querySelector("a")?.addEventListener("click", () => api(`/api/renew/click/${encodeURIComponent(ad.id)}`, { method: "POST" }).catch(() => {}), { once: true });

@@ -1242,3 +1242,15 @@ body{letter-spacing:-.006em}
 
 .ntp-session-quick{display:flex;justify-content:center;min-height:34px;margin:12px auto 0}.ntp-quick-live{display:inline-flex;align-items:center;gap:7px;color:var(--ok);font-size:.82rem;font-weight:700}.pulse-dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px color-mix(in oklab,currentColor 14%,transparent)}
 @media(max-width:560px){.ntp-session-quick{margin:12px 0 0}.ntp-session-quick .btn{width:100%;height:40px}.ntp-session-quick + .ntp-tiles{margin-top:14px}}
+
+/* Ad creative embeds and platform navigation tabs. */
+.ad-gate-embed-label{display:flex;align-items:center;min-height:28px;padding:0 10px;border-bottom:1px solid var(--line);color:var(--muted);font-size:.7rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.renew-site-frame{display:block;width:100%;height:390px;border:0;background:#fff}
+.renew-site-fallback{margin:8px 0 0;text-align:right}
+.renew-site-fallback a{color:var(--accent)}
+.platform-tab-button{width:100%;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}
+.platform-tab-button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.platform-tab-hidden{display:none!important}
+@media(max-width:560px){.renew-site-frame{height:330px}}
+.platform-keys-mode .workspace-card-top,.platform-keys-mode .workspace-card-title,.platform-keys-mode .workspace-description,.platform-keys-mode .workspace-card-stats,.platform-keys-mode .workspace-card-foot{display:none}
+.platform-keys-mode .key-list{margin-top:0}
