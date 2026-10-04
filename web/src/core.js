@@ -89,7 +89,7 @@ export const DEFAULT_SETTINGS = {
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
-  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 6,
+  runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 7,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
@@ -104,7 +104,19 @@ export const DEFAULT_SETTINGS = {
   customProxy: "", customDns: "", customGateway: "",
   bridgeInterface: "", bridgeFrom: "phone", castQuality: "auto", castFps: 30
 };
-export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}) };
+const SENSITIVE_SETTING_KEYS = ["adminToken", "wifiPass", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"];
+function readSessionSettings() { try { return safeJsonParse(sessionStorage.getItem("veyra-sensitive-settings"), {}) || {}; } catch { return {}; } }
+function persistSettings() {
+  const persisted = { ...settings };
+  const sensitive = {};
+  for (const key of SENSITIVE_SETTING_KEYS) {
+    if (settings[key] !== undefined && settings[key] !== "") sensitive[key] = settings[key];
+    delete persisted[key];
+  }
+  try { sessionStorage.setItem("veyra-sensitive-settings", JSON.stringify(sensitive)); } catch {}
+  save("veyra-settings", persisted);
+}
+export const settings = { ...DEFAULT_SETTINGS, ...load("veyra-settings", {}), ...readSessionSettings() };
 delete settings.wifiPass;
 delete settings.clearOnSessionEnd;
 
@@ -138,20 +150,19 @@ export function migrateSettings(obj) {
     obj.settingsVersion = 5;
   }
   if (Number(obj.settingsVersion) < 6) {
-    
-    
-    
     if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = obj.clearOnSessionEnd !== false;
     delete obj.clearOnSessionEnd;
     delete obj.wifiPass;
     obj.settingsVersion = 6;
   }
+  if (Number(obj.settingsVersion) < 7) obj.settingsVersion = 7;
   return obj;
 }
-{ const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 6) { Object.assign(settings, migrateSettings(stored)); delete settings.clearOnSessionEnd; delete settings.wifiPass; save("veyra-settings", settings); } }
-{ const stored = load("veyra-settings", null); if (stored && ("wifiPass" in stored || "clearOnSessionEnd" in stored)) save("veyra-settings", settings); }
-export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
-export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
+{ const stored = load("veyra-settings", null); if (stored) { Object.assign(settings, migrateSettings(stored)); delete settings.clearOnSessionEnd; delete settings.wifiPass; } }
+// Migrate any previously persistent credential on first launch, then keep it only for this browser session.
+persistSettings();
+export function saveSettings() { persistSettings(); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
+export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); try { sessionStorage.removeItem("veyra-sensitive-settings"); } catch {} saveSettings(); }
 
 export const SEARCH_ENGINES = {
   veyra: { name: "Veyra Search", url: "" },
@@ -192,6 +203,8 @@ export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin")
 
 export class ApiError extends Error { constructor(message, status = 0, code = "API_ERROR", requestId = "", body = null) { super(message); this.status = status; this.code = code; this.requestId = requestId; this.body = body; } }
 export const netLog = [];
+let sessionAccessToken = "";
+export function setSessionAccessToken(value) { sessionAccessToken = String(value || ""); }
 export async function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
   const requestId = uid();
@@ -214,6 +227,7 @@ export async function api(path, options = {}) {
   headers.set("X-Veyra-Request-ID", requestId);
   if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
   if (settings.adminToken) headers.set("X-Veyra-Admin-Token", settings.adminToken);
+  if (sessionAccessToken) headers.set("X-Veyra-Session-Token", sessionAccessToken);
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
   try {
@@ -242,14 +256,12 @@ export async function api(path, options = {}) {
     );
   } finally { clearTimeout(timer); detachExternal?.(); }
 }
-export function proxyUrl(url, mode = "view", sid = "", from = "") {
+export function proxyUrl(url, mode = "view", sid = "", from = "", bridgeToken = "") {
   const base = API + (mode === "resource" ? "/api/resource?url=" : mode === "download" ? "/api/download?url=" : "/api/view?url=") + encodeURIComponent(url);
   const params = [];
   if (sid) params.push(`sid=${encodeURIComponent(sid)}`);
-  
-  
-  
   if (mode === "view" && from && /^https?:\/\//i.test(from)) params.push(`from=${encodeURIComponent(from)}`);
+  if (mode === "view" && /^[A-Za-z0-9_-]{16,128}$/.test(String(bridgeToken))) params.push(`bridge=${encodeURIComponent(bridgeToken)}`);
   return params.length ? `${base}&${params.join("&")}` : base;
 }
 

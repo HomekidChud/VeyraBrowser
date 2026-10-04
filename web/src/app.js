@@ -1,7 +1,7 @@
 
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
-  settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
+  settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin, setSessionAccessToken,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
@@ -783,6 +783,7 @@ async function startNewSession() {
   const body = await createSessionWithWake();
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
+  setSessionAccessToken(body.sessionToken || "");
   state.session = { id: body.sessionId, startedAt: Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
   save("veyra-live-session", { id: body.sessionId, startedAt: state.session.startedAt });
   state.sessionWarned = {};
@@ -845,6 +846,7 @@ export async function endSession(reason = "timer") {
     state.vpn.connected = false; state.vpn.profile = null;
     let closeConfirmed = false;
     try { const closed = await api(`/api/session/${encodeURIComponent(s.id)}/close`, { method: "POST", timeoutMs: 5000 }); closeConfirmed = !!closed?.ok; } catch {}
+    setSessionAccessToken("");
     addLog("info", `Session ${s.id.slice(0, 8)} ended (${reason}).`);
     renderTabs(); renderActive({ push: true, replace: true }); tickSession(); hooks.onSessionChanged?.();
     if (reason === "manual") toast(closeConfirmed ? "Session ended; server cleanup confirmed" : "Session closed locally. Server cleanup could not be confirmed.", { kind: closeConfirmed ? "" : "warn", ms: 5000 });
@@ -880,7 +882,7 @@ hooks.onSessionRenewed = expiresAt => {
   tickSession();
   addLog("info", `Session renewed — new expiry ${new Date(expiresAt).toLocaleTimeString()}`);
 };
-window.addEventListener("pagehide", () => { const s = state.session; if (s) try { navigator.sendBeacon(`${API}/api/session/${encodeURIComponent(s.id)}/close`, ""); } catch {} });
+window.addEventListener("pagehide", () => { /* Session capabilities are header-bound; expiry remains server-enforced when a page closes unexpectedly. */ });
 
 
 function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
@@ -1041,7 +1043,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       f.removeAttribute("srcdoc");
       f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
       f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      f.src = proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl);
+      tab.bridgeToken = uid();
+      f.src = proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl, tab.bridgeToken);
       if (activeTab() === tab) showFrameForTab(tab);
     }
     tab.loading = false; clearTimeout(tab.loadGuard);
@@ -1062,7 +1065,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-    f.src = proxyUrl(url, "view", session.id, previousUrl);
+    t.bridgeToken = uid();
+    f.src = proxyUrl(url, "view", session.id, previousUrl, t.bridgeToken);
     if (activeTab() === t) showFrameForTab(t);
     
     
@@ -1122,7 +1126,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         f.removeAttribute("srcdoc");
         f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-        f.src = proxyUrl(url, "view", session.id, previousUrl);
+        t.bridgeToken = uid();
+        f.src = proxyUrl(url, "view", session.id, previousUrl, t.bridgeToken);
         if (activeTab() === t) showFrameForTab(t);
       }
       void raceChromium();
@@ -2012,7 +2017,9 @@ export { renderVpnPanel };
 
 
 function tabForSource(src) {
-  for (const t of state.tabs) { const f = frameFor(t); if (!f) continue; let w = src; for (let i = 0; i < 6 && w; i++) { if (w === f.contentWindow) return t; try { if (w === w.parent) break; w = w.parent; } catch { break; } } }
+  // Only accept direct messages from the tab's own frame. Walking parent frames let a
+  // nested untrusted iframe impersonate its top-level page.
+  for (const t of state.tabs) { const f = frameFor(t); if (f?.contentWindow === src) return t; }
   return null;
 }
 async function handleMessage(e) {
@@ -2023,6 +2030,7 @@ async function handleMessage(e) {
   
   if (e.origin !== API_ORIGIN && e.origin !== "null") return;
   const t = tabForSource(e.source); if (!t) return;
+  if (!t.bridgeToken || d.bridgeToken !== t.bridgeToken) return;
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
@@ -2140,7 +2148,7 @@ function canonical(value) {
 }
 function submitForm(t, msg) {
   if (!state.session) return;
-  const f = getOrCreateFrame(t); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id, t.url); form.target = f.name; form.style.display = "none";
+  const f = getOrCreateFrame(t); const form = document.createElement("form"); t.bridgeToken = uid(); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id, t.url, t.bridgeToken); form.target = f.name; form.style.display = "none";
   for (const [n, v] of msg.entries || []) form.appendChild(Object.assign(document.createElement("input"), { type: "hidden", name: n, value: v }));
   document.body.appendChild(form); form.submit(); form.remove(); if (activeTab() === t) setLoading(true, 50, "Submitting…");
 }
@@ -2149,6 +2157,7 @@ window.addEventListener("message", e => { handleMessage(e).catch(err => addLog("
 
 
 function wire() {
+  const fatalReload = $("fatalReload"); if (fatalReload) fatalReload.onclick = () => location.reload();
   $("newTabBtn").onclick = () => newTab();
   $("backBtn").onclick = back; $("forwardBtn").onclick = forward; $("reloadBtn").onclick = () => reload(); $("homeBtn").onclick = goHome;
   $("starBtn").onclick = toggleBookmark; $("zoomChip").onclick = () => setZoom(1);

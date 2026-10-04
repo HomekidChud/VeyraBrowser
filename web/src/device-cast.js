@@ -127,6 +127,8 @@ function connectCastServer(sessionId = "") {
 }
 
 function handleMessage(msg) {
+  if (!msg || typeof msg !== "object") return;
+  if (msg.type === "frame" && (typeof msg.data !== "string" || msg.data.length > 2_500_000)) { addLog("warn", "CAST", "Dropped an oversized or malformed cast frame"); return; }
   if (msg.type !== "session_created" && msg.sessionId && msg.sessionId !== castSession?.id) return;
   switch (msg.type) {
     case "session_created":
@@ -306,8 +308,11 @@ function stopStreaming({ preserveStatus = false } = {}) {
 }
 
 function setQuality(q, fps) {
-  if (!sendCastMessage({ type: "set_quality", quality: q, fps })) return;
-  if (castSession) { castSession.quality = q; castSession.fps = fps; }
+  const allowed = { low: 15, medium: 30, high: 60, auto: 30 };
+  if (!Object.hasOwn(allowed, q)) return toast("Unknown cast quality", { kind: "err" });
+  const safeFps = allowed[q];
+  if (!sendCastMessage({ type: "set_quality", quality: q, fps: safeFps })) return;
+  if (castSession) { castSession.quality = q; castSession.fps = safeFps; }
   toast(`Quality set to ${q} (${fps} FPS)`, { ms: 2000 });
 }
 
@@ -629,7 +634,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
 }
 
 function pushDeviceFrame(frameData) {
-  if (!deviceSessionId) return;
+  if (!deviceSessionId || typeof frameData !== "string" || frameData.length > 2_500_000) return;
   if (deviceUploadInFlight) { devicePendingFrame = frameData; return; }
   deviceUploadInFlight = true;
   void api(`/api/cast/push/${encodeURIComponent(deviceSessionId)}`, { method: "POST", json: { type: "frame", data: frameData }, timeoutMs: 3000 })
