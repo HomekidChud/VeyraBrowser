@@ -22,7 +22,7 @@ export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
     
     
     const targetOrigin = frame.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
-    try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params }, targetOrigin); }
+    try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params, bridgeToken: tab.bridgeToken || "" }, targetOrigin); }
     catch (e) { clearTimeout(timer); pending.delete(id); reject(e); }
   });
 }

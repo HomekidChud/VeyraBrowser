@@ -1,6 +1,6 @@
 /*
-  Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; img-src 'self' data: blob: https://veyraserver-xscy.onrender.com; connect-src 'self' https://veyraserver-xscy.onrender.com wss://veyraserver-xscy.onrender.com; frame-src https://veyraserver-xscy.onrender.com; font-src 'self' data: https://api.fontshare.com https://fonts.gstatic.com; media-src 'self' blob:; form-action 'self' https://veyraserver-xscy.onrender.com; worker-src 'self' blob:; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; img-src 'self' data: blob: https://veyraserver-xscy.onrender.com; connect-src 'self' https://veyraserver-xscy.onrender.com wss://veyraserver-xscy.onrender.com; frame-src https://veyraserver-xscy.onrender.com https://www.youtube-nocookie.com; font-src 'self' data: https://api.fontshare.com https://fonts.gstatic.com; media-src 'self' blob:; form-action 'self' https://veyraserver-xscy.onrender.com; worker-src 'self' blob:; frame-ancestors 'none'
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=()
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
