@@ -24,4 +24,7 @@
   window.addEventListener("DOMContentLoaded", () => {
     const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.29.0`; document.body.appendChild(app);
   }, { once: true });
+  if (location.protocol === "https:" && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
+  }
 })();

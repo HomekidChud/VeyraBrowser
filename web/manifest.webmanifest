@@ -1,8 +1,13 @@
 {
   "name": "Veyra Browser",
   "short_name": "Veyra",
+  "id": "./",
+  "description": "A private, session-based browser with proxy rendering and Chromium fallback.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "lang": "en",
+  "categories": ["browser", "productivity"],
   "background_color": "#0d0f13",
   "theme_color": "#0d0f13",
   "icons": [
