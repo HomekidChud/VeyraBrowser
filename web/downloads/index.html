@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090d18">
+  <meta name="description" content="Download Veyra Browser and VeyraOS for Android.">
+  <title>Download Veyra for Android</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4f7ff;
+      --muted: #aebbd3;
+      --line: rgba(191, 211, 255, .16);
+      --panel: rgba(16, 25, 47, .78);
+      --panel-strong: rgba(22, 35, 65, .9);
+      --accent: #7aa7ff;
+      --accent-2: #7ce3c2;
+      --warn: #ffcf70;
+      --shadow: 0 28px 70px rgba(0, 0, 0, .33);
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(77, 123, 255, .27), transparent 34rem),
+        radial-gradient(circle at 90% 12%, rgba(59, 211, 167, .18), transparent 26rem),
+        #090d18;
+    }
+    a { color: inherit; }
+    .shell { width: min(1100px, calc(100% - 40px)); margin: 0 auto; }
+    header { padding: 26px 0 10px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 800; letter-spacing: -.02em; }
+    .mark { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid rgba(160, 190, 255, .55); border-radius: 10px; color: #dfe9ff; background: linear-gradient(145deg, #416fd2, #202e69); box-shadow: inset 0 1px rgba(255,255,255,.22); }
+    .hero { padding: 62px 0 34px; max-width: 760px; }
+    .eyebrow { margin: 0 0 14px; color: var(--accent-2); font-size: .75rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { max-width: 700px; margin: 0; font-size: clamp(2.5rem, 7vw, 5.25rem); line-height: .98; letter-spacing: -.065em; }
+    .lead { max-width: 650px; margin: 22px 0 0; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.23rem); line-height: 1.65; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 20px 0 26px; }
+    .card { position: relative; overflow: hidden; min-height: 395px; padding: 30px; border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(160deg, var(--panel-strong), var(--panel)); box-shadow: var(--shadow); }
+    .card::after { content: ""; position: absolute; inset: auto -75px -100px auto; width: 260px; height: 260px; border-radius: 999px; background: radial-gradient(circle, rgba(122, 167, 255, .29), transparent 68%); pointer-events: none; }
+    .card.os::after { background: radial-gradient(circle, rgba(124, 227, 194, .28), transparent 68%); }
+    .icon { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 17px; border: 1px solid rgba(177, 203, 255, .25); background: rgba(124, 163, 255, .14); color: #d7e5ff; font-size: 1.55rem; }
+    .os .icon { background: rgba(103, 222, 185, .13); color: #c5ffea; }
+    h2 { margin: 21px 0 9px; font-size: 1.65rem; letter-spacing: -.035em; }
+    .card p { position: relative; z-index: 1; margin: 0; color: var(--muted); line-height: 1.55; }
+    .download { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 50px; margin: 27px 0 15px; padding: 12px 16px; border-radius: 13px; color: #08101f; background: linear-gradient(135deg, #dbe8ff, #8baeff); font-weight: 800; text-decoration: none; transition: transform .16s ease, filter .16s ease; }
+    .os .download { background: linear-gradient(135deg, #d7fff2, #7ce3c2); }
+    .download:hover, .download:focus-visible { transform: translateY(-2px); filter: brightness(1.06); }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: .81rem; color: #bdc8dd; }
+    .tag { padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.04); }
+    .notice { margin: 16px 0 54px; padding: 18px 20px; border: 1px solid rgba(255, 207, 112, .26); border-radius: 16px; color: #e7edf9; background: rgba(255, 199, 79, .075); line-height: 1.55; }
+    .notice strong { color: var(--warn); }
+    details { margin-top: 10px; color: var(--muted); }
+    summary { cursor: pointer; color: #d7e3fa; }
+    code { display: block; margin-top: 9px; overflow-wrap: anywhere; color: #d7e3fa; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .79rem; }
+    footer { padding: 0 0 34px; color: #90a0bd; font-size: .9rem; }
+    footer a { color: #c5d6fa; }
+    @media (max-width: 720px) { .shell { width: min(100% - 28px, 1100px); } .hero { padding-top: 43px; } .grid { grid-template-columns: 1fr; } .card { min-height: 0; padding: 25px; } }
+  </style>
+</head>
+<body>
+  <header class="shell">
+    <a class="brand" href="../" aria-label="Veyra Browser home"><span class="mark" aria-hidden="true">V</span> Veyra</a>
+  </header>
+  <main class="shell">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">Android builds</p>
+      <h1 id="page-title">Take Veyra with you.</h1>
+      <p class="lead">Choose Veyra Browser for a focused browsing experience, or VeyraOS for a desktop-style workspace built around Veyra Browser.</p>
+    </section>
+
+    <section class="grid" aria-label="Android downloads">
+      <article class="card">
+        <div class="icon" aria-hidden="true">◌</div>
+        <h2>Veyra Browser</h2>
+        <p>A private, session-based browser client for the Veyra Server API.</p>
+        <a class="download" href="https://github.com/HomekidChud/VeyraBrowser/releases/download/android-debug-2026-10-04/VeyraBrowser-debug.apk">Download Browser APK <span aria-hidden="true">↓</span></a>
+        <div class="meta"><span class="tag">Android 7.0+</span><span class="tag">v1.0 debug</span><span class="tag">4.3 MB</span></div>
+      </article>
+
+      <article class="card os">
+        <div class="icon" aria-hidden="true">◇</div>
+        <h2>VeyraOS</h2>
+        <p>A web operating system with a macOS-style desktop and Veyra Browser integration.</p>
+        <a class="download" href="https://github.com/HomekidChud/VeyraOS/releases/download/android-debug-2026-10-04/VeyraOS-debug.apk">Download VeyraOS APK <span aria-hidden="true">↓</span></a>
+        <div class="meta"><span class="tag">Android 7.0+</span><span class="tag">v1.0 debug</span><span class="tag">4.1 MB</span></div>
+      </article>
+    </section>
+
+    <aside class="notice">
+      <strong>About these builds:</strong> these are debug APKs, signed with the standard Android debug key. Android may ask you to allow installs from your browser or file manager. If you already installed a build signed with a different key, uninstall that copy before installing this one.
+      <details>
+        <summary>Verify the download checksums</summary>
+        <code>VeyraBrowser-debug.apk — SHA-256: 8120fb5d72ac0cc1380023d3c7da9b7af242ad0db9d402a074f1aff1508105b9</code>
+        <code>VeyraOS-debug.apk — SHA-256: 2a74199229633456f34a63c44eb1b2eb4f120611acfdef456873670f915228e1</code>
+      </details>
+    </aside>
+  </main>
+  <footer class="shell">Source and release notes: <a href="https://github.com/HomekidChud/VeyraBrowser">Veyra Browser</a> · <a href="https://github.com/HomekidChud/VeyraOS">VeyraOS</a></footer>
+</body>
+</html>
