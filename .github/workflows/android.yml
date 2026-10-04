@@ -28,6 +28,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: ""
       - run: |
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-36" "build-tools;35.0.0"
