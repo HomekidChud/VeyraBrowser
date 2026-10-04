@@ -1,0 +1,8 @@
+{
+  "appId": "dev.veyra.browser",
+  "appName": "Veyra Browser",
+  "webDir": "web",
+  "server": {
+    "androidScheme": "https"
+  }
+}

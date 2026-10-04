@@ -1,0 +1,21 @@
+{
+  "name": "veyra-browser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Veyra Browser Android wrapper and static web application.",
+  "scripts": {
+    "build": "node scripts/verify-source.cjs",
+    "check": "node scripts/verify-source.cjs",
+    "sync": "npx cap sync android",
+    "apk:debug": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "apk:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2"
+  },
+  "type": "module"
+}

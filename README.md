@@ -1,72 +1,29 @@
-# Veyra Browser — frontend v8.19.0
+# Veyra Browser
 
-This is a static HTML/CSS/JS frontend for GitHub Pages. There's no build step: upload the folder contents to the Pages site.
-It needs the Veyra server **v8.19.0 or newer**, which provides the auth, session time limit and admin-gating endpoints.
+Veyra Browser is a static JavaScript client for the Veyra Browser API and a Capacitor Android application.
 
-## Page loading strategies
+## Development
 
-- Automatic
-- Fast proxy
-- Fast proxy + page accelerator — bounded current-page warm-up, up to 8 seconds
-- Chromium
-- All combined — proxy + page accelerator + Chromium adaptive race
+```bash
+npm install
+npm run check
+npm run sync
+```
 
-## What's in it
+The static application lives in `web/`. GitHub Pages is deployed from `web/` by `.github/workflows/pages.yml`; Android builds copy the same directory through Capacitor.
 
-- **Homepage** (`/`): hero, live server stats, features, how it works, Explore, FAQ, and sign in / sign up.
-- **Accounts**: sign up, sign in, sign out, sign out everywhere, change password, rename, delete account.
-  Settings, bookmarks, extensions, shortcuts and notes sync to your account.
-- **Session limits**: each session has a server-enforced timer. Guest sessions default to 2:00; signed-in administrators receive a fixed 10:00 session.
-  - A live countdown shows in the toolbar, with warnings 30s and 10s before the end.
-  - When time runs out, the server deletes the session (cookies, Chromium context, VPN tunnel) and an overlay offers a fresh session.
-- **Browser UI**:
-  - Tabs, omnibox with suggestions, bookmarks bar, zoom, and the menu.
-  - Pages: history, downloads, find in page, print, VPN, calculator, Veyra Search, and a customisable new tab page.
-- **Settings** (`/settings/<section>`), laid out like Chrome's settings with section search:
-  - account, appearance (theme, accent, font size, zoom, compact), search engine, on startup, new tab page, privacy, sessions
-  - downloads and history, accessibility, keyboard shortcuts (rebind, reset, conflict handling), extensions, VPN, system, developer, reset, about
-  - admins also get a live server-config / Render plan editor
-- **Extensions**: Dark Reader, tracker and ad blocker, focus mode, readable text, link highlighter, grayscale, reader view, page stats, quick notes, default zoom, compact UI.
-- **DevTools** (Ctrl+Shift+I / Ctrl+Shift+C) inspect the live proxied page:
-  - Elements: DOM tree, live style and attribute editing, box model, element picker
-  - Console: eval, object previews, errors
-  - Sources, with a pretty-printer
-  - Network: type filters, headers, timing
-  - Application: storage and cookies
-  - Performance metrics
-- **Admin only**: `/dev` and `#console`. Guests are redirected, and the menu hides them. The server enforces this too.
+## Android
 
-## Shortcuts
+```bash
+npm run apk:debug
+```
 
-| Action | Keys |
-| --- | --- |
-| New tab / close tab | Ctrl+T / Ctrl+W |
-| History / downloads | Ctrl+H / Ctrl+J |
-| Find / print | Ctrl+F / Ctrl+P |
-| VPN | Ctrl+Shift+V |
-| DevTools / inspect element | Ctrl+Shift+I / Ctrl+Shift+C |
-| View source resources | Ctrl+U |
-| Settings | Ctrl+, |
+The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-You can rebind all of these under Settings → Keyboard shortcuts.
+## API configuration
 
-## Backend URL
+The browser uses the API origin declared by the `veyra-api` metadata in `web/index.html` and `web/browse/index.html`. It defaults to `https://veyraserver-xscy.onrender.com` and does not accept API origins from URL parameters.
 
-The default backend is `https://veyraserver-xscy.onrender.com`. To point at another server, open `?api=https://your-server` once; the choice is saved. Use `?api=reset` to go back to the default.
+## Structure
 
-## Routing
-
-Deep links such as `/settings/shortcuts`, `/history` and `/dev` work on GitHub Pages. `404.html` redirects to `index.html?veyra_route=…`, and the app restores the route. Project-site subpaths are detected automatically.
-
-## Content-complete adaptive pipeline
-
-Proxy HTML is returned immediately, critical rewritten assets are preloaded, inline asset literals are warmed in the background, and browser-associated crawling starts only after the first usable page surface is available.
-
-## Fast loading pipeline
-
-The proxy returns the document first. Veyra adds bounded preload hints for high-value CSS/JS/fonts/images, warms literal assets found in inline code, and starts the crawler after the first usable page surface. The browsing crawler is page-scoped rather than a site-wide crawl.
-
-
-### Render Free engine behavior
-
-On the 512 MB Render Free profile, **Combined** remains proxy/crawler-first and only starts Chromium after a capability probe identifies a target that genuinely needs a browser. This keeps the browser responsive and prevents a single page from starting three high-memory paths simultaneously. Non-Free profiles may use the full parallel combined pipeline.
+See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).

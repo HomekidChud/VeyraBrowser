@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Veyra Browser</string>
+    <string name="title_activity_main">Veyra Browser</string>
+    <string name="package_name">dev.veyra.browser</string>
+    <string name="custom_url_scheme">dev.veyra.browser</string>
+</resources>
