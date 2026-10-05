@@ -958,9 +958,12 @@ function resolveStrategy(url) {
   }
   
   
-  if (isGoogleSearchUrl(url) && !["proxy", "crawler"].includes(String(settings.runtime))) {
-    if (state.server.leanMode && String(settings.runtime) === "auto") return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
-    return { key: "browser", proxy: false, crawler: false, browser: true, race: false, google: true };
+  // Google search pages frequently return a cloud-IP CAPTCHA before the page
+  // can render. Keep the default path useful by showing Veyra's multi-provider
+  // results instead. Users who explicitly choose the Browser runtime still
+  // get direct Chromium, where they can complete Google's own check.
+  if (isGoogleSearchUrl(url) && String(settings.runtime || "auto") !== "browser") {
+    return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
   }
   
   
