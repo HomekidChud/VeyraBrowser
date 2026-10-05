@@ -1290,7 +1290,7 @@ async function refreshRemote(t, loop = false) {
       const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
       const ld = $("remoteLoading"); if (ld && !img?.complete) ld.style.display = "grid";
       setLoading(false); updateAddress(); updateIdentity();
-      if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site security check detected. Chromium is showing the site's own check; click inside it to complete it.";
+      if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site robot check detected. Complete it in the page, or use Reload to start a clean Chromium session.";
       else if (s.status === "BROWSER_ERROR" || s.status === "CRASHED") {
         const er = $("remoteError"), erT = $("remoteErrorText");
         if (er) er.style.display = "grid";
@@ -1420,6 +1420,22 @@ export async function reload({ hard = false } = {}) {
   const t = activeTab(); if (!t) return;
   if ($("reloadBtn").dataset.loading === "1" && !hard) return stopLoad();
   if (t.view === "page" && t.url) {
+    // A site-level robot check can be tied to the current Chromium context.
+    // Reusing that context only reloads the same rejected cookies/session, so
+    // make the normal browser reload action start a clean context instead.
+    if (isRemote(t) && t.browserStatus === "VERIFICATION_REQUIRED") {
+      const url = t.url;
+      setLoading(true, 20, "Starting a clean Chromium session…");
+      await stopBrowserSession(t);
+      try {
+        await startBrowserSession(t, url, { background: false });
+      } catch (e) {
+        t.loading = false;
+        if (activeTab() === t) setLoading(false);
+        addLog("warn", `Fresh Chromium verification retry failed: ${e.message}`);
+      }
+      return;
+    }
     if (isRemote(t)) { if (await remoteHistory(t, "reload")) return; }
     if (hard) state.capabilityCache.delete(hostOf(t.url));
     return loadInTab(t, t.url, { loadFrame: true });
