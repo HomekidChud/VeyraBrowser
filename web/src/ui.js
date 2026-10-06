@@ -218,16 +218,24 @@ let syncing = false;
 function syncPayload() {
   const s = { ...settings };
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
-  return { v: 2, settings: s, bookmarks: B.state.bookmarks.slice(0, 300), extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now() };
+  return {
+    v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
+    history: B.state.history.slice(0, settings.historyMax || 1000),
+    downloads: B.state.downloads.slice(0, settings.downloadsMax || 200),
+    tabGroups: B.state.tabGroups.slice(0, 100),
+    lastTabs: load("veyra-last-tabs", []).filter(u => /^https?:/.test(u)).slice(0, 100),
+    extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now()
+  };
 }
 export async function pushSync() {
-  if (!auth.token) return false;
+  if (!auth.token || INCOGNITO) return false;
   try {
     const body = syncPayload();
-    if (JSON.stringify(body).length > 60000) throw new Error("Sync data is over the 60 KB limit. Nothing was uploaded; reduce notes or extensions and try again.");
+    if (JSON.stringify(body).length > 480000) throw new Error("Sync data is over the 480 KB limit. Nothing was uploaded; reduce notes or extensions and try again.");
     await api("/api/auth/data", { method: "PUT", json: { data: body } }); hooks.lastSync = Date.now(); return true;
   } catch (e) { addLog("warn", `Sync failed: ${e.message}`); throw e; }
 }
+hooks.flushSync = () => (auth.token && !INCOGNITO ? pushSync() : Promise.resolve(false));
 const pushSoon = debounce(() => { void pushSync().catch(e => addLog("warn", `Background sync pending: ${e.message}`)); }, 1500);
 hooks.scheduleSync = () => { if (auth.token && !syncing) pushSoon(); };
 export async function pullSync() {
@@ -241,6 +249,10 @@ export async function pullSync() {
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }
     if (Array.isArray(d.bookmarks)) { B.state.bookmarks = d.bookmarks.filter(b => b?.url); save("veyra-bookmarks", B.state.bookmarks); }
+    if (Array.isArray(d.history)) { B.state.history = d.history.filter(x => x && typeof x === "object"); save("veyra-history", B.state.history); }
+    if (Array.isArray(d.downloads)) { B.state.downloads = d.downloads.filter(x => x && typeof x === "object"); save("veyra-downloads", B.state.downloads); }
+    if (Array.isArray(d.tabGroups)) { B.state.tabGroups = d.tabGroups; save("veyra-tab-groups", B.state.tabGroups); }
+    if (Array.isArray(d.lastTabs)) save("veyra-last-tabs", d.lastTabs.filter(u => /^https?:/.test(u)));
     if (d.extensions) save("veyra-extensions", d.extensions);
     if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);
     if (d.notes) save("veyra-notes", d.notes);

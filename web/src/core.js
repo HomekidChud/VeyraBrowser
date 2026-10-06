@@ -85,7 +85,7 @@ export const DEFAULT_SETTINGS = {
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   ntpShortcuts: true, ntpRecent: true, ntpClock: true,
-  blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: true, warnBeforeClose: false,
+  blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: false, warnBeforeClose: false,
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
   reduceMotion: false, focusRings: false, linkUnderline: false,
@@ -141,7 +141,7 @@ export function migrateSettings(obj) {
     
     
     
-    if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = obj.clearOnSessionEnd !== false;
+    if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = false;
     delete obj.clearOnSessionEnd;
     delete obj.wifiPass;
     obj.settingsVersion = 6;
@@ -172,18 +172,18 @@ export function engineUrl(q) {
 
 
 const readSessionAuth = () => {
-  try { return safeJsonParse(sessionStorage.getItem("veyra-auth"), null); } catch { return null; }
+  try {
+    const store = INCOGNITO ? sessionStorage : localStorage;
+    return safeJsonParse(store.getItem("veyra-auth"), null);
+  } catch { return null; }
 };
 export const auth = { token: readSessionAuth()?.token || "", user: readSessionAuth()?.user || null, admin: false, config: null };
-try { localStorage.removeItem("veyra-auth"); } catch {}
 export function setAuth(token, user) {
   auth.token = token || ""; auth.user = user || null;
-  
-  
   try {
-    if (token) sessionStorage.setItem("veyra-auth", JSON.stringify({ token, user }));
-    else sessionStorage.removeItem("veyra-auth");
-    localStorage.removeItem("veyra-auth"); 
+    const store = INCOGNITO ? sessionStorage : localStorage;
+    if (token) store.setItem("veyra-auth", JSON.stringify({ token, user }));
+    else store.removeItem("veyra-auth");
   } catch {}
   hooks.onAuthChanged?.();
 }

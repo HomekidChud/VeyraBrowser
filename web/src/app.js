@@ -831,6 +831,9 @@ export async function endSession(reason = "timer") {
   const s = state.session; if (!s || state.sessionEnding) return;
   state.sessionEnding = true;
   try {
+    // Session cookies are temporary, but signed-in user storage is not. Flush
+    // it before closing the session; incognito is excluded by the hook.
+    try { await hooks.flushSync?.(); } catch (e) { addLog("warn", `Could not save account storage before session end: ${e.message}`); }
     state.session = null; clearInterval(state.sessionTimer);
     
     const pageTabs = state.tabs.filter(t => t.view === "page");
