@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.7";
 
 const pending = new Map();
 const listeners = new Set();

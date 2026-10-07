@@ -3,10 +3,10 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
-import { initUI } from "./ui.js?v=8.28.6";
-import { initDevtools } from "./devtools.js?v=8.28.6";
+} from "./core.js?v=8.28.7";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.7";
+import { initUI } from "./ui.js?v=8.28.7";
+import { initDevtools } from "./devtools.js?v=8.28.7";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
