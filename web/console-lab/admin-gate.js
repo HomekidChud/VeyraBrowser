@@ -91,7 +91,7 @@
     gate.hidden = true;
     lab.hidden = false;
     const script = document.createElement("script");
-    script.src = "runner.js?v=3";
+    script.src = "runner.js?v=4";
     script.defer = true;
     script.onerror = () => deny("Administrator access was verified, but the lab runner did not load. Reload and try again.");
     document.head.appendChild(script);

@@ -6,23 +6,21 @@
   const MAX_SERVER_RUNS = 3;
   const RESOURCE_TIMEOUT_MS = 3000;
   const REQUEST_GAP_MS = 180;
+  const POLL_MS = 8000;
   const API_ORIGIN = (document.querySelector('meta[name="veyra-api"]')?.content || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
   const PAGE_URL = window.__VEYRA_PAGE_URL__ || location.href;
   const proxied = window.__VEYRA_PROXY__ === true;
   const $ = (id) => document.getElementById(id);
-  const state = { running: false, stopRequested: false, currentResource: null, serverRuns: 0, rows: 0, runId: "" };
-  const runLocalButton = $("runLocal");
-  const runServerButton = $("runServer");
-  const runFullButton = $("runFull");
-  const stopButton = $("stopRun");
+  const state = { running: false, stopRequested: false, currentResource: null, serverRuns: 0, rows: 0, runId: "", sessions: null, neural: null, workers: null, logs: [], snapshots: [], pollTimer: null, commandHistory: [] };
+  const runLocalButton = $("runLocal"), runServerButton = $("runServer"), runFullButton = $("runFull"), stopButton = $("stopRun");
+  const AGENT_STORE = "veyra-console-lab-agents-v1";
 
   function setStatus(text) { $("runState").textContent = text; }
   function updateCount() { $("counts").textContent = `${state.rows} case${state.rows === 1 ? "" : "s"} recorded · ${state.serverRuns}/${MAX_SERVER_RUNS} server batches used`; }
   function row(level, title, detail = "") {
     const li = document.createElement("li"); li.className = "result";
     const badge = document.createElement("span"); badge.className = `kind ${level}`; badge.textContent = level;
-    const box = document.createElement("span"); box.className = "detail";
-    const strong = document.createElement("strong"); strong.textContent = title; box.appendChild(strong);
+    const box = document.createElement("span"), strong = document.createElement("strong"); strong.textContent = title; box.appendChild(strong);
     if (detail) { const small = document.createElement("small"); small.textContent = detail; box.appendChild(small); }
     li.append(badge, box); $("results").prepend(li); state.rows += 1; updateCount();
   }
@@ -33,8 +31,7 @@
     state.running = true; state.stopRequested = false; state.runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     for (const button of [runLocalButton, runServerButton, runFullButton]) button.disabled = true;
     stopButton.disabled = false; $("progressBar").style.width = "0%";
-    setStatus(`Running Veyra Console Lab ${state.runId}…`); updateCount();
-    return state.runId;
+    setStatus(`Running Veyra Console Lab ${state.runId}…`); updateCount(); return state.runId;
   }
   function finishState(message) {
     state.running = false; state.currentResource = null;
@@ -44,6 +41,7 @@
     runFullButton.disabled = !proxied || state.serverRuns >= MAX_SERVER_RUNS;
   }
 
+  // Controlled fixtures exercise Veyra's regular Console/Network diagnostics.
   function runLocalDiagnostics() {
     const tag = marker("console", "local console-level, object, grouping and duplicate checks");
     console.groupCollapsed(tag);
@@ -58,45 +56,26 @@
     console.assert(false, marker("assert", "controlled assertion failure"), { expected: false, actual: true });
     for (let i = 1; i <= 4; i += 1) console.error(marker("duplicate", "repeated message for grouping"), { occurrence: i, runId: state.runId });
     console.groupEnd();
-
     const detailError = new TypeError("Veyra Lab synthetic exception: expected line, column, source, and stack fields");
-    window.dispatchEvent(new ErrorEvent("error", {
-      message: detailError.message,
-      filename: new URL("fixtures/controlled-throw.js", PAGE_URL).href,
-      lineno: 42,
-      colno: 17,
-      error: detailError
-    }));
+    window.dispatchEvent(new ErrorEvent("error", { message: detailError.message, filename: new URL("fixtures/controlled-throw.js", PAGE_URL).href, lineno: 42, colno: 17, error: detailError }));
     window.dispatchEvent(new ErrorEvent("error", { message: "Script error.", filename: "", lineno: 0, colno: 0, error: null }));
     setTimeout(() => { throw new RangeError(marker("async-throw", "controlled uncaught timer exception")); }, 40);
     setTimeout(() => { Promise.reject(new TypeError(marker("rejection", "controlled unhandled rejection"))); }, 80);
-
     for (let i = 1; i <= 3; i += 1) {
-      const img = document.createElement("img");
-      img.id = `veyra-lab-local-img-${i}`; img.alt = ""; img.hidden = true;
-      img.onerror = () => img.remove();
-      document.body.appendChild(img);
-      img.src = `data:image/png;base64,VEYRA-LAB-invalid-image-${i}`;
+      const img = document.createElement("img"); img.id = `veyra-lab-local-img-${i}`; img.alt = ""; img.hidden = true; img.onerror = () => img.remove();
+      document.body.appendChild(img); img.src = `data:image/png;base64,VEYRA-LAB-invalid-image-${i}`;
     }
     row("ok", "Local diagnostic events scheduled", "Console levels, Error/TypeError/RangeError, source coordinates, generic Script error, unhandled rejection, duplicate grouping, and three intentionally invalid data images.");
   }
-
   function resourceTestPlan() {
-    const run = encodeURIComponent(state.runId);
-    const api = new URL(API_ORIGIN);
+    const run = encodeURIComponent(state.runId), api = new URL(API_ORIGIN);
     const tests = [
       { id: "api-health-1", label: "VeyraServer health JSON requested as an image", tag: "img", url: new URL(`/api/health?veyraLab=${run}&case=health-1`, api).href },
       { id: "api-health-2", label: "VeyraServer health JSON requested as an image (second trace)", tag: "img", url: new URL(`/api/health?veyraLab=${run}&case=health-2`, api).href }
     ];
-    for (const status of [404, 418, 429, 500, 502, 503]) {
-      tests.push({ id: `http-${status}`, label: `HTTP ${status} body used as an image resource`, tag: "img", url: `https://httpbin.org/status/${status}?veyraLab=${run}` });
-    }
-    for (let i = 1; i <= 4; i += 1) {
-      tests.push({ id: `dns-invalid-${i}`, label: `Reserved .invalid image host ${i}/4`, tag: "img", url: `https://probe-${run}-${i}.veyra-lab.invalid/diagnostic?case=${i}` });
-    }
-    for (let i = 1; i <= 4; i += 1) {
-      tests.push({ id: `pages-404-${i}`, label: `GitHub Pages missing image fixture ${i}/4`, tag: "img", url: new URL(`fixtures/missing-${run}-${i}.png`, PAGE_URL).href });
-    }
+    for (const status of [404, 418, 429, 500, 502, 503]) tests.push({ id: `http-${status}`, label: `HTTP ${status} body used as an image resource`, tag: "img", url: `https://httpbin.org/status/${status}?veyraLab=${run}` });
+    for (let i = 1; i <= 4; i += 1) tests.push({ id: `dns-invalid-${i}`, label: `Reserved .invalid image host ${i}/4`, tag: "img", url: `https://probe-${run}-${i}.veyra-lab.invalid/diagnostic?case=${i}` });
+    for (let i = 1; i <= 4; i += 1) tests.push({ id: `pages-404-${i}`, label: `GitHub Pages missing image fixture ${i}/4`, tag: "img", url: new URL(`fixtures/missing-${run}-${i}.png`, PAGE_URL).href });
     tests.push(
       { id: "resource-script-404", label: "Script element loading a missing GitHub Pages fixture", tag: "script", url: new URL(`fixtures/missing-${run}.js`, PAGE_URL).href },
       { id: "resource-css-404", label: "Stylesheet element loading a missing GitHub Pages fixture", tag: "link", url: new URL(`fixtures/missing-${run}.css`, PAGE_URL).href },
@@ -105,89 +84,190 @@
     );
     return tests;
   }
-
   function resourceProbe(test) {
     return new Promise(resolve => {
-      let finished = false;
-      const element = document.createElement(test.tag);
-      element.id = `veyra-lab-${test.id}-${state.runId}`;
-      element.referrerPolicy = "no-referrer";
-      if (test.tag === "img") { element.alt = ""; element.hidden = true; }
-      if (test.tag === "script") element.async = true;
-      if (test.tag === "link") element.rel = "stylesheet";
+      let finished = false; const element = document.createElement(test.tag); element.id = `veyra-lab-${test.id}-${state.runId}`; element.referrerPolicy = "no-referrer";
+      if (test.tag === "img") { element.alt = ""; element.hidden = true; } if (test.tag === "script") element.async = true; if (test.tag === "link") element.rel = "stylesheet";
       const timeout = setTimeout(() => finish("timeout", "No load/error event arrived before the 3-second fixture timeout."), RESOURCE_TIMEOUT_MS);
-      function finish(result, note) {
-        if (finished) return; finished = true; clearTimeout(timeout);
-        element.onload = null; element.onerror = null; element.remove();
-        if (state.currentResource === element) state.currentResource = null;
-        const details = { url: test.url, tag: test.tag, selector: `#${element.id}`, result };
-        const msg = marker(test.id, `${test.label}: ${result}`);
-        if (result === "error") {
-          console.error(msg, details);
-          row("ok", test.label, "Expected resource error captured; expand Console for URL, tag and selector, then inspect Network for the response status.");
-        } else {
-          console.warn(msg, details);
-          row("warn", test.label, `${result === "load" ? "Unexpected load event" : "Fixture timed out"}; inspect Network and the matching Console row.`);
-        }
+      function finish(result) {
+        if (finished) return; finished = true; clearTimeout(timeout); element.onload = null; element.onerror = null; element.remove(); if (state.currentResource === element) state.currentResource = null;
+        const details = { url: test.url, tag: test.tag, selector: `#${element.id}`, result }, msg = marker(test.id, `${test.label}: ${result}`);
+        if (result === "error") { console.error(msg, details); row("ok", test.label, "Expected resource error captured; expand Console for URL, tag and selector, then inspect Network for the response status."); }
+        else { console.warn(msg, details); row("warn", test.label, `${result === "load" ? "Unexpected load event" : "Fixture timed out"}; inspect Network and the matching Console row.`); }
         resolve();
       }
-      element.onload = () => finish("load", "The test resource loaded instead of failing.");
-      element.onerror = () => finish("error", "Expected resource failure; inspect the expanded Console details and Network row.");
-      state.currentResource = element;
-      (test.tag === "link" ? document.head : document.body).appendChild(element);
-      if (test.tag === "link") element.href = test.url; else element.src = test.url;
+      element.onload = () => finish("load"); element.onerror = () => finish("error"); state.currentResource = element;
+      (test.tag === "link" ? document.head : document.body).appendChild(element); if (test.tag === "link") element.href = test.url; else element.src = test.url;
     });
   }
-
   async function runServerSuite() {
     if (!proxied) { row("warn", "Server suite not run", "Open this page through Veyra's Fast proxy so resource requests are routed by VeyraServer."); return; }
-    if (state.serverRuns >= MAX_SERVER_RUNS) { row("warn", "Per-tab server-run cap reached", "This page allows at most three manual batches. Local-only diagnostics remain available."); return; }
-    state.serverRuns += 1;
-    const tests = resourceTestPlan();
+    if (state.serverRuns >= MAX_SERVER_RUNS) { row("warn", "Per-tab server-run cap reached", "Local-only diagnostics remain available."); return; }
+    state.serverRuns += 1; const tests = resourceTestPlan();
     if (tests.length !== MAX_REQUESTS_PER_RUN) { console.error(marker("plan", "Test plan safety cap mismatch"), { planned: tests.length, cap: MAX_REQUESTS_PER_RUN }); row("error", "Probe plan stopped", `Planned ${tests.length} requests but the safety cap is ${MAX_REQUESTS_PER_RUN}.`); return; }
     let completed = 0;
-    for (const test of tests) {
-      if (state.stopRequested) break;
-      await resourceProbe(test); completed += 1; updateProgress(completed, tests.length);
-      if (!state.stopRequested) await wait(REQUEST_GAP_MS);
-    }
+    for (const test of tests) { if (state.stopRequested) break; await resourceProbe(test); completed += 1; updateProgress(completed, tests.length); if (!state.stopRequested) await wait(REQUEST_GAP_MS); }
     const message = state.stopRequested ? `Stopped after ${completed}/${tests.length} VeyraServer resource probes.` : `Finished ${completed}/${tests.length} sequential VeyraServer resource probes.`;
-    console.info(marker("summary", message), { planned: tests.length, completed, sequential: true, retries: 0 });
-    row(state.stopRequested ? "warn" : "ok", message, "Inspect Console for individual resource-error details and Network for the matching requests.");
+    console.info(marker("summary", message), { planned: tests.length, completed, sequential: true, retries: 0 }); row(state.stopRequested ? "warn" : "ok", message, "Inspect Console for individual resource-error details and Network for the matching requests.");
   }
-
   async function start(mode) {
     if (state.running) return;
     if ((mode === "server" || mode === "full") && state.serverRuns >= MAX_SERVER_RUNS) { row("warn", "Per-tab server-run cap reached", "At most three manual server batches are allowed per page load."); return; }
     startState();
-    try {
-      if (mode !== "server") { runLocalDiagnostics(); await wait(120); }
-      if (mode !== "local") await runServerSuite();
-      finishState(state.stopRequested ? `Stopped run ${state.runId}.` : `Completed run ${state.runId}. Expand the Console diagnostics for detail.`);
-    } catch (error) {
-      console.error(marker("runner", "Test runner caught an unexpected error"), error);
-      row("error", "Runner error", error?.stack || error?.message || String(error));
-      finishState(`Run ${state.runId} ended with a runner error.`);
-    }
+    try { if (mode !== "server") { runLocalDiagnostics(); await wait(120); } if (mode !== "local") await runServerSuite(); finishState(state.stopRequested ? `Stopped run ${state.runId}.` : `Completed run ${state.runId}. Expand the Console diagnostics for detail.`); }
+    catch (error) { console.error(marker("runner", "Test runner caught an unexpected error"), error); row("error", "Runner error", error?.stack || error?.message || String(error)); finishState(`Run ${state.runId} ended with a runner error.`); }
   }
-
-  runLocalButton.addEventListener("click", () => start("local"));
-  runServerButton.addEventListener("click", () => start("server"));
-  runFullButton.addEventListener("click", () => start("full"));
-  stopButton.addEventListener("click", () => {
-    state.stopRequested = true;
-    state.currentResource?.remove();
-    setStatus("Stop requested — the current resource is being cancelled; no later probes will start.");
-  });
+  runLocalButton.addEventListener("click", () => start("local")); runServerButton.addEventListener("click", () => start("server")); runFullButton.addEventListener("click", () => start("full"));
+  stopButton.addEventListener("click", () => { state.stopRequested = true; state.currentResource?.remove(); setStatus("Stop requested — the current resource is being cancelled; no later probes will start."); });
   $("clearReport").addEventListener("click", () => { $("results").replaceChildren(); state.rows = 0; updateCount(); setStatus("Report cleared. Existing Veyra Console entries are unchanged."); $("progressBar").style.width = "0%"; });
-
   const dot = $("proxyDot");
-  if (proxied) {
-    dot.classList.add("ok");
-    $("proxyState").textContent = `Veyra proxy detected · resource probes target ${new URL(API_ORIGIN).host}`;
-  } else {
-    $("proxyState").textContent = "Direct page view · open this URL inside Veyra for server-proxy tests";
-    runServerButton.disabled = true; runFullButton.disabled = true;
-  }
+  if (proxied) { dot.classList.add("ok"); $("proxyState").textContent = `Veyra proxy detected · API ${new URL(API_ORIGIN).host}`; }
+  else { $("proxyState").textContent = "Direct page view · live admin data requires a valid Veyra administrator session"; runServerButton.disabled = true; runFullButton.disabled = true; }
   updateCount();
+
+  // Existing Veyra administrator credentials are read locally and never rendered or logged.
+  function adminHeaders() {
+    const headers = new Headers();
+    try {
+      const session = JSON.parse(localStorage.getItem("veyra-auth") || "null");
+      const settings = JSON.parse(localStorage.getItem("veyra-settings") || "{}");
+      if (typeof session?.token === "string" && session.token) headers.set("Authorization", `Bearer ${session.token}`);
+      if (typeof settings?.adminToken === "string" && settings.adminToken.trim()) headers.set("X-Veyra-Admin-Token", settings.adminToken.trim());
+    } catch {}
+    return headers;
+  }
+  async function api(path, options = {}) {
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), options.timeout || 10000);
+    try {
+      const headers = adminHeaders(); if (options.body) headers.set("Content-Type", "application/json");
+      const response = await fetch(`${API_ORIGIN}${path}`, { method: options.method || "GET", headers, body: options.body ? JSON.stringify(options.body) : undefined, credentials: "omit", cache: "no-store", signal: controller.signal });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || body.message || `VeyraServer returned HTTP ${response.status}`);
+      return body;
+    } finally { clearTimeout(timeout); }
+  }
+  const fmt = value => Number(value || 0).toLocaleString();
+  const age = ms => { const n = Math.max(0, Math.floor(Number(ms || 0) / 1000)); return n < 60 ? `${n}s` : n < 3600 ? `${Math.floor(n / 60)}m` : `${Math.floor(n / 3600)}h ${Math.floor(n % 3600 / 60)}m`; };
+  const safeNum = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  function text(id, value) { const el = $(id); if (el) el.textContent = String(value ?? "—"); }
+  function addConsole(line, level = "info") {
+    const out = $("consoleOutput"); if (!out) return;
+    const item = document.createElement("div"); item.className = `console-line ${level}`; item.textContent = `${new Date().toLocaleTimeString()}  ${line}`; out.appendChild(item); out.scrollTop = out.scrollHeight;
+    while (out.children.length > 300) out.firstElementChild.remove();
+  }
+  function shortJson(value) { try { return JSON.stringify(value, null, 2); } catch { return String(value); } }
+  function renderEvents(target, entries) {
+    const root = $(target); if (!root) return; root.replaceChildren();
+    if (!Array.isArray(entries) || !entries.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "No recent worker events."; root.appendChild(li); return; }
+    entries.slice(-8).reverse().forEach(event => {
+      const li = document.createElement("li"); li.className = "event"; const title = document.createElement("b"), sub = document.createElement("small");
+      const eventUrl = event.url || event.currentUrl || "";
+      title.textContent = [event.type || event.event || event.level || event.status || "Worker event", event.title || event.message || ""].filter(Boolean).join(" · ");
+      sub.textContent = [eventUrl, event.timestamp || event.time ? new Date(event.timestamp || event.time).toLocaleTimeString() : "", event.pagesCrawled != null ? `${event.pagesCrawled} pages` : ""].filter(Boolean).join(" · ") || "Crawler status update";
+      li.append(title, sub); root.appendChild(li);
+    });
+  }
+  function renderDashboard() {
+    const sessions = state.sessions, neural = state.neural, workers = state.workers;
+    if (sessions) {
+      const sessionRows = Array.isArray(sessions.sessions) ? sessions.sessions : [];
+      text("metricSessions", fmt(sessions.active)); text("metricSessionsNote", `${fmt(sessions.max)} session capacity`); text("metricBrowsers", fmt(sessions.browserSessions));
+      text("activityTotal", fmt(sessions.active)); text("activityBrowsers", fmt(sessions.browserSessions)); text("activityRequests", fmt(sessionRows.reduce((n, x) => n + safeNum(x.requests), 0))); text("activityIdle", age(sessions.idleForMs));
+      const body = $("sessionRows"); if (body) { body.replaceChildren(); if (!sessionRows.length) { const tr = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 5; td.className = "muted"; td.textContent = "No active sessions."; tr.appendChild(td); body.appendChild(tr); }
+        sessionRows.slice(0, 60).forEach((session, index) => { const tr = document.createElement("tr"); [ `Session ${index + 1}`, age(session.ageMs), fmt(session.requests), fmt(session.browserSessions), session.paused ? "Paused" : "Active" ].forEach(value => { const td = document.createElement("td"); td.textContent = value; tr.appendChild(td); }); body.appendChild(tr); }); }
+      const counts = state.snapshots.map(x => x.active); const chart = $("pulseChart"); if (chart) { chart.replaceChildren(); const max = Math.max(1, ...counts); counts.forEach(count => { const bar = document.createElement("i"); bar.style.height = `${Math.max(6, count / max * 100)}%`; bar.title = `${count} active sessions`; chart.appendChild(bar); }); }
+    }
+    if (neural) {
+      const model = neural.model || {}, stats = model.stats || {}, trainer = neural.trainer || {};
+      text("metricScores", fmt(stats.scored)); text("metricTraining", `${fmt(model.trainingExamples ?? stats.trained)} training examples`);
+      text("analyticsScored", fmt(stats.scored)); text("analyticsTrained", fmt(model.trainingExamples ?? stats.trained)); text("analyticsPositive", fmt(stats.positiveFeedback)); text("analyticsAverage", `${Math.round(safeNum(stats.avgScore) * 100)}%`);
+      const details = $("modelDetails"); if (details) details.textContent = `Enabled: ${model.enabled ? "yes" : "no"} · Features: ${fmt(model.features?.length)} · Feedback history: ${fmt(model.feedbackCount)} · URL feature cache: ${fmt(model.urlCacheSize)} · Negative feedback: ${fmt(stats.negativeFeedback)} · Trainer queue: ${fmt(trainer.queueSize)} · Trainer: ${trainer.running ? "running" : "stopped"}`;
+    }
+    if (workers) {
+      const list = workers.workers || []; text("metricWorkers", `${fmt(workers.active)} / ${fmt(workers.totalWorkers)}`); text("metricWorkerNote", `${fmt(workers.totalPagesCrawled)} pages · ${fmt(workers.totalErrors)} errors`);
+      text("workerStatus", `${fmt(workers.active)} active · ${fmt(workers.idle)} idle`); text("analyticsQueue", `Queue ${fmt(list.reduce((sum, worker) => sum + safeNum(worker.queueSize), 0))}`);
+      const details = $("workerDetails"); if (details) details.textContent = `${fmt(workers.totalWorkers)} workers · ${fmt(workers.active)} active · ${fmt(workers.idle)} idle · ${fmt(workers.totalPagesCrawled)} pages crawled · ${fmt(workers.totalLinksFound)} links found · ${fmt(workers.totalBytesFetched)} bytes · ${fmt(workers.totalErrors)} errors`;
+      renderEvents("recentEvents", state.logs); renderEvents("agentEvents", state.logs); renderEvents("activityEvents", state.logs); renderEvents("analyticsEvents", state.logs);
+    }
+    const now = new Date().toLocaleTimeString(); text("lastUpdated", `Last refreshed ${now} · next refresh in ${Math.round(POLL_MS / 1000)} seconds`); text("activityUpdated", `Updated ${now}`); text("consoleConnection", "Connected · admin metrics");
+  }
+  async function refreshData(quiet = false) {
+    const results = await Promise.allSettled([api("/api/sessions"), api("/api/neural/stats"), api("/api/robots/status"), api("/api/robots/log?limit=12")]);
+    if (results[0].status === "fulfilled") state.sessions = results[0].value;
+    if (results[1].status === "fulfilled") state.neural = results[1].value;
+    if (results[2].status === "fulfilled") state.workers = results[2].value;
+    if (results[3].status === "fulfilled") state.logs = Array.isArray(results[3].value) ? results[3].value : results[3].value?.events || [];
+    const failures = results.filter(x => x.status === "rejected");
+    renderDashboard();
+    if (failures.length) {
+      const message = failures.map(x => x.reason?.message || "API unavailable").join("; ");
+      text("consoleConnection", `Some APIs unavailable: ${message}`); text("lastUpdated", `Partial data · ${message}`);
+      if (!quiet) addConsole(`Refresh warning: ${message}`, "warn");
+      if (!state.sessions && !state.neural && !state.workers) { const w = $("workerStatus"); if (w) w.textContent = "API unavailable"; }
+    } else if (!quiet) addConsole("Admin metrics refreshed.");
+    const bar = $("proxyDot"); if (bar && (state.sessions || state.neural || state.workers)) bar.classList.add("ok");
+    state.snapshots.push({ at: Date.now(), active: safeNum(state.sessions?.active) }); if (state.snapshots.length > 24) state.snapshots.shift();
+    if (state.sessions) { const chart = $("pulseChart"); if (chart) { chart.replaceChildren(); const max = Math.max(1, ...state.snapshots.map(x => x.active)); state.snapshots.forEach(point => { const el = document.createElement("i"); el.style.height = `${Math.max(6, point.active / max * 100)}%`; el.title = `${point.active} active sessions`; chart.appendChild(el); }); } }
+  }
+
+  // Browser-local agent profiles configure the server's existing neural crawler. No hidden schedule is created.
+  function readAgents() { try { const parsed = JSON.parse(localStorage.getItem(AGENT_STORE) || "[]"); return Array.isArray(parsed) ? parsed.filter(a => a && typeof a.id === "string") : []; } catch { return []; } }
+  function saveAgents(items) { localStorage.setItem(AGENT_STORE, JSON.stringify(items.slice(0, 30))); }
+  function renderAgents() {
+    const root = $("agentList"), agents = readAgents(); text("agentCount", `${agents.length} saved`); if (!root) return; root.replaceChildren();
+    if (!agents.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "Create a profile to begin."; root.appendChild(li); return; }
+    agents.forEach(agent => {
+      const li = document.createElement("li"); li.className = "agent-card"; const copy = document.createElement("span"), name = document.createElement("b"), meta = document.createElement("small");
+      name.textContent = agent.name; meta.textContent = `${agent.seed} · ${agent.maxPages} page cap · depth ${agent.maxDepth} · ${agent.goal}`; copy.append(name, meta);
+      const actions = document.createElement("span"); actions.className = "agent-actions"; const launch = document.createElement("button"), remove = document.createElement("button"); launch.className = "btn primary"; launch.type = remove.type = "button"; launch.textContent = "Run now"; remove.className = "btn danger"; remove.textContent = "Delete";
+      launch.addEventListener("click", () => launchAgent(agent, launch)); remove.addEventListener("click", () => { saveAgents(readAgents().filter(item => item.id !== agent.id)); renderAgents(); }); actions.append(launch, remove); li.append(copy, actions); root.appendChild(li);
+    });
+  }
+  async function launchAgent(agent, button) {
+    button.disabled = true; button.textContent = "Running…"; addConsole(`Launching agent “${agent.name}” for ${agent.seed}`, "info"); text("agentFormStatus", `Running ${agent.name}…`);
+    try {
+      const result = await api("/api/robots/crawl", { method: "POST", body: { seed: agent.seed, query: agent.goal, maxDepth: agent.maxDepth, maxPages: agent.maxPages }, timeout: Math.max(60000, agent.maxPages * 15000) });
+      const outcome = result.results || result; const stats = outcome.stats || {}; addConsole(`${agent.name} finished: ${fmt(stats.pagesCrawled)} pages, ${fmt(stats.linksFound)} links, ${fmt(stats.errors)} errors.`, "info"); text("agentFormStatus", `${agent.name}: ${fmt(stats.pagesCrawled)} pages crawled · ${fmt(stats.linksFound)} links found.`); await refreshData(true);
+    } catch (error) { addConsole(`${agent.name} failed: ${error.message}`, "error"); text("agentFormStatus", `${agent.name}: ${error.message}`); }
+    finally { button.disabled = false; button.textContent = "Run now"; }
+  }
+  $("agentForm").addEventListener("submit", event => {
+    event.preventDefault(); const agents = readAgents(); if (agents.length >= 30) { text("agentFormStatus", "Maximum of 30 saved profiles reached."); return; }
+    const seed = $("agentSeed").value.trim(); let parsed; try { parsed = new URL(seed); } catch { text("agentFormStatus", "Enter a valid public HTTP or HTTPS seed URL."); return; }
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) { text("agentFormStatus", "Only public HTTP(S) URLs without embedded credentials are supported."); return; }
+    const agent = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, name: $("agentName").value.trim(), seed: parsed.href, goal: $("agentGoal").value.trim(), maxPages: Math.max(1, Math.min(50, Number($("agentPages").value) || 12)), maxDepth: Math.max(1, Math.min(5, Number($("agentDepth").value) || 2)), createdAt: Date.now() };
+    if (!agent.name || !agent.goal) { text("agentFormStatus", "Add an agent name and task objective."); return; }
+    agents.unshift(agent); try { saveAgents(agents); } catch { text("agentFormStatus", "Browser storage is unavailable; profile was not saved."); return; }
+    event.target.reset(); $("agentPages").value = 12; $("agentDepth").value = 2; text("agentFormStatus", `Saved ${agent.name}. Start it from the profile list when ready.`); renderAgents(); addConsole(`Saved custom agent profile “${agent.name}”.`);
+  });
+
+  const tabs = [...document.querySelectorAll(".tab[data-view]")];
+  function activateView(name) { tabs.forEach(tab => { const selected = tab.dataset.view === name; tab.setAttribute("aria-selected", String(selected)); const panel = $(`view-${tab.dataset.view}`); panel?.classList.toggle("active", selected); }); }
+  tabs.forEach(tab => tab.addEventListener("click", () => activateView(tab.dataset.view)));
+  document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => activateView(button.dataset.go)));
+  document.querySelectorAll("[data-refresh]").forEach(button => button.addEventListener("click", () => refreshData(false)));
+  renderAgents();
+  $("clearConsole").addEventListener("click", () => $("consoleOutput").replaceChildren());
+  $("exportConsole").addEventListener("click", () => {
+    const content = [...$("consoleOutput").children].map(node => node.textContent).join("\n"); const blob = new Blob([content || "Veyra Console Lab: no console output."], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `veyra-console-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); URL.revokeObjectURL(url);
+  });
+  $("commandForm").addEventListener("submit", async event => {
+    event.preventDefault(); const input = $("commandInput"), raw = input.value.trim(); if (!raw) return; const command = raw.toLowerCase(); input.value = ""; state.commandHistory.unshift(raw);
+    addConsole(`> ${raw}`);
+    if (command === "clear") { $("consoleOutput").replaceChildren(); return; }
+    if (command === "help") { addConsole("Commands: help · status · sessions · neural · workers · agents · clear. Use the module tabs for details; arbitrary JavaScript execution is disabled."); return; }
+    if (command === "agents") { addConsole(shortJson(readAgents().map(({ name, seed, goal, maxPages, maxDepth }) => ({ name, seed, goal, maxPages, maxDepth })))); return; }
+    if (!["status", "sessions", "neural", "workers"].includes(command)) { addConsole(`Unknown command “${raw}”. Type help for the available commands.`, "warn"); return; }
+    if (!state.sessions && !state.neural && !state.workers) await refreshData(true);
+    if (command === "sessions") { if (!state.sessions) return addConsole("Session API is unavailable or access was denied.", "error"); const s = state.sessions; addConsole(shortJson({ active: s.active, capacity: s.max, browserSessions: s.browserSessions, pausedSessions: s.pausedSessions, idleForMs: s.idleForMs, requestCount: (s.sessions || []).reduce((n, x) => n + safeNum(x.requests), 0) })); }
+    if (command === "neural") { if (!state.neural) return addConsole("Neural stats API is unavailable.", "error"); addConsole(shortJson({ model: state.neural.model?.stats, trainingExamples: state.neural.model?.trainingExamples, trainer: state.neural.trainer })); }
+    if (command === "workers") { if (!state.workers) return addConsole("Worker API is unavailable.", "error"); addConsole(shortJson(state.workers)); }
+    if (command === "status") addConsole(shortJson({ activeSessions: state.sessions?.active ?? null, modelScores: state.neural?.model?.stats?.scored ?? null, activeWorkers: state.workers?.active ?? null, workerCount: state.workers?.totalWorkers ?? null, sampledAt: new Date().toISOString() }));
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { clearInterval(state.pollTimer); state.pollTimer = null; }
+    else if (!state.pollTimer) { refreshData(true); state.pollTimer = setInterval(() => refreshData(true), POLL_MS); }
+  });
+  addConsole("Console Lab ready. Type help to see commands.");
+  refreshData(true).then(() => { if (!document.hidden && !state.pollTimer) state.pollTimer = setInterval(() => refreshData(true), POLL_MS); });
 })();
