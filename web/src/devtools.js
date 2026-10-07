@@ -1,7 +1,7 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.7";
-import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.7";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.8";
+import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.8";
 
 let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
@@ -356,6 +356,8 @@ function buildConsole() {
   const list = $("conList");
   list.addEventListener("click", e => {
     const u = e.target.closest("[data-src]"); if (u) { e.preventDefault(); openSource(u.dataset.src, Number(u.dataset.line) || 0); return; }
+    const network = e.target.closest("[data-open-error-network]");
+    if (network) { const entry = (tab()?.console || []).find(x => x.id === network.dataset.openErrorNetwork); if (entry) openNetworkForError(entry); return; }
     const copy = e.target.closest("[data-copy-console]");
     if (copy) { const entry = (tab()?.console || []).find(x => x.id === copy.dataset.copyConsole); if (entry) copyText(consoleEntryText(entry)); return; }
     const toggle = e.target.closest("[data-toggle-console]");
@@ -427,14 +429,18 @@ function consoleDisplayMessage(c) {
 function consoleEntryText(c) {
   const lines = [`[${new Date(c.time || Date.now()).toISOString()}] ${String(c.level || "log").toUpperCase()} ${consoleDisplayMessage(c)}`];
   if (c.url) lines.push(`Source: ${c.url}${c.line ? ":" + c.line : ""}${c.column ? ":" + c.column : ""}`);
+  if (c.resourceTag || c.resourceType) lines.push(`Resource: ${[c.resourceTag, c.resourceType].filter(Boolean).join(" · ")}`);
+  if (c.resourceStatus != null) lines.push(`HTTP status: ${c.resourceStatus}`);
+  if (c.resourceSelector) lines.push(`Element: ${c.resourceSelector}`);
   if (c.pageUrl && c.pageUrl !== c.url) lines.push(`Page: ${c.pageUrl}`);
   if (c.description) lines.push(`Description: ${c.description}`);
   if (c.context) lines.push(`Context: ${c.context}`);
+  if (c.browserNote) lines.push(`Browser diagnostic: ${c.browserNote}`);
   if (c.stack) lines.push(`Stack trace:\n${c.stack}`);
   return lines.join("\n");
 }
 function consoleSearchText(c) {
-  return [c.message, c.errorName, c.description, c.context, c.stack, c.url, c.pageUrl, c.line, c.column].filter(Boolean).join("\n").toLowerCase();
+  return [c.message, c.errorName, c.description, c.context, c.stack, c.url, c.resourceUrl, c.resourceTag, c.resourceType, c.resourceStatus, c.resourceSelector, c.browserNote, c.pageUrl, c.line, c.column].filter(Boolean).join("\n").toLowerCase();
 }
 function filteredConsoleRows() {
   const t = tab(); if (!t) return { rows: [], hidden: 0 };
@@ -444,7 +450,7 @@ function filteredConsoleRows() {
     c.id ||= uid();
     const isRepl = c.kind === "cmd" || c.kind === "res";
     if ((!isRepl && lv !== "all" && c.level !== lv) || (q && !consoleSearchText(c).includes(q))) { hidden++; continue; }
-    const key = [c.level, c.kind, c.message, c.stack, c.url, c.line, c.column].join("\u001f"); const last = rows[rows.length - 1];
+    const key = [c.level, c.kind, c.message, c.stack, c.url, c.resourceUrl, c.resourceTag, c.resourceType, c.resourceStatus, c.resourceSelector, c.browserNote, c.line, c.column].join("\u001f"); const last = rows[rows.length - 1];
     if (group && last && !isRepl && last.key === key) { last.n++; continue; }
     rows.push({ c, n: 1, key });
   }
@@ -457,14 +463,21 @@ function copyVisibleConsole(asJson = false) {
   copyText(text);
 }
 function consoleDetailsHtml(c, expanded) {
-  const hasDetails = !!(c.stack || c.url || c.pageUrl || c.description || c.context || c.errorName);
+  const hasDetails = !!(c.stack || c.url || c.pageUrl || c.description || c.context || c.errorName || c.resourceTag || c.resourceType || c.resourceStatus != null || c.resourceSelector || c.browserNote);
   if (!hasDetails) return "";
   const id = `con-detail-${esc(c.id)}`;
   const source = c.url ? `<a href="#" data-src="${esc(c.url)}" data-line="${c.line || 0}">${esc(c.url)}${c.line ? ":" + c.line : ""}${c.column ? ":" + c.column : ""}</a>` : "";
-  const rows = [["Source", source], ["Page", c.pageUrl ? esc(c.pageUrl) : ""], ["Description", c.description ? esc(c.description) : ""], ["Context", c.context ? esc(c.context) : ""]].filter(([, value]) => value);
+  const rows = [["Source", source], ["Page", c.pageUrl ? esc(c.pageUrl) : ""], ["Resource", [c.resourceTag, c.resourceType].filter(Boolean).map(esc).join(" · ")], ["HTTP status", c.resourceStatus != null ? esc(c.resourceStatus) : ""], ["Element", c.resourceSelector ? esc(c.resourceSelector) : ""], ["Description", c.description ? esc(c.description) : ""], ["Context", c.context ? esc(c.context) : ""]].filter(([, value]) => value);
+  const note = c.browserNote ? `<div class="con-diagnosis"><b>Browser / network note</b><span>${esc(c.browserNote)}</span><button type="button" data-open-error-network="${esc(c.id)}">Open Network</button></div>` : "";
   const stackLines = String(c.stack || "").split("\n");
   const preview = c.stack && !expanded ? `<span class="con-stack-preview">${linkify(stackLines.slice(0, 3).join("\n"))}${stackLines.length > 3 ? "\n…" : ""}</span>` : "";
-  return `${preview}<button class="con-detail-toggle" type="button" data-toggle-console="${esc(c.id)}" aria-expanded="${expanded}" aria-controls="${id}">${expanded ? "Hide diagnostics" : "Show diagnostics"}</button>${expanded ? `<div class="con-detail" id="${id}">${rows.length ? `<dl>${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>` : ""}${c.stack ? `<div class="con-stack-full"><span>Stack trace</span><pre>${linkify(String(c.stack))}</pre></div>` : ""}</div>` : ""}`;
+  return `${preview}<button class="con-detail-toggle" type="button" data-toggle-console="${esc(c.id)}" aria-expanded="${expanded}" aria-controls="${id}">${expanded ? "Hide diagnostics" : "Show diagnostics"}</button>${expanded ? `<div class="con-detail" id="${id}">${rows.length ? `<dl>${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>` : ""}${note}${c.stack ? `<div class="con-stack-full"><span>Stack trace</span><pre>${linkify(String(c.stack))}</pre></div>` : ""}</div>` : ""}`;
+}
+function openNetworkForError(entry) {
+  const t = tab(); if (!t) return;
+  dtState(t).netFilter = "all";
+  const filter = $("netFilter"); if (filter) filter.value = entry.resourceUrl ? hostOf(entry.resourceUrl) : "";
+  show("network");
 }
 function renderConsole() {
   const t = tab(); const list = $("conList"); if (!list) return;
@@ -654,7 +667,11 @@ async function pollRemote() {
   try {
     const r = await dtCall(t, "logs.get", {});
     const s = dtState(t); s.remoteSeen ||= new Set();
-    for (const c of r.console || []) { const k = "c" + c.time + c.message.slice(0, 40); if (s.remoteSeen.has(k)) continue; s.remoteSeen.add(k); t.console.push({ time: c.time, level: c.level === "warning" ? "warn" : c.level, message: c.message, kind: "console" }); }
+    for (const c of r.console || []) {
+      const message = String(c.message || c.text || "Console event"); const k = "c" + (c.time || c.timestamp || "") + message.slice(0, 40);
+      if (s.remoteSeen.has(k)) continue; s.remoteSeen.add(k);
+      t.console.push({ ...c, id: uid(), time: c.time || c.timestamp || Date.now(), level: String(c.level || "log").toLowerCase() === "warning" ? "warn" : String(c.level || "log").toLowerCase(), message, url: c.url || c.sourceURL || c.scriptUrl || "", line: c.line || c.lineNumber || 0, column: c.column || c.columnNumber || 0, stack: c.stack || c.stackTrace || "", pageUrl: c.pageUrl || t.url, kind: c.kind || "console" });
+    }
     const byUrl = new Map();
     for (const n of r.network || []) { const k = n.method + n.url; if (n.type === "request") byUrl.set(k, { ...n, start: n.time }); else { const q = byUrl.get(k) || {}; byUrl.delete(k); const id = "r" + n.time + n.url.slice(-30); if (s.remoteSeen.has(id)) continue; s.remoteSeen.add(id); t.network.push({ remote: true, id, method: n.method, url: n.url, status: n.status || 0, ok: n.type === "response" && n.status < 400, error: n.error, duration: q.start ? n.time - q.start : null, startedAt: q.start || n.time, resourceType: n.resourceType, initiator: n.resourceType, responseHeaders: n.headers || {}, requestHeaders: {}, mime: n.headers?.["content-type"] || "" }); } }
     const ev = await dtCall(t, "events.drain", {}).catch(() => []);

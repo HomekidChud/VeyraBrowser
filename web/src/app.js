@@ -3,10 +3,10 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.7";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.7";
-import { initUI } from "./ui.js?v=8.28.7";
-import { initDevtools } from "./devtools.js?v=8.28.7";
+} from "./core.js?v=8.28.8";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.8";
+import { initUI } from "./ui.js?v=8.28.8";
+import { initDevtools } from "./devtools.js?v=8.28.8";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
@@ -2057,12 +2057,25 @@ function consoleNumber(...values) {
 }
 function pageConsoleEntry(d, t) {
   const err = d.error && typeof d.error === "object" ? d.error : d.reason && typeof d.reason === "object" ? d.reason : {};
+  const resource = d.resource && typeof d.resource === "object" ? d.resource : d.element && typeof d.element === "object" ? d.element : {};
   const isException = d.type === "veyra:page-error";
   const message = firstConsoleText(d.message, err.message, d.error, d.reason, d.description) || "No error message was supplied.";
   const nameMatch = message.match(/^([A-Za-z_$][\w$]*(?:Error|Exception))\s*:/);
   const errorName = firstConsoleText(d.errorName, d.name, err.name, nameMatch?.[1]);
   const description = firstConsoleText(d.errorDescription, err.description, d.detail, d.description);
-  const context = firstConsoleText(d.context, d.meta, d.cause, err.cause);
+  const context = firstConsoleText(d.context, d.meta, d.cause, err.cause, resource.context);
+  const resourceUrl = firstConsoleText(d.resourceUrl, d.failedResourceUrl, resource.url, resource.currentSrc, resource.src, resource.href, d.url, d.filename, d.sourceURL, err.url);
+  const resourceTag = firstConsoleText(d.resourceTag, d.elementTag, resource.tag, resource.tagName, resource.nodeName).toLowerCase();
+  const rawMessage = message.replace(/^Uncaught\s+/i, "").trim();
+  const hasSource = !!firstConsoleText(d.url, d.filename, d.sourceURL, err.url, resourceUrl);
+  const hasStack = !!firstConsoleText(d.stack, err.stack);
+  const hasLine = !!consoleNumber(d.line, d.lineNumber, d.lineno, err.line, err.lineNumber);
+  const crossOriginScript = isException && /^Script error\.?$/i.test(rawMessage) && !hasSource && !hasStack && !hasLine;
+  const resourceFailure = isException && (!!resourceTag || !!resourceUrl || /^Resource error\.?$/i.test(rawMessage));
+  const diagnosis = firstConsoleText(d.diagnosis, crossOriginScript ? "cross-origin-script" : resourceFailure ? "resource-load" : "");
+  const browserNote = firstConsoleText(d.browserNote, crossOriginScript ? "The browser only reported a generic ‘Script error.’ with no source location or stack. This commonly happens when a cross-origin script does not opt in to sharing detailed errors; the original exception may not be available to Veyra." : resourceFailure ? "The load event identifies a failed resource, but browsers do not include its HTTP status or network failure reason in that event. Check Network for the request and response." : "");
+  const statusText = firstConsoleText(d.resourceStatus, resource.status, d.status);
+  const resourceStatus = statusText && Number.isFinite(Number(statusText)) ? Number(statusText) : null;
   const reportedTime = new Date(d.time || Date.now()).getTime();
   return {
     id: uid(),
@@ -2073,7 +2086,14 @@ function pageConsoleEntry(d, t) {
     description: description && description !== message ? description : "",
     context,
     stack: firstConsoleText(d.stack, err.stack),
-    url: firstConsoleText(d.url, d.filename, d.sourceURL, err.url),
+    url: firstConsoleText(d.url, d.filename, d.sourceURL, resourceUrl, err.url),
+    resourceUrl,
+    resourceTag,
+    resourceType: firstConsoleText(d.resourceType, resource.type, resource.as),
+    resourceStatus,
+    resourceSelector: firstConsoleText(d.resourceSelector, resource.selector),
+    diagnosis,
+    browserNote,
     line: consoleNumber(d.line, d.lineNumber, d.lineno, err.line, err.lineNumber),
     column: consoleNumber(d.column, d.columnNumber, d.colno, err.column, err.columnNumber),
     pageUrl: firstConsoleText(d.pageUrl, t.url),

@@ -674,6 +674,7 @@ textarea.el-edit{display:block;width:calc(100% - 20px);min-height:90px;margin:2p
 .con-detail-toggle{margin-top:4px;padding:2px 6px;border:1px solid var(--line);color:var(--text-2)}
 .con-detail{display:grid;gap:7px;margin:5px 0 2px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:color-mix(in oklab,var(--surface) 82%,var(--bg))}
 .con-detail dl{display:grid;gap:4px;margin:0}.con-detail dl>div{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px}.con-detail dt{color:var(--muted)}.con-detail dd{margin:0;overflow-wrap:anywhere}.con-detail dd a{color:var(--accent)}
+.con-diagnosis{display:grid;gap:5px;padding:8px 9px;border-left:2px solid var(--warn);border-radius:4px;background:color-mix(in oklab,var(--warn) 7%,transparent);font:11.5px/1.5 var(--font-ui);color:var(--text-2)}.con-diagnosis>b{color:var(--text)}.con-diagnosis button{justify-self:start;border:1px solid var(--line);border-radius:4px;background:var(--surface-2);color:var(--text);font:11px var(--font-ui);padding:4px 8px;cursor:pointer}.con-diagnosis button:hover{border-color:var(--accent);color:var(--accent)}
 .con-stack-full{display:grid;gap:3px}.con-stack-full>span{color:var(--muted)}.con-stack-full pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-2);font:11px/1.55 var(--font-mono)}
 .con-group{padding-left:14px;border-left:1px solid var(--line-2);margin-left:14px}
 .con-input{display:flex;gap:6px;padding:4px 8px;border-top:1px solid var(--line);align-items:flex-start;flex:none;background:var(--bg)}
