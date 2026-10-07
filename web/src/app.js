@@ -3,10 +3,10 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.8";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.8";
-import { initUI } from "./ui.js?v=8.28.8";
-import { initDevtools } from "./devtools.js?v=8.28.8";
+} from "./core.js?v=8.28.9";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.9";
+import { initUI } from "./ui.js?v=8.28.9";
+import { initDevtools } from "./devtools.js?v=8.28.9";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
@@ -2037,6 +2037,12 @@ function tabForSource(src) {
   for (const t of state.tabs) { const f = frameFor(t); if (!f) continue; let w = src; for (let i = 0; i < 6 && w; i++) { if (w === f.contentWindow) return t; try { if (w === w.parent) break; w = w.parent; } catch { break; } } }
   return null;
 }
+function isConsoleLabPageUrl(value) {
+  try {
+    const u = new URL(String(value || ""));
+    return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && u.pathname.replace(/\/+$/, "") === "/VeyraBrowser/web/console-lab";
+  } catch { return false; }
+}
 function consoleText(value) {
   if (value == null) return "";
   if (typeof value === "string") return value.trim();
@@ -2108,6 +2114,22 @@ async function handleMessage(e) {
   
   if (e.origin !== API_ORIGIN && e.origin !== "null") return;
   const t = tabForSource(e.source); if (!t) return;
+  if (d.type === "veyra:console-lab:auth-check") {
+    if (t.view !== "page" || !isConsoleLabPageUrl(t.url) || typeof d.requestId !== "string") return;
+    const requestId = d.requestId.slice(0, 100);
+    let allowed = false;
+    let reason = "Sign in to Veyra with an administrator account to use the Console Lab.";
+    try {
+      const config = await api("/api/auth/config", { timeoutMs: 8000 });
+      allowed = config?.admin === true;
+      if (allowed) reason = "";
+    } catch {
+      reason = "Could not verify administrator access with VeyraServer. Check your connection and retry.";
+    }
+    if (!state.tabs.includes(t) || tabForSource(e.source) !== t || !isConsoleLabPageUrl(t.url)) return;
+    try { e.source.postMessage({ type: "veyra:console-lab:auth-result", requestId, allowed, reason }, e.origin === "null" ? "*" : e.origin); } catch {}
+    return;
+  }
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }

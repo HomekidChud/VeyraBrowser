@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="veyra-api" content="https://veyraserver-xscy.onrender.com">
   <meta name="color-scheme" content="dark">
-  <title>Veyra Console Lab</title>
+  <title>Veyra Console Lab · Admin</title>
   <style>
     :root{color-scheme:dark;--bg:#0c111b;--panel:#151e2b;--line:#29384a;--text:#edf3fa;--muted:#a6b3c2;--blue:#9cbafa;--green:#8fe0bd;--orange:#ffc783;--red:#ff9d9d}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 18% 0%,#1d2c43 0,transparent 44%),var(--bg);color:var(--text);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:radial-gradient(ellipse at 18% 0%,#1d2c43 0,transparent 44%),var(--bg);color:var(--text);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
     main{width:min(1040px,100% - 36px);margin:44px auto 80px}.eyebrow{color:var(--blue);font:700 12px/1.3 ui-monospace,SFMono-Regular,monospace;letter-spacing:.14em;text-transform:uppercase}h1{font-size:clamp(32px,5vw,50px);line-height:1.08;letter-spacing:-.04em;margin:12px 0}p{color:var(--muted);margin:8px 0}.lead{max-width:760px;font-size:17px}
     .status{display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:999px;padding:7px 12px;margin:18px 0 24px;color:var(--muted);font-size:13px}.dot{width:8px;height:8px;border-radius:50%;background:var(--orange)}.dot.ok{background:var(--green);box-shadow:0 0 12px #8fe0bd66}
     .notice{border:1px solid #38506d;background:#111b29;border-radius:14px;padding:16px 18px;margin:0 0 22px}.notice strong{color:var(--text)}.notice p{margin:5px 0 0;font-size:13px}
@@ -17,18 +17,29 @@
     .results{list-style:none;padding:0;margin:0;display:grid;gap:7px}.result{display:grid;grid-template-columns:78px minmax(0,1fr);gap:12px;align-items:start;padding:11px 13px;background:#111925;border:1px solid #202e3e;border-radius:9px}.result .kind{font:700 11px/1.4 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.04em}.result .kind.ok{color:var(--green)}.result .kind.warn{color:var(--orange)}.result .kind.error{color:var(--red)}.result .detail{overflow-wrap:anywhere}.result .detail strong{display:block;font-size:13px}.result .detail small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.footer{margin-top:22px;font-size:12px}
     @media(max-width:600px){main{width:calc(100% - 24px);margin:24px auto 48px}.result{grid-template-columns:64px minmax(0,1fr);gap:8px}.controls .btn{flex:1 1 100%}}
   </style>
-  <script src="runner.js?v=2" defer></script>
+  <script src="admin-gate.js?v=1" defer></script>
 </head>
 <body>
-  <main>
-    <div class="eyebrow">Veyra · Developer tools</div>
+  <main id="accessGate" aria-live="polite">
+    <div class="eyebrow">Veyra · administrator tools</div>
+    <h1>Administrator access required</h1>
+    <p class="lead" id="accessState">Verifying your Veyra administrator session…</p>
+    <section class="notice">
+      <strong>How to open the lab</strong>
+      <p>Sign in to Veyra with an administrator account, then open the menu and choose <b>Console Lab</b>. Use the same browser profile; server probes require Veyra’s Fast proxy. Non-admin sessions cannot load the test controls.</p>
+    </section>
+    <div class="controls"><button class="btn" id="retryAccess" type="button" hidden>Retry administrator check</button></div>
+  </main>
+
+  <main id="lab" hidden>
+    <div class="eyebrow">Veyra · administrator tools</div>
     <h1>Console Lab</h1>
     <p class="lead">A controlled diagnostic page for checking what Veyra captures, how much detail it preserves, and how server-side proxy failures appear in Console and Network.</p>
     <div class="status" aria-live="polite"><i class="dot" id="proxyDot"></i><span id="proxyState">Checking Veyra proxy…</span></div>
 
     <section class="notice" aria-label="Test safety and limits">
       <strong>Deliberate, bounded tests only</strong>
-      <p>The local suite generates console output and temporary page errors. The server suite sends at most <b>20 sequential resource requests</b> per run through VeyraServer: health responses, standard HTTP status fixtures, reserved <code>.invalid</code> hosts, and missing resources. Image, script, and stylesheet loads exercise the browser's resource-error path without page-side fetch/CORS ambiguity. No crawler/session creation, login, writes, retries, background loop, or backup access. Stop halts remaining probes; up to three server batches are allowed per page load.</p>
+      <p>One read-only administrator check runs before the lab is shown. The local suite generates console output and temporary page errors. The server suite sends at most <b>20 sequential resource requests</b> per run through VeyraServer: health responses, standard HTTP status fixtures, reserved <code>.invalid</code> hosts, and missing resources. Image, script, and stylesheet loads exercise the browser's resource-error path without page-side fetch/CORS ambiguity. No crawler/session creation, login, writes, retries, background loop, or backup access. Stop halts remaining probes; up to three server batches are allowed per page load.</p>
     </section>
 
     <div class="controls">
@@ -45,7 +56,7 @@
     </div>
     <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
     <ol class="results" id="results" aria-live="polite"></ol>
-    <p class="footer">Tip: open this page in Veyra, open DevTools → Console, then run the full lab. Search for <code>[VEYRA-LAB</code> to isolate this run. Expand error rows for source/resource details; inspect Network for the matching request and status.</p>
+    <p class="footer">Tip: open DevTools → Console, then run the full lab. Search for <code>[VEYRA-LAB</code> to isolate this run. Expand error rows for source/resource details. This page verifies Veyra administrator access before loading the test runner.</p>
   </main>
 </body>
 </html>

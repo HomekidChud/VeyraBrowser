@@ -17,12 +17,12 @@
     if (saved.fontScale) document.documentElement.style.setProperty("--ui-scale", saved.fontScale);
   } catch {}
   const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.28.8`; document.head.appendChild(stylesheet);
+  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.28.9`; document.head.appendChild(stylesheet);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
   window.addEventListener("DOMContentLoaded", () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.8`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.9`; document.body.appendChild(app);
   }, { once: true });
   if (location.protocol === "https:" && "serviceWorker" in navigator) {
     navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});

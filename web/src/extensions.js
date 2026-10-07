@@ -1,6 +1,6 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.8";
-import { dtCall, isRemote } from "./bridge.js?v=8.28.8";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.9";
+import { dtCall, isRemote } from "./bridge.js?v=8.28.9";
 
 let B;
 const BUILTIN = [];

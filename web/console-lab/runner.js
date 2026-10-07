@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  if (document.body?.dataset.consoleLabAccess !== "granted") return;
 
   const MAX_REQUESTS_PER_RUN = 20;
   const MAX_SERVER_RUNS = 3;
