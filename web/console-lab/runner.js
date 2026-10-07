@@ -11,9 +11,10 @@
   const PAGE_URL = window.__VEYRA_PAGE_URL__ || location.href;
   const proxied = window.__VEYRA_PROXY__ === true;
   const $ = (id) => document.getElementById(id);
-  const state = { running: false, stopRequested: false, currentResource: null, serverRuns: 0, rows: 0, runId: "", sessions: null, neural: null, workers: null, logs: [], snapshots: [], pollTimer: null, commandHistory: [] };
+  const state = { running: false, stopRequested: false, currentResource: null, serverRuns: 0, rows: 0, runId: "", sessions: null, neural: null, workers: null, logs: [], snapshots: [], pollTimer: null, commandHistory: [], editingAgentId: null, activeAgentIds: new Set() };
   const runLocalButton = $("runLocal"), runServerButton = $("runServer"), runFullButton = $("runFull"), stopButton = $("stopRun");
   const AGENT_STORE = "veyra-console-lab-agents-v1";
+  const RUN_STORE = "veyra-console-lab-runs-v1";
 
   function setStatus(text) { $("runState").textContent = text; }
   function updateCount() { $("counts").textContent = `${state.rows} case${state.rows === 1 ? "" : "s"} recorded · ${state.serverRuns}/${MAX_SERVER_RUNS} server batches used`; }
@@ -154,6 +155,11 @@
     const out = $("consoleOutput"); if (!out) return;
     const item = document.createElement("div"); item.className = `console-line ${level}`; item.textContent = `${new Date().toLocaleTimeString()}  ${line}`; out.appendChild(item); out.scrollTop = out.scrollHeight;
     while (out.children.length > 300) out.firstElementChild.remove();
+    applyConsoleFilter();
+  }
+  function applyConsoleFilter() {
+    const query = ($("consoleSearch")?.value || "").trim().toLowerCase(), level = $("consoleLevelFilter")?.value || "all";
+    $("consoleOutput")?.querySelectorAll(".console-line").forEach(line => { line.hidden = (level !== "all" && !line.classList.contains(level)) || (query && !line.textContent.toLowerCase().includes(query)); });
   }
   function shortJson(value) { try { return JSON.stringify(value, null, 2); } catch { return String(value); } }
   function renderEvents(target, entries) {
@@ -188,6 +194,7 @@
       text("workerStatus", `${fmt(workers.active)} active · ${fmt(workers.idle)} idle`); text("analyticsQueue", `Queue ${fmt(list.reduce((sum, worker) => sum + safeNum(worker.queueSize), 0))}`);
       const details = $("workerDetails"); if (details) details.textContent = `${fmt(workers.totalWorkers)} workers · ${fmt(workers.active)} active · ${fmt(workers.idle)} idle · ${fmt(workers.totalPagesCrawled)} pages crawled · ${fmt(workers.totalLinksFound)} links found · ${fmt(workers.totalBytesFetched)} bytes · ${fmt(workers.totalErrors)} errors`;
       renderEvents("recentEvents", state.logs); renderEvents("agentEvents", state.logs); renderEvents("activityEvents", state.logs); renderEvents("analyticsEvents", state.logs);
+      renderFleet();
     }
     const now = new Date().toLocaleTimeString(); text("lastUpdated", `Last refreshed ${now} · next refresh in ${Math.round(POLL_MS / 1000)} seconds`); text("activityUpdated", `Updated ${now}`); text("consoleConnection", "Connected · admin metrics");
   }
@@ -213,46 +220,128 @@
   // Browser-local agent profiles configure the server's existing neural crawler. No hidden schedule is created.
   function readAgents() { try { const parsed = JSON.parse(localStorage.getItem(AGENT_STORE) || "[]"); return Array.isArray(parsed) ? parsed.filter(a => a && typeof a.id === "string") : []; } catch { return []; } }
   function saveAgents(items) { localStorage.setItem(AGENT_STORE, JSON.stringify(items.slice(0, 30))); }
-  function renderAgents() {
-    const root = $("agentList"), agents = readAgents(); text("agentCount", `${agents.length} saved`); if (!root) return; root.replaceChildren();
-    if (!agents.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "Create a profile to begin."; root.appendChild(li); return; }
-    agents.forEach(agent => {
-      const li = document.createElement("li"); li.className = "agent-card"; const copy = document.createElement("span"), name = document.createElement("b"), meta = document.createElement("small");
-      name.textContent = agent.name; meta.textContent = `${agent.seed} · ${agent.maxPages} page cap · depth ${agent.maxDepth} · ${agent.goal}`; copy.append(name, meta);
-      const actions = document.createElement("span"); actions.className = "agent-actions"; const launch = document.createElement("button"), remove = document.createElement("button"); launch.className = "btn primary"; launch.type = remove.type = "button"; launch.textContent = "Run now"; remove.className = "btn danger"; remove.textContent = "Delete";
-      launch.addEventListener("click", () => launchAgent(agent, launch)); remove.addEventListener("click", () => { saveAgents(readAgents().filter(item => item.id !== agent.id)); renderAgents(); }); actions.append(launch, remove); li.append(copy, actions); root.appendChild(li);
+  function readRuns() { try { const parsed = JSON.parse(localStorage.getItem(RUN_STORE) || "[]"); return Array.isArray(parsed) ? parsed.slice(0, 50) : []; } catch { return []; } }
+  function saveRuns(items) { localStorage.setItem(RUN_STORE, JSON.stringify(items.slice(0, 50))); }
+  function downloadJson(filename, value) { const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  function validAgent(input) {
+    if (!input || typeof input !== "object") return null;
+    let url; try { url = new URL(String(input.seed || "")); } catch { return null; }
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+    const name = String(input.name || "").trim().slice(0, 36), goal = String(input.goal || "").trim().slice(0, 240);
+    if (!name || !goal) return null;
+    const focus = ["research", "documentation", "site-audit", "relevance"].includes(input.focus) ? input.focus : "research";
+    return { id: String(input.id || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`).slice(0, 80), name, seed: url.href, goal, focus, notes: String(input.notes || "").slice(0, 180), maxPages: Math.max(1, Math.min(50, Number(input.maxPages) || 12)), maxDepth: Math.max(1, Math.min(5, Number(input.maxDepth) || 2)), createdAt: Number(input.createdAt) || Date.now(), lastRun: input.lastRun || null };
+  }
+  function renderRunHistory() {
+    const root = $("runHistoryList"), runs = readRuns(); if (!root) return;
+    const profiles = readAgents(); text("runProfileCount", profiles.length); text("runHistoryCount", runs.length); text("runPagesTotal", fmt(runs.reduce((sum, run) => sum + safeNum(run.pagesCrawled), 0))); text("runLatest", runs[0] ? runs[0].status : "—"); root.replaceChildren();
+    if (!runs.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = "No runs have been recorded yet."; root.appendChild(li); return; }
+    runs.forEach(run => {
+      const li = document.createElement("li"); li.className = "run-card"; const header = document.createElement("div"); header.className = "run-card-head"; const title = document.createElement("b"); title.textContent = run.agentName || "Agent run"; const status = document.createElement("span"); status.className = "pill"; status.textContent = run.status || "complete"; header.append(title, status);
+      const detail = document.createElement("p"); detail.textContent = `${new Date(run.at || Date.now()).toLocaleString()} · ${run.seed || ""} · ${fmt(run.pagesCrawled)} pages · ${fmt(run.linksFound)} links · ${fmt(run.errors)} errors`;
+      const found = document.createElement("div"); found.className = "run-results"; (run.findings || []).slice(0, 6).forEach(item => { const chip = document.createElement("span"); chip.textContent = item.title || item.url || "Page found"; found.appendChild(chip); });
+      li.append(header, detail); if (found.childElementCount) li.appendChild(found); root.appendChild(li);
     });
   }
+  function renderFleet() {
+    const workers = state.workers; if (!workers) return;
+    const entries = Array.isArray(workers.workers) ? workers.workers : [];
+    text("fleetTotal", fmt(workers.totalWorkers)); text("fleetActive", fmt(workers.active)); text("fleetPages", fmt(workers.totalPagesCrawled)); text("fleetErrors", fmt(workers.totalErrors));
+    const body = $("fleetRows"); if (body) { body.replaceChildren(); if (!entries.length) { const tr = document.createElement("tr"), td = document.createElement("td"); td.colSpan = 8; td.className = "muted"; td.textContent = "No crawler workers are currently configured."; tr.appendChild(td); body.appendChild(tr); }
+      entries.forEach((worker, index) => { const tr = document.createElement("tr"); const values = [`Worker ${index + 1}`, worker.status || "unknown", worker.currentUrl || "—", fmt(worker.queueSize), fmt(worker.visitedCount), fmt(worker.pagesCrawled), `${fmt(worker.avgLatencyMs)} ms`, fmt(worker.errors)]; values.forEach((value, i) => { const td = document.createElement("td"); td.textContent = value; if (i === 2) td.className = "target"; tr.appendChild(td); }); body.appendChild(tr); }); }
+    text("fleetHealth", workers.error ? `${fmt(workers.error)} workers degraded` : `${fmt(workers.active)} active · ${fmt(workers.idle)} idle`);
+    text("fleetDiagnostics", `${fmt(workers.totalWorkers)} workers · ${fmt(workers.totalPagesCrawled)} pages · ${fmt(workers.totalLinksFound)} links · ${fmt(workers.totalBytesFetched)} bytes · ${fmt(workers.totalErrors)} reported errors. This view reflects the server's current worker snapshot.`);
+  }
+  function renderAgents() {
+    const root = $("agentList"), agents = readAgents(); text("agentCount", `${agents.length} saved`); if (!root) return; root.replaceChildren();
+    const filter = ($("agentSearch")?.value || "").trim().toLowerCase(), visible = agents.filter(agent => `${agent.name} ${agent.goal} ${agent.seed} ${agent.focus}`.toLowerCase().includes(filter));
+    if (!visible.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = agents.length ? "No saved agent matches that filter." : "Create a profile or start with a playbook."; root.appendChild(li); return; }
+    visible.forEach(agent => {
+      const li = document.createElement("li"); li.className = "agent-card"; const copy = document.createElement("span"), name = document.createElement("b"), meta = document.createElement("small"), badges = document.createElement("span"); copy.className = "agent-main"; badges.className = "agent-badges";
+      name.textContent = agent.name; meta.textContent = `${agent.seed} · ${agent.maxPages} page cap · depth ${agent.maxDepth} · ${agent.goal}${agent.notes ? ` · ${agent.notes}` : ""}`; const focus = document.createElement("span"); focus.className = "pill"; focus.textContent = agent.focus || "research"; badges.appendChild(focus); if (agent.lastRun) { const last = document.createElement("span"); last.className = "pill"; last.textContent = `Last run · ${new Date(agent.lastRun.at).toLocaleString()}`; badges.appendChild(last); } copy.append(name, meta, badges);
+      const actions = document.createElement("span"); actions.className = "agent-actions";
+      const makeButton = (label, cls, fn) => { const button = document.createElement("button"); button.className = `btn ${cls}`; button.type = "button"; button.textContent = label; button.addEventListener("click", fn); return button; };
+      const runButton = makeButton(state.activeAgentIds.has(agent.id) ? "Running…" : "Run now", "primary", event => launchAgent(agent, event.currentTarget)); runButton.disabled = state.activeAgentIds.has(agent.id);
+      actions.append(runButton, makeButton("Edit", "", () => editAgent(agent)), makeButton("Duplicate", "", () => duplicateAgent(agent)), makeButton("Delete", "danger", () => { saveAgents(readAgents().filter(item => item.id !== agent.id)); renderAgents(); renderRunHistory(); })); li.append(copy, actions); root.appendChild(li);
+    });
+  }
+  function editAgent(agent) {
+    state.editingAgentId = agent.id; $("agentName").value = agent.name; $("agentSeed").value = agent.seed; $("agentFocus").value = agent.focus || "research"; $("agentGoal").value = agent.goal; $("agentPages").value = agent.maxPages; $("agentDepth").value = agent.maxDepth; $("agentNotes").value = agent.notes || ""; $("agentRunSize").value = "custom"; text("agentFormStatus", `Editing ${agent.name}; save to update its profile.`); $("agentForm").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function duplicateAgent(agent) { const agents = readAgents(); if (agents.length >= 30) { text("agentFormStatus", "Maximum of 30 saved profiles reached."); return; } const copy = validAgent({ ...agent, id: undefined, name: `${agent.name} copy`, createdAt: Date.now(), lastRun: null }); agents.unshift(copy); saveAgents(agents); renderAgents(); renderRunHistory(); }
   async function launchAgent(agent, button) {
-    button.disabled = true; button.textContent = "Running…"; addConsole(`Launching agent “${agent.name}” for ${agent.seed}`, "info"); text("agentFormStatus", `Running ${agent.name}…`);
+    if (state.activeAgentIds.has(agent.id)) return;
+    state.activeAgentIds.add(agent.id); button.disabled = true; button.textContent = "Running…"; renderAgents(); addConsole(`Launching agent “${agent.name}” for ${agent.seed}`, "info"); text("agentFormStatus", `Running ${agent.name}…`);
     try {
-      const result = await api("/api/robots/crawl", { method: "POST", body: { seed: agent.seed, query: agent.goal, maxDepth: agent.maxDepth, maxPages: agent.maxPages }, timeout: Math.max(60000, agent.maxPages * 15000) });
-      const outcome = result.results || result; const stats = outcome.stats || {}; addConsole(`${agent.name} finished: ${fmt(stats.pagesCrawled)} pages, ${fmt(stats.linksFound)} links, ${fmt(stats.errors)} errors.`, "info"); text("agentFormStatus", `${agent.name}: ${fmt(stats.pagesCrawled)} pages crawled · ${fmt(stats.linksFound)} links found.`); await refreshData(true);
-    } catch (error) { addConsole(`${agent.name} failed: ${error.message}`, "error"); text("agentFormStatus", `${agent.name}: ${error.message}`); }
-    finally { button.disabled = false; button.textContent = "Run now"; }
+      const focusLabels = { research: "topic research", documentation: "documentation mapping", "site-audit": "site structure audit", relevance: "neural relevance" };
+      const result = await api("/api/robots/crawl", { method: "POST", body: { seed: agent.seed, query: `${focusLabels[agent.focus] || "research"} ${agent.goal}`, maxDepth: agent.maxDepth, maxPages: agent.maxPages }, timeout: Math.max(60000, agent.maxPages * 15000) });
+      const settled = Array.isArray(result.results) ? result.results : [], workerResults = settled.map(item => item.result).filter(Boolean), pages = workerResults.flatMap(item => Array.isArray(item.pages) ? item.pages : []), stats = workerResults.reduce((sum, item) => ({ pagesCrawled: sum.pagesCrawled + safeNum(item.stats?.pagesCrawled), linksFound: sum.linksFound + safeNum(item.stats?.linksFound), errors: sum.errors + safeNum(item.stats?.errors) }), { pagesCrawled: 0, linksFound: 0, errors: 0 });
+      if (!settled.length) throw new Error("No idle crawler worker is available. Refresh the fleet status and try again shortly.");
+      stats.errors += settled.filter(item => item.status !== "fulfilled").length;
+      const findings = pages.slice(0, 6).map(page => ({ title: String(page.title || "Untitled page").slice(0, 100), url: String(page.url || "").slice(0, 400) })), run = { id: `${Date.now()}`, at: Date.now(), agentName: agent.name, seed: agent.seed, status: settled.length && settled.every(item => item.status === "fulfilled") ? "Complete" : settled.length ? "Partial" : "No worker available", pagesCrawled: stats.pagesCrawled, linksFound: stats.linksFound, errors: stats.errors, findings };
+      try { saveRuns([run, ...readRuns()]); const all = readAgents(), index = all.findIndex(item => item.id === agent.id); if (index >= 0) { all[index].lastRun = { at: run.at, status: run.status }; saveAgents(all); } } catch {}
+      addConsole(`${agent.name} finished: ${fmt(stats.pagesCrawled)} pages, ${fmt(stats.linksFound)} links, ${fmt(stats.errors)} errors.`, "info"); text("agentFormStatus", `${agent.name}: ${fmt(stats.pagesCrawled)} pages crawled · ${fmt(stats.linksFound)} links found.`); renderRunHistory(); renderAgents(); await refreshData(true);
+    } catch (error) { const run = { id: `${Date.now()}`, at: Date.now(), agentName: agent.name, seed: agent.seed, status: "Failed", pagesCrawled: 0, linksFound: 0, errors: 1, findings: [{ title: String(error.message || "Agent run failed").slice(0, 100), url: "" }] }; try { saveRuns([run, ...readRuns()]); } catch {} renderRunHistory(); addConsole(`${agent.name} failed: ${error.message}`, "error"); text("agentFormStatus", `${agent.name}: ${error.message}`); }
+    finally { state.activeAgentIds.delete(agent.id); button.disabled = false; button.textContent = "Run now"; renderAgents(); }
   }
   $("agentForm").addEventListener("submit", event => {
-    event.preventDefault(); const agents = readAgents(); if (agents.length >= 30) { text("agentFormStatus", "Maximum of 30 saved profiles reached."); return; }
+    event.preventDefault(); const agents = readAgents(); if (!state.editingAgentId && agents.length >= 30) { text("agentFormStatus", "Maximum of 30 saved profiles reached."); return; }
     const seed = $("agentSeed").value.trim(); let parsed; try { parsed = new URL(seed); } catch { text("agentFormStatus", "Enter a valid public HTTP or HTTPS seed URL."); return; }
     if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) { text("agentFormStatus", "Only public HTTP(S) URLs without embedded credentials are supported."); return; }
-    const agent = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, name: $("agentName").value.trim(), seed: parsed.href, goal: $("agentGoal").value.trim(), maxPages: Math.max(1, Math.min(50, Number($("agentPages").value) || 12)), maxDepth: Math.max(1, Math.min(5, Number($("agentDepth").value) || 2)), createdAt: Date.now() };
-    if (!agent.name || !agent.goal) { text("agentFormStatus", "Add an agent name and task objective."); return; }
-    agents.unshift(agent); try { saveAgents(agents); } catch { text("agentFormStatus", "Browser storage is unavailable; profile was not saved."); return; }
-    event.target.reset(); $("agentPages").value = 12; $("agentDepth").value = 2; text("agentFormStatus", `Saved ${agent.name}. Start it from the profile list when ready.`); renderAgents(); addConsole(`Saved custom agent profile “${agent.name}”.`);
+    const agent = validAgent({ id: state.editingAgentId || undefined, name: $("agentName").value, seed: parsed.href, focus: $("agentFocus").value, goal: $("agentGoal").value, notes: $("agentNotes").value, maxPages: $("agentPages").value, maxDepth: $("agentDepth").value, createdAt: Date.now() });
+    if (!agent) { text("agentFormStatus", "Add a valid agent name and task objective."); return; }
+    const index = agents.findIndex(item => item.id === state.editingAgentId); if (index >= 0) agents[index] = { ...agents[index], ...agent, id: state.editingAgentId }; else agents.unshift(agent);
+    try { saveAgents(agents); } catch { text("agentFormStatus", "Browser storage is unavailable; profile was not saved."); return; }
+    state.editingAgentId = null; event.target.reset(); $("agentPages").value = 12; $("agentDepth").value = 2; $("agentRunSize").value = "balanced"; text("agentFormStatus", `Saved ${agent.name}. Start it from the profile library when ready.`); renderAgents(); renderRunHistory(); addConsole(`Saved custom agent profile “${agent.name}”.`);
   });
 
+  const presets = {
+    docs: { name: "Documentation Mapper", focus: "documentation", goal: "Locate guides, API references, onboarding, and installation documentation.", pages: 12, depth: 2, notes: "Prioritize canonical documentation and reference pages." },
+    audit: { name: "Site Structure Auditor", focus: "site-audit", goal: "Explore important site sections and identify navigation coverage clues.", pages: 30, depth: 3, notes: "Respect the site's robots.txt rules." },
+    topic: { name: "Topic Research Scout", focus: "research", goal: "Research the selected topic; replace this text with the subject and key terms.", pages: 18, depth: 2, notes: "Review the returned page titles before follow-up research." }
+  };
+  document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => { $("commandInput").value = button.dataset.command; $("commandForm").requestSubmit(); }));
+  $("consoleSearch").addEventListener("input", applyConsoleFilter); $("consoleLevelFilter").addEventListener("change", applyConsoleFilter);
+  $("copyConsole").addEventListener("click", async () => { const content = [...$("consoleOutput").querySelectorAll(":scope > .console-line:not([hidden])")].map(line => line.textContent).join("\n"); try { await navigator.clipboard.writeText(content); addConsole("Visible output copied to clipboard."); } catch { addConsole("Clipboard access was unavailable in this context.", "warn"); } });
+  $("commandInput").addEventListener("keydown", event => {
+    if (event.key === "ArrowUp" && state.commandHistory.length) { event.preventDefault(); state.historyCursor = Math.min((state.historyCursor || 0) + 1, state.commandHistory.length); event.currentTarget.value = state.commandHistory[state.historyCursor - 1] || ""; }
+    if (event.key === "ArrowDown" && state.historyCursor) { event.preventDefault(); state.historyCursor -= 1; event.currentTarget.value = state.historyCursor ? state.commandHistory[state.historyCursor - 1] : ""; }
+  });
+  document.querySelectorAll("[data-agent-preset]").forEach(button => button.addEventListener("click", () => {
+    const preset = presets[button.dataset.agentPreset]; if (!preset) return;
+    $("agentName").value = preset.name; $("agentFocus").value = preset.focus; $("agentGoal").value = preset.goal; $("agentPages").value = preset.pages; $("agentDepth").value = preset.depth; $("agentNotes").value = preset.notes; $("agentRunSize").value = "custom"; text("agentFormStatus", "Playbook loaded. Set a seed URL and adjust the objective before saving."); $("agentSeed").focus();
+  }));
+  $("agentRunSize").addEventListener("change", () => { const limits = { quick: [8, 1], balanced: [12, 2], deep: [30, 4] }[ $("agentRunSize").value ]; if (limits) { $("agentPages").value = limits[0]; $("agentDepth").value = limits[1]; } });
+  $("agentSearch").addEventListener("input", renderAgents);
+  $("resetAgentForm").addEventListener("click", () => { $("agentForm").reset(); state.editingAgentId = null; $("agentPages").value = 12; $("agentDepth").value = 2; $("agentRunSize").value = "balanced"; text("agentFormStatus", "Builder reset."); });
+  $("exportAgents").addEventListener("click", () => downloadJson(`veyra-agent-profiles-${new Date().toISOString().slice(0, 10)}.json`, { version: 1, exportedAt: new Date().toISOString(), agents: readAgents() }));
+  $("importAgents").addEventListener("click", () => $("agentImportFile").click());
+  $("agentImportFile").addEventListener("change", async event => {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    if (file.size > 500000) { text("agentFormStatus", "Import file exceeds the 500 KB limit."); return; }
+    try {
+      const payload = JSON.parse(await file.text()), incoming = Array.isArray(payload) ? payload : payload.agents;
+      if (!Array.isArray(incoming)) throw new Error("Expected an array of agent profiles.");
+      const existing = readAgents(), imported = [];
+      for (const raw of incoming) { const candidate = validAgent(raw); if (!candidate) continue; if (existing.length + imported.length >= 30) break; if ([...existing, ...imported].some(item => item.id === candidate.id)) candidate.id = undefined; imported.push(validAgent(candidate)); }
+      if (!imported.length) throw new Error("No valid HTTP(S) agent profiles were found.");
+      saveAgents([...imported, ...existing]); renderAgents(); renderRunHistory(); text("agentFormStatus", `Imported ${imported.length} valid profile${imported.length === 1 ? "" : "s"}.`);
+    } catch (error) { text("agentFormStatus", `Import failed: ${error.message}`); }
+  });
+  $("exportRuns").addEventListener("click", () => downloadJson(`veyra-task-runs-${new Date().toISOString().slice(0, 10)}.json`, { version: 1, exportedAt: new Date().toISOString(), runs: readRuns() }));
+  $("clearRuns").addEventListener("click", () => { if (!readRuns().length || !window.confirm("Clear this browser's saved task run history?")) return; saveRuns([]); renderRunHistory(); });
   const tabs = [...document.querySelectorAll(".tab[data-view]")];
   function activateView(name) { tabs.forEach(tab => { const selected = tab.dataset.view === name; tab.setAttribute("aria-selected", String(selected)); const panel = $(`view-${tab.dataset.view}`); panel?.classList.toggle("active", selected); }); }
   tabs.forEach(tab => tab.addEventListener("click", () => activateView(tab.dataset.view)));
   document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => activateView(button.dataset.go)));
   document.querySelectorAll("[data-refresh]").forEach(button => button.addEventListener("click", () => refreshData(false)));
-  renderAgents();
+  renderAgents(); renderRunHistory();
   $("clearConsole").addEventListener("click", () => $("consoleOutput").replaceChildren());
   $("exportConsole").addEventListener("click", () => {
     const content = [...$("consoleOutput").children].map(node => node.textContent).join("\n"); const blob = new Blob([content || "Veyra Console Lab: no console output."], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `veyra-console-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); URL.revokeObjectURL(url);
   });
   $("commandForm").addEventListener("submit", async event => {
-    event.preventDefault(); const input = $("commandInput"), raw = input.value.trim(); if (!raw) return; const command = raw.toLowerCase(); input.value = ""; state.commandHistory.unshift(raw);
+    event.preventDefault(); const input = $("commandInput"), raw = input.value.trim(); if (!raw) return; const command = raw.toLowerCase(); input.value = ""; state.commandHistory.unshift(raw); state.historyCursor = 0;
     addConsole(`> ${raw}`);
     if (command === "clear") { $("consoleOutput").replaceChildren(); return; }
     if (command === "help") { addConsole("Commands: help · status · sessions · neural · workers · agents · clear. Use the module tabs for details; arbitrary JavaScript execution is disabled."); return; }

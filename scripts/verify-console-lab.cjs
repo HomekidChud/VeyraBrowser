@@ -8,14 +8,16 @@ const runner = fs.readFileSync(path.join(root, "web/console-lab/runner.js"), "ut
 const gate = fs.readFileSync(path.join(root, "web/console-lab/admin-gate.js"), "utf8");
 const app = fs.readFileSync(path.join(root, "web/src/app.js"), "utf8");
 const ui = fs.readFileSync(path.join(root, "web/src/ui.js"), "utf8");
+const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
+const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(match => match[1]));
 
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
-assert.match(html, /admin-gate\.js\?v=2/);
+assert.match(html, /admin-gate\.js\?v=3/);
 assert.doesNotMatch(html, /runner\.js/);
 assert.match(gate, /api\/auth\/config/);
 assert.match(gate, /veyra:console-lab:auth-check/);
-assert.match(gate, /runner\.js\?v=4/);
+assert.match(gate, /runner\.js\?v=5/);
 assert.ok(gate.indexOf("if (!access.allowed)") < gate.indexOf("loadRunner();"), "the runner must only load after admin verification");
 assert.match(runner, /document\.body\?\.dataset\.consoleLabAccess !== "granted"/);
 assert.match(app, /isConsoleLabPageUrl\(t\.url\)/);
@@ -23,7 +25,7 @@ assert.match(app, /api\("\/api\/auth\/config"/);
 assert.match(app, /veyra:console-lab:auth-result/);
 assert.match(ui, /isAdmin\(\) \? \[[\s\S]*?menuItem\("i-terminal", "Console Lab"/);
 
-for (const module of ["overview", "console", "agents", "activity", "analytics", "diagnostics"]) {
+for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);
 }
 assert.match(html, /id="runFull"/);
@@ -51,6 +53,24 @@ assert.match(runner, /api\("\/api\/robots\/log\?limit=12"\)/);
 assert.match(runner, /api\("\/api\/robots\/crawl"/);
 assert.match(runner, /maxPages: Math\.max\(1, Math\.min\(50,/);
 assert.match(runner, /maxDepth: Math\.max\(1, Math\.min\(5,/);
+assert.match(html, /id="agentFocus"/);
+assert.match(html, /id="agentRunSize"/);
+assert.match(html, /data-agent-preset="docs"/);
+assert.match(html, /data-agent-preset="audit"/);
+assert.match(html, /id="agentSearch"/);
+assert.match(html, /id="agentImportFile"/);
+assert.match(html, /id="runHistoryList"/);
+assert.match(html, /id="fleetRows"/);
+assert.match(runner, /function duplicateAgent/);
+assert.match(runner, /function editAgent/);
+assert.match(runner, /function renderRunHistory/);
+assert.match(runner, /function renderFleet/);
+assert.match(runner, /activeAgentIds\.has\(agent\.id\)/);
+assert.match(runner, /saveRuns\(\[run, \.\.\.readRuns\(\)\]\)/);
+assert.match(runner, /slice\(0, 30\)/);
+assert.match(runner, /slice\(0, 50\)/);
+assert.match(runner, /500000/);
+assert.deepEqual([...runnerIds].filter(id => !htmlIds.has(id)), [], "every literal runner element id must exist in the lab HTML");
 assert.match(runner, /document\.hidden/);
 assert.match(runner, /arbitrary JavaScript execution is disabled/);
 assert.match(runner, /setInterval\(\(\) => refreshData\(true\), POLL_MS\)/);
