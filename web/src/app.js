@@ -5,8 +5,8 @@ import {
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js";
-import { initUI } from "./ui.js?v=8.28.3";
-import { initDevtools } from "./devtools.js";
+import { initUI } from "./ui.js?v=8.28.5";
+import { initDevtools } from "./devtools.js?v=8.28.5";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
@@ -2037,6 +2037,49 @@ function tabForSource(src) {
   for (const t of state.tabs) { const f = frameFor(t); if (!f) continue; let w = src; for (let i = 0; i < 6 && w; i++) { if (w === f.contentWindow) return t; try { if (w === w.parent) break; w = w.parent; } catch { break; } } }
   return null;
 }
+function consoleText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    if (typeof value.message === "string") return value.message.trim();
+    try { return JSON.stringify(value); } catch { return String(value); }
+  }
+  return String(value).trim();
+}
+function firstConsoleText(...values) {
+  for (const value of values) { const text = consoleText(value); if (text) return text; }
+  return "";
+}
+function consoleNumber(...values) {
+  for (const value of values) { const number = Number(value); if (Number.isFinite(number) && number >= 0) return number; }
+  return 0;
+}
+function pageConsoleEntry(d, t) {
+  const err = d.error && typeof d.error === "object" ? d.error : d.reason && typeof d.reason === "object" ? d.reason : {};
+  const isException = d.type === "veyra:page-error";
+  const message = firstConsoleText(d.message, err.message, d.error, d.reason, d.description) || "No error message was supplied.";
+  const nameMatch = message.match(/^([A-Za-z_$][\w$]*(?:Error|Exception))\s*:/);
+  const errorName = firstConsoleText(d.errorName, d.name, err.name, nameMatch?.[1]);
+  const description = firstConsoleText(d.errorDescription, err.description, d.detail, d.description);
+  const context = firstConsoleText(d.context, d.meta, d.cause, err.cause);
+  const reportedTime = new Date(d.time || Date.now()).getTime();
+  return {
+    id: uid(),
+    time: Number.isFinite(reportedTime) ? reportedTime : Date.now(),
+    level: String(d.level || (isException ? "error" : "log")).toLowerCase() === "warning" ? "warn" : String(d.level || (isException ? "error" : "log")).toLowerCase(),
+    message,
+    errorName,
+    description: description && description !== message ? description : "",
+    context,
+    stack: firstConsoleText(d.stack, err.stack),
+    url: firstConsoleText(d.url, d.filename, d.sourceURL, err.url),
+    line: consoleNumber(d.line, d.lineNumber, d.lineno, err.line, err.lineNumber),
+    column: consoleNumber(d.column, d.columnNumber, d.colno, err.column, err.columnNumber),
+    pageUrl: firstConsoleText(d.pageUrl, t.url),
+    kind: isException ? "exception" : "console"
+  };
+}
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
@@ -2086,7 +2129,7 @@ async function handleMessage(e) {
     return;
   }
   if (d.type === "veyra:page-console" || d.type === "veyra:page-error") {
-    const entry = { time: d.time || Date.now(), level: d.level || "log", message: String(d.message || ""), stack: d.stack || "", url: d.url || "", line: d.line, column: d.column, pageUrl: d.pageUrl, kind: d.type === "veyra:page-error" ? "exception" : "console" };
+    const entry = pageConsoleEntry(d, t);
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
     if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {

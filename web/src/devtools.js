@@ -1,13 +1,13 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac } from "./core.js";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js";
 import { dtCall, onBridgeEvent, isRemote } from "./bridge.js";
 
 let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
 const tab = () => B.activeTab();
 const onPage = t => t?.view === "page" && !!t.url;
-const dtState = t => t._dt || (t._dt = { nodes: new Map(), open: new Set(), sel: null, rootIds: [], docLoaded: false, conHistory: [], conHistIdx: -1, netSel: null, netFilter: "all", resEntries: [], srcOpen: [], srcActive: null, appSel: "local", netEnabled: false, stylesTab: "styles", forced: new Set() });
+const dtState = t => t._dt || (t._dt = { nodes: new Map(), open: new Set(), sel: null, rootIds: [], docLoaded: false, conHistory: [], conHistIdx: -1, conExpanded: new Set(), netSel: null, netFilter: "all", resEntries: [], srcOpen: [], srcActive: null, appSel: "local", netEnabled: false, stylesTab: "styles", forced: new Set() });
 const call = (method, params, ms) => dtCall(tab(), method, params, ms);
 const debounceRaf = fn => { let r = 0; return (...a) => { if (r) return; r = requestAnimationFrame(() => { r = 0; fn(...a); }); }; };
 
@@ -328,12 +328,13 @@ async function onPicked(t, data) { if (t !== tab()) return; picking = false; $("
 
 const LEVEL_ICON = { error: "✕", warn: "!", info: "i", debug: "·", log: "", cmd: "›", res: "‹" };
 function buildConsole() {
-  $("dt-console").innerHTML = `<div class="dt-sub"><button class="icon-btn" id="conClear" title="Clear console (${isMac ? "⌘K" : "Ctrl+L"})"><svg><use href="#i-ban"/></svg></button><span class="dt-sep"></span><input class="dt-input" id="conFilter" placeholder="Filter" style="flex:1;max-width:260px"><div class="dt-chips" id="conLevels">${[["all", "All levels"], ["error", "Errors"], ["warn", "Warnings"], ["info", "Info"], ["log", "Logs"], ["debug", "Verbose"]].map(([k, l]) => `<button class="dt-chip ${k === "all" ? "on" : ""}" data-lv="${k}">${l}</button>`).join("")}</div><span class="dt-sep"></span><label class="dt-chk"><input type="checkbox" id="conPreserve">Preserve log</label><label class="dt-chk"><input type="checkbox" id="conGroup" checked>Group similar</label><span class="muted" id="conHidden" style="margin-left:auto"></span></div>
+  $("dt-console").innerHTML = `<div class="dt-sub"><button class="icon-btn" id="conClear" title="Clear console (${isMac ? "⌘K" : "Ctrl+L"})"><svg><use href="#i-ban"/></svg></button><span class="dt-sep"></span><input class="dt-input" id="conFilter" placeholder="Filter messages, sources or stacks" style="flex:1;max-width:260px"><div class="dt-chips" id="conLevels">${[["all", "All levels"], ["error", "Errors"], ["warn", "Warnings"], ["info", "Info"], ["log", "Logs"], ["debug", "Verbose"]].map(([k, l]) => `<button class="dt-chip ${k === "all" ? "on" : ""}" data-lv="${k}">${l}</button>`).join("")}</div><span class="dt-sep"></span><button class="dt-chip" id="conCopy" title="Copy the currently visible entries">Copy visible</button><button class="dt-chip" id="conCopyJson" title="Copy the currently visible entries as JSON">Copy JSON</button><label class="dt-chk"><input type="checkbox" id="conPreserve">Preserve log</label><label class="dt-chk"><input type="checkbox" id="conGroup" checked>Group similar</label><span class="muted" id="conHidden" style="margin-left:auto"></span></div>
     <div class="con-list" id="conList"></div>
     <div style="position:relative"><div class="con-comp hidden" id="conComp"></div></div>
     <div class="con-input"><span class="ico">›</span><textarea id="conInput" rows="1" spellcheck="false" placeholder="Run JavaScript in the page. Enter to run, Shift+Enter for a new line"></textarea></div>`;
   $("conPreserve").checked = !!settings.preserveLog; $("conPreserve").onchange = e => { settings.preserveLog = e.target.checked; saveSettings(); };
   $("conClear").onclick = () => { const t = tab(); if (t) t.console = []; renderConsole(); updateCounts(); };
+  $("conCopy").onclick = () => copyVisibleConsole(); $("conCopyJson").onclick = () => copyVisibleConsole(true);
   $("conFilter").oninput = debounceRaf(renderConsole); $("conGroup").onchange = renderConsole;
   $("conLevels").onclick = e => { const b = e.target.closest("[data-lv]"); if (!b) return; $("conLevels").querySelectorAll(".dt-chip").forEach(x => x.classList.toggle("on", x === b)); renderConsole(); };
   const inp = $("conInput");
@@ -352,16 +353,23 @@ function buildConsole() {
     else if (e.key === "ArrowDown" && !inp.value.slice(inp.selectionEnd).includes("\n")) { if (s.conHistIdx < 0) return; e.preventDefault(); s.conHistIdx--; inp.value = s.conHistIdx < 0 ? "" : s.conHistory[s.conHistory.length - 1 - s.conHistIdx]; }
     else if (e.key === "Tab") { e.preventDefault(); completeNow(true); }
   };
-  $("conList").addEventListener("click", e => { const u = e.target.closest("[data-src]"); if (u) { e.preventDefault(); openSource(u.dataset.src, Number(u.dataset.line) || 0); } });
-  wireObjects($("conList"));
+  const list = $("conList");
+  list.addEventListener("click", e => {
+    const u = e.target.closest("[data-src]"); if (u) { e.preventDefault(); openSource(u.dataset.src, Number(u.dataset.line) || 0); return; }
+    const copy = e.target.closest("[data-copy-console]");
+    if (copy) { const entry = (tab()?.console || []).find(x => x.id === copy.dataset.copyConsole); if (entry) copyText(consoleEntryText(entry)); return; }
+    const toggle = e.target.closest("[data-toggle-console]");
+    if (toggle) { const s = dtState(tab()); const id = toggle.dataset.toggleConsole; s.conExpanded.has(id) ? s.conExpanded.delete(id) : s.conExpanded.add(id); renderConsole(); }
+  });
+  wireObjects(list);
 }
-function pushConsole(entry) { const t = tab(); if (!t) return; t.console.push({ time: Date.now(), ...entry }); renderConsoleSoon(); }
+function pushConsole(entry) { const t = tab(); if (!t) return; t.console.push({ id: entry.id || uid(), time: entry.time || Date.now(), ...entry }); renderConsoleSoon(); }
 async function runConsole(code) {
   const t = tab(); if (!onPage(t)) { pushConsole({ level: "error", kind: "res", message: "No page is loaded in this tab." }); return; }
   const s = dtState(t); s.conHistory.push(code); if (s.conHistory.length > 100) s.conHistory.shift(); s.conHistIdx = -1;
   pushConsole({ level: "cmd", kind: "cmd", message: code });
-  try { const r = await call("runtime.evaluate", { expression: code }, 15000); pushConsole({ level: r.exception ? "error" : "res", kind: "res", preview: r.value, message: r.value?.text || "" }); }
-  catch (e) { pushConsole({ level: "error", kind: "res", message: e.message }); }
+  try { const r = await call("runtime.evaluate", { expression: code }, 15000); pushConsole({ level: r.exception ? "error" : "res", kind: "res", preview: r.value, message: r.value?.text || "", errorName: r.value?.className || "", stack: r.value?.stack || "" }); }
+  catch (e) { pushConsole({ level: "error", kind: "res", message: e.message, errorName: e.name || "Error", stack: e.stack || "" }); }
 }
 let compTimer = 0; function completeSoon() { clearTimeout(compTimer); compTimer = setTimeout(() => completeNow(false), 160); }
 async function completeNow(force) {
@@ -406,26 +414,69 @@ function wireObjects(container) {
 }
 const renderConsoleSoon = debounceRaf(() => { if (openState && p("console")) renderConsole(); updateCounts(); });
 function linkify(s) { return esc(s).replace(/(https?:\/\/[^\s)"'<]+?)(?::(\d+))?(?::(\d+))?(?=[\s)"'<]|$)/g, (m, u, l) => `<a href="#" data-src="${u}" data-line="${l || 0}" style="color:var(--text-2)">${u.length > 90 ? u.slice(0, 90) + "…" : u}${l ? ":" + l : ""}</a>`); }
+function consoleLocation(c) {
+  if (!c.url) return "";
+  const at = [c.line, c.column].map(Number).filter(n => Number.isFinite(n) && n > 0).join(":");
+  return `${hostOf(c.url) || "page"}${pathOf(c.url)}${at ? ":" + at : ""}`;
+}
+function consoleDisplayMessage(c) {
+  const message = String(c.message || "No message supplied.");
+  const type = c.errorName && !message.startsWith(c.errorName) ? `${c.errorName}: ` : "";
+  return `${c.kind === "exception" ? "Uncaught " : ""}${type}${message}`;
+}
+function consoleEntryText(c) {
+  const lines = [`[${new Date(c.time || Date.now()).toISOString()}] ${String(c.level || "log").toUpperCase()} ${consoleDisplayMessage(c)}`];
+  if (c.url) lines.push(`Source: ${c.url}${c.line ? ":" + c.line : ""}${c.column ? ":" + c.column : ""}`);
+  if (c.pageUrl && c.pageUrl !== c.url) lines.push(`Page: ${c.pageUrl}`);
+  if (c.description) lines.push(`Description: ${c.description}`);
+  if (c.context) lines.push(`Context: ${c.context}`);
+  if (c.stack) lines.push(`Stack trace:\n${c.stack}`);
+  return lines.join("\n");
+}
+function consoleSearchText(c) {
+  return [c.message, c.errorName, c.description, c.context, c.stack, c.url, c.pageUrl, c.line, c.column].filter(Boolean).join("\n").toLowerCase();
+}
+function filteredConsoleRows() {
+  const t = tab(); if (!t) return { rows: [], hidden: 0 };
+  const lv = $("conLevels")?.querySelector(".on")?.dataset.lv || "all"; const q = $("conFilter")?.value.toLowerCase() || ""; const group = $("conGroup")?.checked;
+  const rows = []; let hidden = 0;
+  for (const c of t.console || []) {
+    c.id ||= uid();
+    const isRepl = c.kind === "cmd" || c.kind === "res";
+    if ((!isRepl && lv !== "all" && c.level !== lv) || (q && !consoleSearchText(c).includes(q))) { hidden++; continue; }
+    const key = [c.level, c.kind, c.message, c.stack, c.url, c.line, c.column].join("\u001f"); const last = rows[rows.length - 1];
+    if (group && last && !isRepl && last.key === key) { last.n++; continue; }
+    rows.push({ c, n: 1, key });
+  }
+  return { rows, hidden };
+}
+function copyVisibleConsole(asJson = false) {
+  const { rows } = filteredConsoleRows();
+  if (!rows.length) return toast("No visible console entries", { kind: "warn" });
+  const text = asJson ? JSON.stringify(rows.map(({ c, n }) => ({ ...c, repeats: n })), null, 2) : rows.map(({ c, n }) => `${consoleEntryText(c)}${n > 1 ? `\nRepeated ${n} times` : ""}`).join("\n\n");
+  copyText(text);
+}
+function consoleDetailsHtml(c, expanded) {
+  const hasDetails = !!(c.stack || c.url || c.pageUrl || c.description || c.context || c.errorName);
+  if (!hasDetails) return "";
+  const id = `con-detail-${esc(c.id)}`;
+  const source = c.url ? `<a href="#" data-src="${esc(c.url)}" data-line="${c.line || 0}">${esc(c.url)}${c.line ? ":" + c.line : ""}${c.column ? ":" + c.column : ""}</a>` : "";
+  const rows = [["Source", source], ["Page", c.pageUrl ? esc(c.pageUrl) : ""], ["Description", c.description ? esc(c.description) : ""], ["Context", c.context ? esc(c.context) : ""]].filter(([, value]) => value);
+  const stackLines = String(c.stack || "").split("\n");
+  const preview = c.stack && !expanded ? `<span class="con-stack-preview">${linkify(stackLines.slice(0, 3).join("\n"))}${stackLines.length > 3 ? "\n…" : ""}</span>` : "";
+  return `${preview}<button class="con-detail-toggle" type="button" data-toggle-console="${esc(c.id)}" aria-expanded="${expanded}" aria-controls="${id}">${expanded ? "Hide diagnostics" : "Show diagnostics"}</button>${expanded ? `<div class="con-detail" id="${id}">${rows.length ? `<dl>${rows.map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>` : ""}${c.stack ? `<div class="con-stack-full"><span>Stack trace</span><pre>${linkify(String(c.stack))}</pre></div>` : ""}</div>` : ""}`;
+}
 function renderConsole() {
   const t = tab(); const list = $("conList"); if (!list) return;
   if (!t) { list.innerHTML = ""; return; }
-  const lv = $("conLevels").querySelector(".on")?.dataset.lv || "all"; const q = $("conFilter").value.toLowerCase(); const group = $("conGroup").checked;
-  const all = t.console || []; const rows = []; let hidden = 0;
-  for (const c of all) {
-    const isRepl = c.kind === "cmd" || c.kind === "res";
-    if (!isRepl && lv !== "all" && c.level !== lv) { hidden++; continue; }
-    if (q && !String(c.message).toLowerCase().includes(q)) { hidden++; continue; }
-    const last = rows[rows.length - 1];
-    if (group && last && !isRepl && last.c.level === c.level && last.c.message === c.message && last.c.kind === c.kind) { last.n++; continue; }
-    rows.push({ c, n: 1 });
-  }
+  const { rows, hidden } = filteredConsoleRows(); const expanded = dtState(t).conExpanded;
   $("conHidden").textContent = hidden ? `${hidden} hidden` : "";
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
   list.innerHTML = rows.slice(-1500).map(({ c, n }) => {
     const cls = c.kind === "cmd" ? "cmd" : c.kind === "res" ? (c.level === "error" ? "error res" : "res") : c.level;
-    const body = c.preview ? obHtml(c.preview) : c.kind === "cmd" ? esc(c.message) : linkify(String(c.message));
-    const meta = c.kind === "exception" ? `${pathOf(c.url || "")}${c.line ? ":" + c.line : ""}` : "";
-    return `<div class="con-row ${esc(cls)}"><span class="ico">${LEVEL_ICON[c.kind === "cmd" ? "cmd" : c.kind === "res" && c.level !== "error" ? "res" : c.level] ?? ""}</span>${n > 1 ? `<span class="cnt">${n}</span>` : ""}<span class="body">${c.kind === "exception" ? "Uncaught " : ""}${body}${c.stack && c.kind !== "res" ? `<span class="stack">${linkify(String(c.stack).split("\n").slice(c.kind === "exception" ? 1 : 0, 7).join("\n"))}</span>` : ""}</span>${meta ? `<a class="meta" href="#" data-src="${esc(c.url)}" data-line="${c.line || 0}">${esc(meta)}</a>` : `<span class="meta">${new Date(c.time).toLocaleTimeString([], { hour12: false })}</span>`}</div>`;
+    const body = c.preview ? obHtml(c.preview) : c.kind === "cmd" ? esc(c.message) : linkify(consoleDisplayMessage(c));
+    const meta = consoleLocation(c); const isExpanded = expanded.has(c.id);
+    return `<div class="con-row ${esc(cls)}"><span class="ico">${LEVEL_ICON[c.kind === "cmd" ? "cmd" : c.kind === "res" && c.level !== "error" ? "res" : c.level] ?? ""}</span>${n > 1 ? `<span class="cnt">${n}</span>` : ""}<span class="body"><span class="con-message">${body}</span>${c.kind !== "cmd" ? consoleDetailsHtml(c, isExpanded) : ""}</span><span class="con-actions"><button class="con-copy" type="button" data-copy-console="${esc(c.id)}" title="Copy this console entry">Copy</button></span>${meta ? `<a class="meta" href="#" data-src="${esc(c.url)}" data-line="${c.line || 0}">${esc(meta)}</a>` : `<span class="meta">${new Date(c.time).toLocaleTimeString([], { hour12: false })}</span>`}</div>`;
   }).join("") || `<div class="dt-empty">${onPage(t) ? "Console messages from the page will appear here." : "Open a website to use the console."}</div>`;
   if (atBottom) list.scrollTop = list.scrollHeight;
 }
