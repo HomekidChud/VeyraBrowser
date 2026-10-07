@@ -13,16 +13,21 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
-assert.match(html, /admin-gate\.js\?v=3/);
+assert.match(html, /admin-gate\.js\?v=4/);
 assert.doesNotMatch(html, /runner\.js/);
 assert.match(gate, /api\/auth\/config/);
 assert.match(gate, /veyra:console-lab:auth-check/);
 assert.match(gate, /runner\.js\?v=5/);
+assert.match(gate, /window\.parent !== window \? await verifyThroughVeyra\(\) : await verifyDirectSession\(\)/);
 assert.ok(gate.indexOf("if (!access.allowed)") < gate.indexOf("loadRunner();"), "the runner must only load after admin verification");
 assert.match(runner, /document\.body\?\.dataset\.consoleLabAccess !== "granted"/);
 assert.match(app, /isConsoleLabPageUrl\(t\.url\)/);
+assert.ok(app.includes('u.pathname.replace(/\\/+$/, "") === "/VeyraBrowser/console-lab"'), "admin gate route must match the published GitHub Pages path");
 assert.match(app, /api\("\/api\/auth\/config"/);
 assert.match(app, /veyra:console-lab:auth-result/);
+assert.match(app, /trustedConsoleLabOrigin/);
+assert.match(app, /config\?\.admin === true/);
+assert.match(app, /!isConsoleLabPageUrl\(t\.url\)/);
 assert.match(ui, /isAdmin\(\) \? \[[\s\S]*?menuItem\("i-terminal", "Console Lab"/);
 
 for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {

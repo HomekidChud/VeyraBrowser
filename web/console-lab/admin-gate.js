@@ -98,8 +98,9 @@
   }
 
   async function start() {
-    const proxiedByVeyra = window.__VEYRA_PROXY__ === true && window.parent !== window;
-    const access = proxiedByVeyra ? await verifyThroughVeyra() : await verifyDirectSession();
+    // When embedded in Veyra, trust only Veyra's own server-backed session check.
+    // The child frame may not share the browser app's auth storage context.
+    const access = window.parent !== window ? await verifyThroughVeyra() : await verifyDirectSession();
     if (!access.allowed) return deny(access.reason);
     loadRunner();
   }
