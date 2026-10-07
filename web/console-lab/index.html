@@ -17,7 +17,7 @@
     .results{list-style:none;padding:0;margin:0;display:grid;gap:7px}.result{display:grid;grid-template-columns:78px minmax(0,1fr);gap:12px;align-items:start;padding:11px 13px;background:#111925;border:1px solid #202e3e;border-radius:9px}.result .kind{font:700 11px/1.4 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.04em}.result .kind.ok{color:var(--green)}.result .kind.warn{color:var(--orange)}.result .kind.error{color:var(--red)}.result .detail{overflow-wrap:anywhere}.result .detail strong{display:block;font-size:13px}.result .detail small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.footer{margin-top:22px;font-size:12px}
     @media(max-width:600px){main{width:calc(100% - 24px);margin:24px auto 48px}.result{grid-template-columns:64px minmax(0,1fr);gap:8px}.controls .btn{flex:1 1 100%}}
   </style>
-  <script src="runner.js?v=1" defer></script>
+  <script src="runner.js?v=2" defer></script>
 </head>
 <body>
   <main>
@@ -28,7 +28,7 @@
 
     <section class="notice" aria-label="Test safety and limits">
       <strong>Deliberate, bounded tests only</strong>
-      <p>The local suite generates console output and temporary page errors. The server suite sends at most <b>20 sequential GET probes</b> per run through VeyraServer: health checks, standard status-code fixtures, reserved <code>.invalid</code> hosts, and four failed-resource loads. No crawler/session creation, login, writes, retries, background loop, or backup access. Stop halts remaining probes; up to three server batches are allowed per page load.</p>
+      <p>The local suite generates console output and temporary page errors. The server suite sends at most <b>20 sequential resource requests</b> per run through VeyraServer: health responses, standard HTTP status fixtures, reserved <code>.invalid</code> hosts, and missing resources. Image, script, and stylesheet loads exercise the browser's resource-error path without page-side fetch/CORS ambiguity. No crawler/session creation, login, writes, retries, background loop, or backup access. Stop halts remaining probes; up to three server batches are allowed per page load.</p>
     </section>
 
     <div class="controls">
