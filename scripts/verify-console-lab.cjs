@@ -37,13 +37,13 @@ assert.match(ui, /isAdmin\(\) \? \[[\s\S]*?menuItem\("i-terminal", "Console Lab"
 assert.match(ui, /B\.go\("veyra:\/\/console-labs", \{ newTab: true \}\)/);
 assert.match(app, /"console-labs": \{[^\n]*admin: true/);
 assert.match(app, /r\.view === "console-labs"/);
-assert.ok(app.includes("const pageBase = APP_BASE.replace("), "Console Labs route must normalize the legacy /web app base");
-assert.ok(app.includes("new URL(`${pageBase}/console-lab/`, location.origin).href"), "Console Labs route must resolve to the deployed root path");
+assert.ok(app.includes("new URL(`${APP_BASE}/console-lab/`, location.origin).href"), "Console Labs route must follow the active Veyra app base path");
 assert.match(app, /\^veyra:\\\/\\\/\(\[a-z-\]\+\)/);
 const consoleLabsRoute = "veyra://console-labs".match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
 assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme must parse as a recognized internal view");
-assert.equal("/VeyraBrowser/web".replace(/\/web\/?$/, ""), "/VeyraBrowser");
-assert.equal("/VeyraBrowser".replace(/\/web\/?$/, ""), "/VeyraBrowser");
+const resolveConsoleLabsTarget = appBase => new URL(`${appBase}/console-lab/`, "https://homekidchud.github.io").href;
+assert.equal(resolveConsoleLabsTarget("/VeyraBrowser/web"), "https://homekidchud.github.io/VeyraBrowser/web/console-lab/");
+assert.equal(resolveConsoleLabsTarget("/VeyraBrowser"), "https://homekidchud.github.io/VeyraBrowser/console-lab/");
 assert.match(app, /ui\.js\?v=8\.28\.9-consolelabs/);
 assert.match(ui, /settings\.js\?v=8\.28\.9-consolelabs/);
 assert.match(settings, /ui\.js\?v=8\.28\.9-consolelabs/);
