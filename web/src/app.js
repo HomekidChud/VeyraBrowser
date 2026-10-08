@@ -498,7 +498,7 @@ export function renderActive({ push = true, replace = false } = {}) {
 }
 function updateAddress() {
   const t = activeTab(); const input = $("address"); if (!t || document.activeElement === input) return;
-  input.value = t.view === "page" ? "/web" : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+  input.value = t.view === "page" ? (t.url || "") : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
 }
 function updateNavButtons() {
   const t = activeTab(); if (!t) return;
@@ -1572,9 +1572,8 @@ async function fetchAIAnswer(t, query, results, source = "web") {
     const r = await api("/api/search/answer", { json: { query, source, results: results.slice(0, 8).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 20000 });
     if (activeTab() !== t || t.searchQuery !== query) return;
     if (r.hasAnswer && !unsafeAiText(r.answer)) {
-      const points = (r.keyPoints || []).filter(p => p && !unsafeAiText(p)).slice(0, 4);
       const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${Math.round((r.confidence || 0) * 100)}% confidence${r.readingTimeMinutes ? ` · ${r.readingTimeMinutes} min read` : ""}</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}${points.length ? `<div class="ai-key-points"><b>Key points</b><ul>${points.map(p => `<li>${highlightTerms(p, query)}</li>`).join("")}</ul></div>` : ""}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}${r.relatedQueries?.length ? `<div class="ai-followups"><b>Explore next</b><div>${r.relatedQueries.map(q => `<button class="btn ghost sm" data-followup="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(s.id ? `${s.id} · ` : "")}${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · synthesized from ${r.sourceCount || r.sources?.length || 0} sources · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(s.id ? `${s.id} · ` : "")}${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
       ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
       ai.querySelectorAll("[data-followup]").forEach(b => b.onclick = () => { t.searchQuery = b.dataset.followup; runSearch(t.searchQuery); });
     } else {
