@@ -2040,7 +2040,9 @@ function tabForSource(src) {
 function isConsoleLabPageUrl(value) {
   try {
     const u = new URL(String(value || ""));
-    return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && u.pathname.replace(/\/+$/, "") === "/VeyraBrowser/web/console-lab";
+    // Pages may serve the legacy repository root or the web/ Actions artifact.
+    const path = u.pathname.replace(/\/+$/, "");
+    return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && ["/VeyraBrowser/web/console-lab", "/VeyraBrowser/console-lab"].includes(path);
   } catch { return false; }
 }
 function consoleText(value) {
@@ -2112,7 +2114,9 @@ async function handleMessage(e) {
   
   
   
-  if (e.origin !== API_ORIGIN && e.origin !== "null") return;
+  const consoleLabAuthCheck = d.type === "veyra:console-lab:auth-check";
+  const trustedConsoleLabOrigin = consoleLabAuthCheck && e.origin === "https://homekidchud.github.io";
+  if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin) return;
   const t = tabForSource(e.source); if (!t) return;
   if (d.type === "veyra:console-lab:auth-check") {
     if (t.view !== "page" || !isConsoleLabPageUrl(t.url) || typeof d.requestId !== "string") return;

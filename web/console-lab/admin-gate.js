@@ -91,15 +91,16 @@
     gate.hidden = true;
     lab.hidden = false;
     const script = document.createElement("script");
-    script.src = "runner.js?v=3";
+    script.src = "runner.js?v=5";
     script.defer = true;
     script.onerror = () => deny("Administrator access was verified, but the lab runner did not load. Reload and try again.");
     document.head.appendChild(script);
   }
 
   async function start() {
-    const proxiedByVeyra = window.__VEYRA_PROXY__ === true && window.parent !== window;
-    const access = proxiedByVeyra ? await verifyThroughVeyra() : await verifyDirectSession();
+    // When embedded in Veyra, trust only Veyra's own server-backed session check.
+    // The child frame may not share the browser app's auth storage context.
+    const access = window.parent !== window ? await verifyThroughVeyra() : await verifyDirectSession();
     if (!access.allowed) return deny(access.reason);
     loadRunner();
   }
