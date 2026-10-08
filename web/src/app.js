@@ -903,8 +903,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   const r = classify(input); if (!r) return;
   if (r.kind === "internal" && r.view === "console-labs") {
     if (!isAdmin()) { toast("That page is only available to Veyra administrators", { kind: "warn" }); return; }
-    const pageBase = APP_BASE.replace(/\/web\/?$/, "");
-    const target = new URL(`${pageBase}/console-lab/`, location.origin).href;
+    const target = new URL(`${APP_BASE}/console-lab/`, location.origin).href;
     if (inNew) { newTab({ url: target }); return; }
     return navigate(target, { tab, push, activate });
   }
