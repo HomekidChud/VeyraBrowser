@@ -2040,8 +2040,9 @@ function tabForSource(src) {
 function isConsoleLabPageUrl(value) {
   try {
     const u = new URL(String(value || ""));
-    // GitHub Pages publishes the contents of `web/` at the repository root.
-    return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && u.pathname.replace(/\/+$/, "") === "/VeyraBrowser/console-lab";
+    // Pages may serve the legacy repository root or the web/ Actions artifact.
+    const path = u.pathname.replace(/\/+$/, "");
+    return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && ["/VeyraBrowser/web/console-lab", "/VeyraBrowser/console-lab"].includes(path);
   } catch { return false; }
 }
 function consoleText(value) {

@@ -22,7 +22,7 @@ assert.match(gate, /window\.parent !== window \? await verifyThroughVeyra\(\) : 
 assert.ok(gate.indexOf("if (!access.allowed)") < gate.indexOf("loadRunner();"), "the runner must only load after admin verification");
 assert.match(runner, /document\.body\?\.dataset\.consoleLabAccess !== "granted"/);
 assert.match(app, /isConsoleLabPageUrl\(t\.url\)/);
-assert.ok(app.includes('u.pathname.replace(/\\/+$/, "") === "/VeyraBrowser/console-lab"'), "admin gate route must match the published GitHub Pages path");
+assert.ok(app.includes('["/VeyraBrowser/web/console-lab", "/VeyraBrowser/console-lab"].includes(path)'), "admin gate must allow only the verified legacy and Actions GitHub Pages paths");
 assert.match(app, /api\("\/api\/auth\/config"/);
 assert.match(app, /veyra:console-lab:auth-result/);
 assert.match(app, /trustedConsoleLabOrigin/);
