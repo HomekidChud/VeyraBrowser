@@ -4,7 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.28.9";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.9";
+import { initSettings } from "./settings.js?v=8.28.9-consolelabs";
 
 let B;
 
@@ -424,7 +424,7 @@ function openMainMenu() {
     menuItem("i-file", "View source resources", "viewSource", () => B.openInternal("resources"), { disabled: !onPage }),
     menuItem("i-link", "View all links", "", () => B.openInternal("links"), { disabled: !onPage }),
     menuItem("i-platform", "Developer platform", "", () => B.openInternal("platform")),
-    ...(isAdmin() ? ["-", menuItem("i-terminal", "Console Lab", "", () => B.go(new URL(`${APP_BASE}/console-lab/`, location.origin).href, { newTab: true }), { badge: "ADMIN" }), menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
+    ...(isAdmin() ? ["-", menuItem("i-terminal", "Console Lab", "", () => B.go("veyra://console-labs", { newTab: true }), { badge: "ADMIN" }), menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
     "-",
     menuItem("i-settings", "Settings", "settings", () => B.openInternal("settings")),
     menuItem("i-user", auth.user ? "Sign out" : "Sign in", "", () => auth.user ? signOut() : openAuth("login")),

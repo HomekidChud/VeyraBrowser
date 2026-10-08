@@ -22,7 +22,7 @@
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
   window.addEventListener("DOMContentLoaded", () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.9`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.9-consolelabs`; document.body.appendChild(app);
   }, { once: true });
   if (location.protocol === "https:" && "serviceWorker" in navigator) {
     navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
