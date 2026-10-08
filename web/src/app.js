@@ -213,7 +213,7 @@ function renderSplitScreen() {
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(),
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", requiresBrowser: false, combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(),
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, searchCorrection: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -1099,8 +1099,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const raceChromium = () => startBrowserSession(t, url, { background: true }).then(result => {
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (result?.ok === false) {
-        
-        
+        if (t.requiresBrowser) {
+          t.failoverReason = result.reason || "chromium_unavailable";
+          return renderError(t, "server", new Error(`Chromium is required for ${hostOf(url)}, but it is unavailable right now (${t.failoverReason}).`));
+        }
         if (!t.renderWinner || t.renderWinner === "proxy") {
           switchToFastProxy(t, url, session, result.reason);
         }
@@ -1118,14 +1120,22 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       } else if (t.renderWinner !== "browser") {
         stopBrowserSession(t).catch(() => {});
       }
-    }).catch(e => { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Combined Chromium path unavailable: ${e.message}`); });
+    }).catch(e => {
+      if (e.code === "SESSION_EXPIRED") return;
+      if (t.requiresBrowser && state.tabs.includes(t) && t.url === url) {
+        t.failoverReason = e.code || "chromium_unavailable";
+        renderError(t, "server", new Error(`Chromium is required for ${hostOf(url)}, but the browser session could not start: ${e.message}`));
+        return;
+      }
+      addLog("debug", `Combined Chromium path unavailable: ${e.message}`);
+    });
 
   if (strategy.race) {
     
     
     
     if (strategy.forceBrowserHost) {
-      t.loadStrategy = "browser"; t.renderWinner = "";
+      t.loadStrategy = "browser"; t.renderWinner = ""; t.requiresBrowser = true;
       
       
       
@@ -1146,8 +1156,12 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       t.loadGuard = setTimeout(() => {
         if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
           if (!t.browserSessionId) {
-            
-            switchToFastProxy(t, url, session, "chromium_timeout");
+            if (t.requiresBrowser) {
+              t.failoverReason = "chromium_timeout";
+              renderError(t, "server", new Error(`Chromium did not become ready for ${hostOf(url)} within ${Math.round(softTimeoutMs / 1000)} seconds.`));
+            } else {
+              switchToFastProxy(t, url, session, "chromium_timeout");
+            }
           } else {
             t.loading = false; if (activeTab() === t) setLoading(false); renderTabsSoon();
           }

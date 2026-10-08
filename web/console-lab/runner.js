@@ -138,13 +138,18 @@
     return headers;
   }
   async function api(path, options = {}) {
-    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), options.timeout || 10000);
+    const timeoutMs = Math.max(1000, Number(options.timeoutMs ?? options.timeout ?? 10000));
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = adminHeaders(); if (options.body) headers.set("Content-Type", "application/json");
       const response = await fetch(`${API_ORIGIN}${path}`, { method: options.method || "GET", headers, body: options.body ? JSON.stringify(options.body) : undefined, credentials: "omit", cache: "no-store", signal: controller.signal });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || body.message || `VeyraServer returned HTTP ${response.status}`);
+      const raw = await response.text();
+      const body = raw ? (() => { try { return JSON.parse(raw); } catch { return { message: raw.slice(0, 500) }; } })() : {};
+      if (!response.ok) { const error = new Error(body.error || body.message || `VeyraServer returned HTTP ${response.status}`); error.status = response.status; error.code = body.code || "HTTP_ERROR"; throw error; }
       return body;
+    } catch (error) {
+      if (error?.name === "AbortError") { const timeoutError = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`); timeoutError.code = "API_TIMEOUT"; throw timeoutError; }
+      throw error;
     } finally { clearTimeout(timeout); }
   }
   const fmt = value => Number(value || 0).toLocaleString();
@@ -274,7 +279,7 @@
     state.activeAgentIds.add(agent.id); button.disabled = true; button.textContent = "Running…"; renderAgents(); addConsole(`Launching agent “${agent.name}” for ${agent.seed}`, "info"); text("agentFormStatus", `Running ${agent.name}…`);
     try {
       const focusLabels = { research: "topic research", documentation: "documentation mapping", "site-audit": "site structure audit", relevance: "neural relevance" };
-      const result = await api("/api/robots/crawl", { method: "POST", body: { seed: agent.seed, query: `${focusLabels[agent.focus] || "research"} ${agent.goal}`, maxDepth: agent.maxDepth, maxPages: agent.maxPages }, timeout: Math.max(60000, agent.maxPages * 15000) });
+      const result = await api("/api/robots/crawl", { method: "POST", body: { seed: agent.seed, query: `${focusLabels[agent.focus] || "research"} ${agent.goal}`, maxDepth: agent.maxDepth, maxPages: agent.maxPages }, timeoutMs: Math.max(60000, agent.maxPages * 15000) });
       const settled = Array.isArray(result.results) ? result.results : [], workerResults = settled.map(item => item.result).filter(Boolean), pages = workerResults.flatMap(item => Array.isArray(item.pages) ? item.pages : []), stats = workerResults.reduce((sum, item) => ({ pagesCrawled: sum.pagesCrawled + safeNum(item.stats?.pagesCrawled), linksFound: sum.linksFound + safeNum(item.stats?.linksFound), errors: sum.errors + safeNum(item.stats?.errors) }), { pagesCrawled: 0, linksFound: 0, errors: 0 });
       if (!settled.length) throw new Error("No idle crawler worker is available. Refresh the fleet status and try again shortly.");
       stats.errors += settled.filter(item => item.status !== "fulfilled").length;
@@ -341,11 +346,13 @@
     const content = [...$("consoleOutput").children].map(node => node.textContent).join("\n"); const blob = new Blob([content || "Veyra Console Lab: no console output."], { type: "text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `veyra-console-${new Date().toISOString().slice(0, 10)}.txt`; a.click(); URL.revokeObjectURL(url);
   });
   $("commandForm").addEventListener("submit", async event => {
-    event.preventDefault(); const input = $("commandInput"), raw = input.value.trim(); if (!raw) return; const command = raw.toLowerCase(); input.value = ""; state.commandHistory.unshift(raw); state.historyCursor = 0;
+    event.preventDefault(); const input = $("commandInput"), raw = input.value.trim(); if (!raw) return; input.value = ""; state.commandHistory.unshift(raw); state.historyCursor = 0;
     addConsole(`> ${raw}`);
+    const parts = raw.match(/(?:[^\s"]+|"[^"]*")+/g) || [], requested = String(parts.shift() || "").toLowerCase(), command = ({ "?": "help", "h": "help", health: "status", ping: "status", worker: "workers", model: "neural", reload: "refresh", refresh: "refresh" })[requested] || requested;
     if (command === "clear") { $("consoleOutput").replaceChildren(); return; }
-    if (command === "help") { addConsole("Commands: help · status · sessions · neural · workers · agents · clear. Use the module tabs for details; arbitrary JavaScript execution is disabled."); return; }
+    if (command === "help") { addConsole("Commands: help [command] · status [--json] · sessions · neural · workers · agents · refresh · clear. Aliases: ?, health, ping, worker, model, reload. Use the module tabs for details; arbitrary JavaScript execution is disabled."); return; }
     if (command === "agents") { addConsole(shortJson(readAgents().map(({ name, seed, goal, maxPages, maxDepth }) => ({ name, seed, goal, maxPages, maxDepth })))); return; }
+    if (command === "refresh") { await refreshData(false); return; }
     if (!["status", "sessions", "neural", "workers"].includes(command)) { addConsole(`Unknown command “${raw}”. Type help for the available commands.`, "warn"); return; }
     if (!state.sessions && !state.neural && !state.workers) await refreshData(true);
     if (command === "sessions") { if (!state.sessions) return addConsole("Session API is unavailable or access was denied.", "error"); const s = state.sessions; addConsole(shortJson({ active: s.active, capacity: s.max, browserSessions: s.browserSessions, pausedSessions: s.pausedSessions, idleForMs: s.idleForMs, requestCount: (s.sessions || []).reduce((n, x) => n + safeNum(x.requests), 0) })); }
