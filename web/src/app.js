@@ -5,7 +5,7 @@ import {
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js?v=8.28.9";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.9";
-import { initUI } from "./ui.js?v=8.28.9";
+import { initUI } from "./ui.js?v=8.28.9-consolelabs";
 import { initDevtools } from "./devtools.js?v=8.28.9";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
@@ -74,6 +74,7 @@ const INTERNAL = {
   resources: { title: "Page resources", icon: "i-file", path: "/resources" },
   links: { title: "All links", icon: "i-link", path: "/links" },
   console: { title: "Veyra console", icon: "i-terminal", path: "/console", admin: true },
+  "console-labs": { title: "Veyra Console Lab", icon: "i-terminal", path: "/console-labs", admin: true },
   dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
   platform: { title: "Developer platform", icon: "i-platform", path: "/dev/platform" },
   admin: { title: "Admin panel", icon: "i-shield", path: "/admin", admin: true },
@@ -889,7 +890,7 @@ window.addEventListener("pagehide", () => { const s = state.session; if (s) try 
 function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
 export function classify(input) {
   const v = String(input || "").trim(); if (!v) return null;
-  const internal = v.match(/^veyra:\/\/([a-z]+)(?:\/([a-z-]+))?/i);
+  const internal = v.match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
   if (internal) return INTERNAL[internal[1].toLowerCase()] ? { kind: "internal", view: internal[1].toLowerCase(), section: internal[2] || "" } : { kind: "search", query: v };
   if (/^(?:javascript|data|blob|file|chrome|about):/i.test(v)) return { kind: "unsupported", value: v };
   if (/^https?:\/\//i.test(v)) return { kind: "url", url: v };
@@ -900,6 +901,13 @@ export function classify(input) {
 }
 export async function go(input, { tab = null, push = true, newTab: inNew = false, activate = true } = {}) {
   const r = classify(input); if (!r) return;
+  if (r.kind === "internal" && r.view === "console-labs") {
+    if (!isAdmin()) { toast("That page is only available to Veyra administrators", { kind: "warn" }); return; }
+    const pageBase = APP_BASE.replace(/\/web\/?$/, "");
+    const target = new URL(`${pageBase}/console-lab/`, location.origin).href;
+    if (inNew) { newTab({ url: target }); return; }
+    return navigate(target, { tab, push, activate });
+  }
   if (inNew) { newTab({ url: input }); return; }
   if (r.kind === "internal") { openInternal(r.view, { tab, section: r.section, push }); return; }
   if (r.kind === "unsupported") { toast("Veyra only opens http and https addresses", { kind: "warn" }); return; }

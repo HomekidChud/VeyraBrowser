@@ -4,16 +4,21 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const html = fs.readFileSync(path.join(root, "web/console-lab/index.html"), "utf8");
+const browserHtml = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
 const runner = fs.readFileSync(path.join(root, "web/console-lab/runner.js"), "utf8");
 const gate = fs.readFileSync(path.join(root, "web/console-lab/admin-gate.js"), "utf8");
 const app = fs.readFileSync(path.join(root, "web/src/app.js"), "utf8");
 const ui = fs.readFileSync(path.join(root, "web/src/ui.js"), "utf8");
+const settings = fs.readFileSync(path.join(root, "web/src/settings.js"), "utf8");
+const bootstrap = fs.readFileSync(path.join(root, "web/src/bootstrap.js"), "utf8");
 const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
 const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(match => match[1]));
 
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
+assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.9-consolelabs/);
+assert.match(bootstrap, /app\.js\?v=8\.28\.9-consolelabs/);
 assert.doesNotMatch(html, /runner\.js/);
 assert.match(gate, /api\/auth\/config/);
 assert.match(gate, /veyra:console-lab:auth-check/);
@@ -29,6 +34,19 @@ assert.match(app, /trustedConsoleLabOrigin/);
 assert.match(app, /config\?\.admin === true/);
 assert.match(app, /!isConsoleLabPageUrl\(t\.url\)/);
 assert.match(ui, /isAdmin\(\) \? \[[\s\S]*?menuItem\("i-terminal", "Console Lab"/);
+assert.match(ui, /B\.go\("veyra:\/\/console-labs", \{ newTab: true \}\)/);
+assert.match(app, /"console-labs": \{[^\n]*admin: true/);
+assert.match(app, /r\.view === "console-labs"/);
+assert.ok(app.includes("const pageBase = APP_BASE.replace("), "Console Labs route must normalize the legacy /web app base");
+assert.ok(app.includes("new URL(`${pageBase}/console-lab/`, location.origin).href"), "Console Labs route must resolve to the deployed root path");
+assert.match(app, /\^veyra:\\\/\\\/\(\[a-z-\]\+\)/);
+const consoleLabsRoute = "veyra://console-labs".match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
+assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme must parse as a recognized internal view");
+assert.equal("/VeyraBrowser/web".replace(/\/web\/?$/, ""), "/VeyraBrowser");
+assert.equal("/VeyraBrowser".replace(/\/web\/?$/, ""), "/VeyraBrowser");
+assert.match(app, /ui\.js\?v=8\.28\.9-consolelabs/);
+assert.match(ui, /settings\.js\?v=8\.28\.9-consolelabs/);
+assert.match(settings, /ui\.js\?v=8\.28\.9-consolelabs/);
 
 for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);
