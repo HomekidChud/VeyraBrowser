@@ -222,10 +222,9 @@ export const activeTab = () => state.tabs.find(t => t.id === state.activeId) || 
 const tabById = id => state.tabs.find(t => t.id === id) || null;
 
 function tabIconHtml(t) {
-  if (t.loading) return `<span class="spin"></span>`;
+  if (t.loading && t.view !== "page") return `<span class="spin"></span>`;
   if (t.view !== "page") return `<svg><use href="#${INTERNAL[t.view]?.icon || "i-globe"}"/></svg>`;
-  if (t.favicon && state.session) return `<img src="${esc(proxyUrl(t.favicon, "resource", state.session.id))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'${esc(letterIcon(t.url).letter)}'}))">`;
-  const li = letterIcon(t.url); return `<b style="display:grid;place-items:center;width:16px;height:16px;border-radius:4px;background:${li.color};color:#fff;font-size:10px">${esc(li.letter)}</b>`;
+  return `<svg aria-label="Veyra"><use href="#logo"/></svg>`;
 }
 export function renderTabs() {
   const list = $("tabsList"); if (!list) return;
@@ -252,7 +251,7 @@ export function renderTabs() {
           
           html += `<div class="tab-group-collapsed">`;
           for (const gt of groupTabs) {
-            html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
+            html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${gt.view === "page" ? "/web" : esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
           }
           html += `</div>`;
         }
@@ -261,8 +260,8 @@ export function renderTabs() {
     
     const group = t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null;
     if (group && group.collapsed) continue;
-    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
-      <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
+    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${t.view === "page" ? "/web" : esc(t.title)}">
+      <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${t.view === "page" ? "/web" : esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
       <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
     
     if (t.groupId) {
@@ -292,7 +291,7 @@ export function renderTabs() {
   list.querySelectorAll("[data-group]").forEach(el => { el.onclick = e => { if (!e.target.closest("[data-group-close]")) toggleGroupCollapse(el.dataset.group); }; });
   list.querySelectorAll("[data-group-close]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteTabGroup(b.dataset.groupClose); });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  document.title = (activeTab()?.title && activeTab().view !== "newtab" ? activeTab().title + " · " : "") + (state.incognito ? "Veyra Incognito" : "Veyra");
+  document.title = "/web";
 }
 function moveTab(fromId, toId) { if (!fromId || fromId === toId) return; const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId); if (a < 0 || b < 0) return; const [t] = state.tabs.splice(a, 1); state.tabs.splice(b, 0, t); renderTabs(); }
 function tabContextMenu(id, x, y) {
@@ -390,7 +389,7 @@ function currentRoute() {
 }
 function routeForTab(t) {
   if (!t) return ["/browse", ""];
-  if (t.view === "page") return ["/browse", t.url ? `?url=${encodeURIComponent(t.url)}` : ""];
+  if (t.view === "page") return ["/browse", ""];
   if (t.view === "search") return ["/search", t.searchQuery ? `?q=${encodeURIComponent(t.searchQuery)}` : ""];
   if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
   if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
@@ -407,7 +406,7 @@ function syncRoute({ replace = false } = {}) {
 export function showLanding(on) {
   $("landing").classList.toggle("hidden", !on); $("app").classList.toggle("hidden", on);
   document.body.style.overflow = on ? "" : "hidden";
-  if (on) { closeFloating(); hooks.renderLanding?.(); document.title = "Veyra — browse through a clean session"; }
+  if (on) { closeFloating(); hooks.renderLanding?.(); document.title = "/web"; }
 }
 export function goRoute(path, { push = true } = {}) {
   const url = new URL(path, location.origin + APP_BASE + "/");
@@ -438,7 +437,10 @@ function applyRoute() {
   }
   if (view === "newtab") {
     const u = params.get("url"); const q = params.get("q");
-    if (u) { if (!(t.view === "page" && t.url === u)) go(u, { tab: reuse(t) ? t : null, push: false }); else renderActive({ push: false }); }
+    if (u) {
+      try { history.replaceState({ veyra: true }, "", routeUrl("/browse")); } catch {}
+      if (!(t.view === "page" && t.url === u)) go(u, { tab: reuse(t) ? t : null, push: false }); else renderActive({ push: false });
+    }
     else if (q) go(q, { tab: reuse(t) ? t : null, push: false });
     else renderActive({ push: false });
     return;
@@ -495,7 +497,7 @@ export function renderActive({ push = true, replace = false } = {}) {
 }
 function updateAddress() {
   const t = activeTab(); const input = $("address"); if (!t || document.activeElement === input) return;
-  input.value = t.view === "page" ? (t.url || "") : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+  input.value = t.view === "page" ? "/web" : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
 }
 function updateNavButtons() {
   const t = activeTab(); if (!t) return;
@@ -979,7 +981,7 @@ function resolveStrategy(url) {
   
   
   if (hostNeedsRealBrowser(url) && browserFallbackAllowed()) {
-    return { key: "combined", proxy: true, crawler: false, browser: true, race: true, auto: true, forceBrowserHost: true };
+    return { key: "browser", proxy: false, crawler: false, browser: true, race: false, auto: true, forceBrowserHost: true };
   }
   if (!base.auto) return base;
   

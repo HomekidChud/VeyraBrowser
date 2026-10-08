@@ -17,8 +17,8 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.9-consolelabs/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.9-consolelabs/);
+assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.10-consolelabs/);
+assert.match(bootstrap, /app\.js\?v=8\.28\.10-consolelabs/);
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /Chromium is required for/);
 assert.match(app, /t\.requiresBrowser = true/);
