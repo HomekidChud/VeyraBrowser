@@ -400,7 +400,15 @@ function routeForTab(t) {
   return [INTERNAL[t.view]?.path || "/browse", ""];
 }
 function syncRoute({ replace = false } = {}) {
-  const [p, q] = routeForTab(activeTab()); const next = routeUrl(p, q);
+  const [p, q] = routeForTab(activeTab());
+  if (INCOGNITO) {
+    const privateRoute = routeUrl(p) + `?private=${encodeURIComponent(incognitoToken || incognitoAddressToken())}`;
+    if (location.pathname !== new URL(privateRoute, location.href).pathname) {
+      try { history.replaceState({ veyra: true, incognito: true }, "", privateRoute); } catch {}
+    }
+    return;
+  }
+  const next = routeUrl(p, q);
   if (next === location.pathname + location.search + location.hash) return;
   try { history[replace ? "replaceState" : "pushState"]({ veyra: true }, "", next); } catch {}
 }
@@ -512,6 +520,10 @@ function rotateIncognitoAddressToken() {
   incognitoToken = "veyra://private/" + Array.from(bytes, b => INCOGNITO_TOKEN_ALPHABET[b % INCOGNITO_TOKEN_ALPHABET.length]).join("");
   const input = $("address"); const t = activeTab();
   if (INCOGNITO && input && t?.view === "page" && document.activeElement !== input) input.value = incognitoToken;
+  if (INCOGNITO) {
+    const privateRoute = routeUrl(routeForTab(t)[0]) + `?private=${encodeURIComponent(incognitoToken)}`;
+    try { history.replaceState({ veyra: true, incognito: true }, "", privateRoute); } catch {}
+  }
 }
 function startIncognitoAddressRotation() {
   if (!INCOGNITO || window.__veyraIncognitoAddressRotation) return;
