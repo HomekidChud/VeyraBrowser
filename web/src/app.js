@@ -1614,7 +1614,7 @@ async function fetchAIAnswer(t, query, results, source = "web") {
   }
 }
 function sourceFaviconUrl(url) {
-  try { return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(url).hostname)}&sz=32`; } catch { return ""; }
+  try { return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(new URL(url).hostname)}.ico`; } catch { return ""; }
 }
 function renderAnswerWithSourceLogos(answer, query, sources) {
   const byId = new Map((sources || []).map(s => [String(s.id), s]));
