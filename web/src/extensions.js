@@ -57,12 +57,31 @@ function normalizePackage(m, source = "local") {
 function normalizeUserscript(raw, source = "local") {
   const text = String(raw || "");
   const meta = text.match(/==UserScript==([\s\S]*?)==\/UserScript==/i)?.[1] || "";
-  const get = key => meta.match(new RegExp(`^\\s*//\\s*@${key}\\s+(.+)$`, "mi"))?.[1]?.trim() || "";
+  const get = key => meta.match(new RegExp(`^\s*//\s*@${key}\s+(.+)$`, "mi"))?.[1]?.trim() || "";
+  if (/^\s*\/\/\s*@(require|resource|connect|ant-include)\b/im.test(meta)) throw new Error("Remote userscript dependencies and network grants are blocked.");
   const name = get("name") || "Unnamed userscript";
   const slug = (get("namespace") + ":" + name).toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || uid();
   const matchesList = [...meta.matchAll(/^\s*\/\/\s*@(?:match|include)\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean).slice(0, 30);
   if (!text.trim() || text.length > 200000) throw new Error("Userscript is empty or exceeds 200 KB.");
-  return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
+  const grants = [...meta.matchAll(/^\s*\/\/\s*@grant\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean);
+  const allowedGrants = new Set(["none", "GM_getValue", "GM_setValue", "GM_deleteValue", "GM_listValues", "GM_addStyle"]);
+  if (grants.some(x => !allowedGrants.has(x))) throw new Error("This userscript requests an unsupported privilege.");
+  return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, grants, runAt: get("run-at") || "document-idle", enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
+}
+function normalizeBrowserManifest(manifest, files = {}) {
+  if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before importing Chrome or Edge extensions.");
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("The extension manifest must be a JSON object.");
+  if (manifest.background || manifest.permissions?.some?.(p => /tabs|cookies|webRequest|management|nativeMessaging|clipboard/i.test(p))) throw new Error("Background code and privileged browser APIs are blocked.");
+  const scripts = [], styles = [], matchesList = [];
+  for (const group of Array.isArray(manifest.content_scripts) ? manifest.content_scripts : []) {
+    for (const pattern of group.matches || []) matchesList.push(String(pattern));
+    for (const file of group.js || []) { const code = files[file]; if (typeof code !== "string") throw new Error(`Missing content script: ${file}`); scripts.push(code); }
+    for (const file of group.css || []) { const css = files[file]; if (typeof css !== "string") throw new Error(`Missing stylesheet: ${file}`); styles.push(css); }
+  }
+  if (!scripts.length && !styles.length) throw new Error("This manifest has no supported content scripts or styles.");
+  if (scripts.length && /@(?:require|resource|connect)\b/i.test(scripts.join("\n"))) throw new Error("Remote userscript dependencies are blocked.");
+  const id = `chrome-${String(manifest.name || "extension").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)}-${uid().slice(-6)}`;
+  return { id, name: String(manifest.name || "Imported browser extension").slice(0, 80), version: String(manifest.version || "1.0.0").slice(0, 20), description: String(manifest.description || "Imported Chrome/Edge content extension").slice(0, 300), css: styles.join("\n"), script: scripts.join("\n\n"), matches: matchesList.slice(0, 30), enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false, publisher: "Local import", author: "" };
 }
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
@@ -122,10 +141,10 @@ export async function applyToTab(t) {
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
   for (const d of devExts()) {
     const active = d.enabled && matches(d, t.url);
-    calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? d.script : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
+    calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(d.css)});\n` : ""}${d.script}` : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
   }
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
-  for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("debug", `Extension call ${m} failed: ${e.message}`); break; } }
+  for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("warn", `Extension ${p.key || m} failed on ${hostOf(t.url)}: ${e.message}`); } }
   hooks.onExtensionsApplied?.(t);
 }
 hooks.applyExtensionsToTab = applyToTab;
@@ -192,8 +211,8 @@ hooks.renderSidePanel = renderSidePanel;
 function card(e, on, dev = false) {
   return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico"><svg><use href="#${e.icon || "i-puzzle"}"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
     ${e.zoom ? `<label class="field" style="margin:0"><span>Zoom for new pages: <b id="zoomVal">${Math.round((settings.zoomDefault || 1) * 100)}%</b></span><input type="range" min="50" max="200" step="10" value="${Math.round((settings.zoomDefault || 1) * 100)}" id="zoomRange"></label>` : ""}
-    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
-    <div class="ext-foot">${dev ? `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit CSS</button><button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
+    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
+    <div class="ext-foot">${dev ? `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button><button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
       <span class="spacer"></span><input type="checkbox" class="switch" data-toggle="${esc(e.id)}" ${dev ? "data-dev" : ""} ${on ? "checked" : ""} aria-label="Enable ${esc(e.name)}"></div></article>`;
 }
 export async function renderExtensions() {
@@ -251,8 +270,8 @@ export async function renderExtensions() {
     const inst = e.target.closest("[data-install-store]"); if (inst) { try { const list = await fetchStore(); const pkg = list.find(x => x.id === inst.dataset.installStore); if (!pkg) throw new Error("Extension is no longer published."); const checked = await api("/api/extensions/verify", { method: "POST", json: { ...pkg } }); if (!checked?.safe) throw new Error(checked?.reason || "Extension package failed security validation."); installExtension(pkg); } catch (err) { toast(err.message, { kind: "err", ms: 6000 }); } return; }
     if (e.target.closest("[data-ext-refresh]")) { await fetchStore(true).catch(() => {}); renderExtensions(); return; }
     const r = e.target.closest("[data-run]"); if (r) { runAction(r.dataset.run, r); return; }
-    const rm = e.target.closest("[data-remove]"); if (rm) { const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, "ext.css", { key: rm.dataset.remove, css: "" }).catch(() => {})); renderExtensions(); return; }
-    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: "css", label: "CSS", type: "textarea", value: d.css }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
+    const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
+    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
   };
 }
 
@@ -278,6 +297,9 @@ async function loadManifestFile(file) {
       save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); renderExtensions(); return toast(`${v.name} installed`);
     }
     const raw = JSON.parse(text); const list = Array.isArray(raw) ? raw : [raw];
+    if (raw.manifest?.manifest_version || raw.manifest_version === 2 || raw.manifest_version === 3) {
+      const v = normalizeBrowserManifest(raw.manifest || raw, raw.files || {}); const cur = devExts(); cur.unshift(v); save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); renderExtensions(); return toast(`${v.name} imported`);
+    }
     const checked = [];
     for (const x of list) { const v = normalizePackage(x, "local"); const r = await api("/api/extensions/verify", { method: "POST", json: x }); if (!r?.safe) throw new Error(r?.reason || `Extension ${v.id} failed security validation.`); checked.push(v); }
     const cur = devExts(); for (const v of checked) { const i = cur.findIndex(c => c.id === v.id); const installed = { ...v, enabled: true, installedAt: Date.now() }; if (i >= 0) cur[i] = installed; else cur.unshift(installed); }
@@ -291,7 +313,7 @@ export function initExtensions(b) {
   $("extDevMode").onchange = e => { settings.extensionDeveloperMode = e.target.checked; saveSettings(); renderExtensions(); };
   $("loadExtensionBtn").onclick = () => $("extensionFile").click();
   $("extensionFile").onchange = e => { const f = e.target.files?.[0]; if (f) loadManifestFile(f); e.target.value = ""; };
-  $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+  $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => x.script ? x.script : ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
   renderExtensions();
 }
 export { BUILTIN };

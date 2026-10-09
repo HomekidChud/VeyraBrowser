@@ -280,7 +280,7 @@
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
               <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
-              <span class="muted small">CSS packages are sandboxed. Developer mode also supports local <code>.user.js</code> scripts; service workers and background APIs stay blocked.</span>
+              <span class="muted small">CSS is sandboxed. Developer mode supports <code>.user.js</code> and JSON Chrome/Edge manifest bundles with content scripts; service workers and privileged APIs stay blocked.</span>
               <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json,.user.js,text/javascript" hidden>
             </div>
             <div class="ext-grid" id="extensionsGrid"></div>
