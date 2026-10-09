@@ -219,7 +219,8 @@ hooks.onAuthChanged = onAuthChanged;
 let syncing = false;
 function syncableExtension(ext) {
   const digest = ext?.verification?.integrity?.value;
-  return !!(ext && !ext.script && !ext.localOnly && ext.source === "store" && ext.verification?.scan?.verdict === "PASS" && /^[a-f0-9]{64}$/i.test(String(digest || "")));
+  const hasExecutable = !!(ext?.script || ext?.backgroundScript || Object.keys(ext?.packageFiles || {}).some(name => name.endsWith(".js")));
+  return !!(ext && !hasExecutable && !ext.localOnly && ext.source === "store" && ext.verification?.scan?.verdict === "PASS" && /^[a-f0-9]{64}$/i.test(String(digest || "")));
 }
 function syncPayload() {
   const s = { ...settings };

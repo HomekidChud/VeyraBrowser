@@ -1,6 +1,7 @@
 
 import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText, confirmDialog } from "./core.js?v=8.28.17-session-resume-userscripts";
 import { dtCall, isRemote } from "./bridge.js?v=8.28.17-session-resume-userscripts";
+import { syncBackgroundExtensions } from "./extension-runtime.js?v=8.28.17-session-resume-userscripts";
 
 let B;
 const BUILTIN = [];
@@ -12,7 +13,7 @@ const LEGACY_BUILTIN_IDS = ["dark", "adblock", "focus", "readable", "links", "gr
 const storeCache = { data: null, at: 0, loading: null };
 function safeCss(css) {
   const v = String(css ?? "");
-  if (!v.trim()) throw new Error("css is required.");
+  if (!v.trim()) return "";
   if (v.length > 120000) throw new Error("CSS is too large (120 KB max).");
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v)) throw new Error("CSS contains unsupported control characters.");
   
@@ -47,26 +48,41 @@ function safeCss(css) {
   return v;
 }
 function normalizePackage(m, source = "local") {
-  if (m && m.schema === "veyra-extension/v1") {
-    const files = m.files && typeof m.files === "object" ? m.files : {};
-    m = { ...m, css: files["style.css"] ?? "", permissions: Array.isArray(m.permissions) ? m.permissions : [] };
+  let packagedFiles = {};
+  let packageSchema = m?.schema || "";
+  if (m && ["veyra-extension/v1", "veyra-extension/v2"].includes(packageSchema)) {
+    packagedFiles = m.files && typeof m.files === "object" ? m.files : {};
+    const contentScripts = Object.entries(packagedFiles).filter(([name]) => name.startsWith("content/") && name.endsWith(".js")).map(([, code]) => String(code));
+    m = { ...m, css: packagedFiles["style.css"] ?? "", script: contentScripts.join("\n;\n"), backgroundScript: String(packagedFiles["background.js"] || ""), permissions: Array.isArray(m.permissions) ? m.permissions : [] };
   }
-  const v = validateManifest(m);
+  const validationInput = { ...m };
+  delete validationInput.script; delete validationInput.backgroundScript;
+  const v = validateManifest(validationInput);
   const verification = m?.verification && typeof m.verification === "object" ? m.verification : null;
   const integrity = verification?.integrity || m?.integrity || null;
   const scanPassed = verification?.scan?.verdict === "PASS";
+  const hasExecutable = packageSchema === "veyra-extension/v2" && (Object.keys(packagedFiles).some(name => name.endsWith(".js")));
+  if (source === "store" && hasExecutable && (verification?.signing?.status !== "verified" || m.signing?.status === "untrusted-key")) {
+    throw new Error("Executable Store extensions require a valid trusted Ed25519 package signature.");
+  }
   if (source === "store" && (!scanPassed || integrity?.algorithm !== "sha256" || !/^[a-f0-9]{64}$/i.test(String(integrity.value || "")))) {
     throw new Error("This store package has no current PASS security scan and SHA-256 integrity record.");
   }
   return {
     ...v,
+    script: String(m?.script || ""),
+    backgroundScript: String(m?.backgroundScript || ""),
+    packageFiles: packagedFiles,
+    packageSchema,
+    permissions: Array.isArray(m?.permissions) ? m.permissions.map(String) : [],
     source,
     verified: source === "store" ? true : scanPassed,
     publisher: String(m?.publisher || (source === "store" ? "Veyra Store" : "Local") ).slice(0, 100),
     author: String(m?.author || "").slice(0, 100),
     category: String(m?.category || "other").slice(0, 32),
     tags: Array.isArray(m?.tags) ? m.tags.map(x => String(x).slice(0, 32)).slice(0, 12) : [],
-    verification: verification ? { ...verification, integrity } : null
+    verification: verification ? { ...verification, integrity } : null,
+    storeApproved: source === "store" && verification?.state === "PUBLISHED" && scanPassed && (!hasExecutable || verification?.signing?.status === "verified")
   };
 }
 function assertLocalScriptSafety(source) {
@@ -104,7 +120,7 @@ function normalizeBrowserManifest(manifest, files = {}) {
   if (scripts.length && /@(?:require|resource|connect)\b/i.test(scripts.join("\n"))) throw new Error("Remote userscript dependencies are blocked.");
   for (const script of scripts) assertLocalScriptSafety(script);
   const id = `chrome-${String(manifest.name || "extension").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)}-${uid().slice(-6)}`;
-  return { id, name: String(manifest.name || "Imported browser extension").slice(0, 80), version: String(manifest.version || "1.0.0").slice(0, 20), description: String(manifest.description || "Imported Chrome/Edge content extension").slice(0, 300), css: styles.join("\n"), script: scripts.join("\n\n"), matches: matchesList.slice(0, 30), enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false, publisher: "Local import", author: "" };
+  return { id, name: String(manifest.name || "Imported browser extension").slice(0, 80), version: String(manifest.version || "1.0.0").slice(0, 20), description: String(manifest.description || "Imported Chrome/Edge content extension").slice(0, 300), css: styles.join("\n"), script: scripts.join("\n\n"), matches: matchesList.slice(0, 30), enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false, publisher: "Local import", author: "", localOnly: true };
 }
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
@@ -137,9 +153,16 @@ async function installFromStore(id) {
   if (publishedHash && checked.extension.integrity?.value !== publishedHash) throw new Error("The downloaded package does not match its published integrity record.");
   const candidate = normalizePackage({ ...checked.extension, verification: pkg.verification }, "store");
   const integrity = candidate.verification?.integrity?.value || "";
+  const permissionLabels = { styles: "Change page styling", content_scripts: "Run JavaScript on matching pages (may read and change page content)", background: "Run a background script in a restricted sandbox", storage: "Store extension-specific local data", cookies: "Access cookies through matching page context", network: "Make network requests", tabs: "Request Veyra tab metadata (not yet available to extension APIs)" };
+  const permissionText = (candidate.permissions || []).map(permission => `• ${permissionLabels[permission] || permission}`).join("\n") || "• No extra permissions";
+  const scanFindings = candidate.verification?.scan?.findings || [];
+  const findingText = scanFindings.length ? scanFindings.map(item => `• ${item.code}: ${item.file || "package"}`).join("\n") : "No heuristic flags detected; this does not prove the package is safe.";
+  const executableWarning = candidate.script || candidate.backgroundScript
+    ? "\n\nIMPORTANT: a signature proves which trusted key signed this exact package; it does not prove the code is harmless. Static checks can miss malicious behavior. Content scripts run in the matching page context; their declared permissions are not a hard API sandbox. Background scripts run in a more restricted iframe but can still consume CPU or freeze this Veyra tab. Review the publisher and every source file before installing."
+    : "";
   const allowed = await confirmDialog(
     `Install ${candidate.name}?`,
-    `This package can change page styling only. It has no scripts, network access, cookies, background worker, or browser permissions.\n\nPublisher: ${candidate.publisher || "Unknown"}\nSites: ${(candidate.matches || []).join(", ") || "all supported web pages"}\nSecurity scan: PASS\nIntegrity: SHA-256 ${integrity.slice(0, 16)}…`
+    `Publisher: ${candidate.publisher || "Unknown"}\nReviewer: ${candidate.verification?.reviewer?.name || "not recorded"}\nSigning key: ${candidate.verification?.signing?.keyId || "none"} (${candidate.verification?.signing?.status || "not signed"})\nSites: ${(candidate.matches || []).join(", ") || "all supported web pages"}\nPermissions:\n${permissionText}\nStatic review flags:\n${findingText}\nIntegrity: SHA-256 ${integrity.slice(0, 16)}…${executableWarning}`
   );
   if (!allowed) return;
   installExtension(candidate);
@@ -173,8 +196,9 @@ export function validateManifest(m) {
   const name = String(m.name || "").trim(); if (!name || name.length > 80) throw new Error("name is required (80 characters max).");
   const forbidden = ["js", "script", "scripts", "content_scripts", "background", "service_worker", "web_accessible_resources", "externally_connectable", "host_permissions", "optional_permissions", "wasm", "binary"];
   for (const k of forbidden) if (Object.prototype.hasOwnProperty.call(m, k)) throw new Error(`Published Veyra extensions cannot use ${k}.`);
-  if (m.permissions != null) { const perms = Array.isArray(m.permissions) ? m.permissions.map(x => String(x)) : []; if (perms.some(x => x !== "styles")) throw new Error("Only the styles permission is available to Veyra extensions."); }
+  if (m.permissions != null) { const perms = Array.isArray(m.permissions) ? m.permissions.map(x => String(x)) : []; const allowed = new Set(["styles", "content_scripts", "background", "storage", "network", "tabs"]); if (perms.some(x => !allowed.has(x))) throw new Error("This extension requests an unsupported Veyra permission."); }
   const css = safeCss(m.css ?? m.page_css ?? "");
+  if (!css && !String(m.script || "").trim() && !String(m.backgroundScript || "").trim() && !Object.keys(m.files || {}).some(name => String(name).endsWith(".js"))) throw new Error("A stylesheet or executable capability is required.");
   const matchesList = m.matches == null ? [] : Array.isArray(m.matches) ? m.matches.map(String).slice(0, 30) : (() => { throw new Error("matches must be an array of host patterns."); })();
   if (matchesList.some(x => x.length > 120 || /[\r\n]/.test(x) || !/^(?:<all_urls>|\*|(?:(?:\*|https?):\/\/)?(?:\*\.)?[a-z0-9.-]+(?:\/[^\s]*)?)$/i.test(x))) throw new Error("matches contains an invalid host or URL pattern.");
   return { id, name, version: String(m.version || "1.0.0").slice(0, 20), description: String(m.description || "").slice(0, 300), css, matches: matchesList, enabled: m.enabled !== false, installedAt: Date.now() };
@@ -188,14 +212,15 @@ export async function applyToTab(t) {
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
   for (const d of devExts()) {
     const active = d.enabled && matches(d, t.url);
-    calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, localOnly: !!d.localOnly, script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(d.css)});\n` : ""}${d.script}` : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
+    if (d.script) calls.push(["ext.script", { key: d.id, localOnly: !!d.localOnly, storeApproved: !!d.storeApproved, permissions: d.permissions || [], script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(d.css)});\n` : ""}${d.script}` : "" }]);
+    else if (d.css) calls.push(["ext.css", { key: d.id, css: active ? safeCss(d.css) : "" }]);
   }
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
   for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("warn", `Extension ${p.key || m} failed on ${hostOf(t.url)}: ${e.message}`); } }
   hooks.onExtensionsApplied?.(t);
 }
 hooks.applyExtensionsToTab = applyToTab;
-const applyAll = () => B.state.tabs.forEach(t => applyToTab(t));
+const applyAll = () => { B.state.tabs.forEach(t => applyToTab(t)); syncBackgroundExtensions(devExts(), message => addLog("error", `Background extension: ${message}`)); };
 
 async function toggle(id, on) {
   const s = state(); s[id] = on; setState(s);
@@ -258,8 +283,8 @@ hooks.renderSidePanel = renderSidePanel;
 function card(e, on, dev = false) {
   return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico"><svg><use href="#${e.icon || "i-puzzle"}"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
     ${e.zoom ? `<label class="field" style="margin:0"><span>Zoom for new pages: <b id="zoomVal">${Math.round((settings.zoomDefault || 1) * 100)}%</b></span><input type="range" min="50" max="200" step="10" value="${Math.round((settings.zoomDefault || 1) * 100)}" id="zoomRange"></label>` : ""}
-    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
-    <div class="ext-foot">${dev ? `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button><button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
+    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.backgroundScript ? "background script" : e.script ? "content script" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
+    <div class="ext-foot">${dev ? `${e.source === "store" ? "<span class=\"muted small\">Signed Store package · source editing disabled</span>" : `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button>`}<button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
       <span class="spacer"></span><input type="checkbox" class="switch" data-toggle="${esc(e.id)}" ${dev ? "data-dev" : ""} ${on ? "checked" : ""} aria-label="Enable ${esc(e.name)}"></div></article>`;
 }
 export async function renderExtensions() {
@@ -277,7 +302,7 @@ export async function renderExtensions() {
       list.forEach(e => { const c = e.category || "other"; catCounts[c] = (catCounts[c] || 0) + 1; });
       grid.innerHTML = nav + `
         <div class="ext-store-header">
-          <div class="ext-store-title"><h2>Veyra Extension Store</h2><p>${list.length} catalog packages · CSS-only · review-gated · no fabricated ratings or download counts</p></div>
+          <div class="ext-store-title"><h2>Veyra Extension Store</h2><p>${list.length} catalog packages · CSS and signed executable packages · every release requires human review and per-device consent</p></div>
           <input class="input" id="extSearch" placeholder="Search extensions…" style="max-width:300px">
         </div>
         <div class="ext-store-layout">
@@ -290,7 +315,9 @@ export async function renderExtensions() {
             <div class="ext-grid" id="extGridList">${list.map(e => {
               const digest = String(e.verification?.integrity?.value || e.integrity?.value || "");
               const signing = e.verification?.signing?.status || "not-provided";
-              return `<article class="ext-card ${installed.has(e.id) ? "installed" : ""}" data-cat="${esc(e.category || "other")}"><div class="ext-top"><span class="ext-ico"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-tags">${(e.tags || []).slice(0, 4).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><p class="muted small" style="margin:10px 0 0">${esc(e.version || "1.0.0")} · ${esc(e.publisher || "Catalog publisher")}</p><p class="muted small mono" style="margin:5px 0 0">PASS · ${esc(signing)} · sha256:${esc(digest.slice(0, 16))}${digest ? "…" : ""}</p><div class="ext-foot"><span class="muted small">${esc((e.matches || []).join(", ") || "all supported web pages")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : "primary"} sm" data-install-store="${esc(e.id)}">${installed.has(e.id) ? "Reinstall" : "Review & install"}</button></div></article>`;
+              const executable = Object.keys(e.files || {}).some(name => name.endsWith(".js"));
+              const permissions = (e.permissions || []).join(", ");
+              return `<article class="ext-card ${installed.has(e.id) ? "installed" : ""}" data-cat="${esc(e.category || "other")}"><div class="ext-top"><span class="ext-ico"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-tags">${(e.tags || []).slice(0, 4).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><p class="muted small" style="margin:10px 0 0">${esc(e.version || "1.0.0")} · ${esc(e.publisher || "Catalog publisher")} · ${executable ? "Executable" : "CSS-only"}</p><p class="muted small" style="margin:4px 0 0">Permissions: ${esc(permissions || "none")}</p><p class="muted small mono" style="margin:5px 0 0">${esc(e.verification?.scan?.verdict || "UNKNOWN")} · ${esc(signing)} · sha256:${esc(digest.slice(0, 16))}${digest ? "…" : ""}</p><div class="ext-foot"><span class="muted small">${esc((e.matches || []).join(", ") || "all supported web pages")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : "primary"} sm" data-install-store="${esc(e.id)}">${installed.has(e.id) ? "Review & reinstall" : "Review & install"}</button></div></article>`;
             }).join("")}</div>
           </div>
         </div>`;
@@ -322,7 +349,7 @@ export async function renderExtensions() {
     const inst = e.target.closest("[data-install-store]"); if (inst) { try { await installFromStore(inst.dataset.installStore); } catch (err) { toast(err.message, { kind: "err", ms: 6000 }); } return; }
     if (e.target.closest("[data-ext-refresh]")) { await fetchStore(true).catch(() => {}); renderExtensions(); return; }
     const r = e.target.closest("[data-run]"); if (r) { runAction(r.dataset.run, r); return; }
-    const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
+    const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && old?.script && dtCall(t, "ext.script", { key: rm.dataset.remove, script: "" }).catch(() => {})); applyAll(); renderExtensions(); return; }
     const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
   };
 }
@@ -368,6 +395,7 @@ async function loadManifestFile(file) {
 
 export function initExtensions(b) {
   B = b; clearLegacyBuiltins();
+  syncBackgroundExtensions(devExts(), message => addLog("error", `Background extension: ${message}`));
   $("extBtn").onclick = () => $("popover").classList.contains("hidden") ? openPuzzle() : closeFloating();
   $("extDevMode").onchange = e => { settings.extensionDeveloperMode = e.target.checked; saveSettings(); renderExtensions(); };
   $("loadExtensionBtn").onclick = () => $("extensionFile").click();
