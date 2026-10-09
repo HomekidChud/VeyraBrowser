@@ -215,14 +215,42 @@ async function tabAds(body) {
 }
 
 async function tabConfig(body) {
-  const [cfg, plans] = await Promise.allSettled([api("/api/config"), api("/api/config/plans")]);
-  const c = cfg.value || {}, p = plans.value || {};
-  body.innerHTML = `<div class="s-section"><h2>Runtime config</h2><p class="muted">Live server configuration. Save pushes the JSON to the server (admin only).</p>
+  const [cfg, plans, policyResult] = await Promise.allSettled([api("/api/config"), api("/api/config/plans"), api("/api/admin/session-policy")]);
+  const c = cfg.value || {}, p = plans.value || {}, policy = policyResult.value?.policy || {};
+  const mins = ms => ms == null ? 0 : Math.round(Number(ms) / 60000);
+  body.innerHTML = `<div class="s-section"><h2>Session policy</h2><p class="muted">Control guest and administrator duration, idle cleanup, maximum age and concurrent proxy capacity. Changes apply immediately to new sessions.</p>
+    <div class="s-card">
+      <div class="s-row"><div class="s-label"><b>Guest session limit</b><span>Minutes; use 0 for no hard limit.</span></div><div class="s-ctl"><input class="input" id="policyGuest" type="number" min="0" max="10080" value="${esc(mins(policy.guestTimeLimitMs))}"></div></div>
+      <div class="s-row"><div class="s-label"><b>Administrator session limit</b><span>Minutes; use 0 for no hard limit.</span></div><div class="s-ctl"><input class="input" id="policyAdmin" type="number" min="0" max="10080" value="${esc(mins(policy.adminTimeLimitMs))}"></div></div>
+      <div class="s-row"><div class="s-label"><b>Idle timeout</b><span>Minutes without requests before deletion.</span></div><div class="s-ctl"><input class="input" id="policyIdle" type="number" min="1" max="1440" value="${esc(mins(policy.idleTtlMs))}"></div></div>
+      <div class="s-row"><div class="s-label"><b>Maximum session age</b><span>Minutes from creation, regardless of activity.</span></div><div class="s-ctl"><input class="input" id="policyAge" type="number" min="10" max="10080" value="${esc(mins(policy.maxAgeMs))}"></div></div>
+      <div class="s-row"><div class="s-label"><b>Maximum concurrent proxy sessions</b><span>Oldest sessions close when the cap is exceeded.</span></div><div class="s-ctl"><input class="input" id="policyMax" type="number" min="10" max="5000" value="${esc(policy.maxSessions ?? 500)}"></div></div>
+      <div class="s-row"><div class="s-label"><b>Apply duration to active sessions</b><span>Otherwise duration changes affect new sessions only.</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="policyExisting"></div></div>
+      <div class="head-actions"><button class="btn primary" id="policySave">Apply session policy</button><span class="muted small" id="policyStatus">${esc(policy.activeSessions == null ? "" : `${policy.activeSessions} active session(s)`)}</span></div>
+    </div></div>
+    <div class="s-section"><h2>Runtime config</h2><p class="muted">Live server configuration. Save pushes the JSON to the server (admin only).</p>
     <pre class="json-view" id="cfgView" contenteditable="true" spellcheck="false">${esc(JSON.stringify(c.config || c, null, 2))}</pre>
     <div class="head-actions" style="margin-top:10px"><button class="btn primary" id="cfgSave">Save config</button><button class="btn ghost" id="cfgReload">Reload</button></div></div>
     <div class="s-section"><h2>Render plans</h2><div class="dev-grid">
     ${(p.plans || Object.entries(p)).slice ? (p.plans || []).map(x => card(x.name || x.id, `${x.ramMb} MB · ${x.cpu} CPU`)).join("") : Object.entries(p).map(([k, v]) => card(k, `${v.ramMb} MB · ${v.cpu} CPU`)).join("")}
     </div></div>`;
+  $("policySave").onclick = async () => {
+    const btn = $("policySave"); btn.disabled = true;
+    try {
+      const value = id => Number($(id).value) || 0;
+      const result = await api("/api/admin/session-policy", { method: "PUT", json: {
+        guestTimeLimitMs: value("policyGuest") * 60000,
+        adminTimeLimitMs: value("policyAdmin") * 60000,
+        idleTtlMs: value("policyIdle") * 60000,
+        maxAgeMs: value("policyAge") * 60000,
+        maxSessions: value("policyMax"),
+        applyExisting: $("policyExisting").checked
+      } });
+      $("policyStatus").textContent = `${result.appliedExisting || 0} active session(s) updated`;
+      toast("Session policy applied");
+    } catch (err) { toast(`Session policy not applied: ${err.message}`, { kind: "err" }); }
+    finally { btn.disabled = false; }
+  };
   $("cfgReload").onclick = () => refreshAdmin(true);
   $("cfgSave").onclick = async () => {
     try {
