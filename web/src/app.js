@@ -498,7 +498,25 @@ export function renderActive({ push = true, replace = false } = {}) {
 }
 function updateAddress() {
   const t = activeTab(); const input = $("address"); if (!t || document.activeElement === input) return;
-  input.value = t.view === "page" ? (t.url || "") : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+  input.value = t.view === "page" ? (INCOGNITO ? incognitoAddressToken() : (t.url || "")) : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+}
+const INCOGNITO_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+let incognitoToken = "";
+function incognitoAddressToken() {
+  if (!incognitoToken) rotateIncognitoAddressToken();
+  return incognitoToken;
+}
+function rotateIncognitoAddressToken() {
+  const bytes = new Uint8Array(48);
+  try { crypto.getRandomValues(bytes); } catch { for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256); }
+  incognitoToken = "veyra://private/" + Array.from(bytes, b => INCOGNITO_TOKEN_ALPHABET[b % INCOGNITO_TOKEN_ALPHABET.length]).join("");
+  const input = $("address"); const t = activeTab();
+  if (INCOGNITO && input && t?.view === "page" && document.activeElement !== input) input.value = incognitoToken;
+}
+function startIncognitoAddressRotation() {
+  if (!INCOGNITO || window.__veyraIncognitoAddressRotation) return;
+  rotateIncognitoAddressToken();
+  window.__veyraIncognitoAddressRotation = window.setInterval(rotateIncognitoAddressToken, 1);
 }
 function updateNavButtons() {
   const t = activeTab(); if (!t) return;
@@ -2342,6 +2360,7 @@ setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs",
 async function boot() {
   try {
     wire();
+    startIncognitoAddressRotation();
     cleanupUnfinishedSessionHistory();
     const params = new URLSearchParams(location.search);
     const r = params.get("veyra_route");
