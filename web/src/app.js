@@ -1603,7 +1603,7 @@ async function fetchAIAnswer(t, query, results, source = "web") {
     if (activeTab() !== t || t.searchQuery !== query) return;
     if (r.hasAnswer && !unsafeAiText(r.answer)) {
       const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · synthesized from ${r.sourceCount || r.sources?.length || 0} sources · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${highlightTerms(r.answer, query)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources">${r.sources.map(s => `<a class="r-url" href="${esc(s.url)}" data-open="${esc(s.url)}">${esc(s.id ? `${s.id} · ` : "")}${esc(displayUrl(s.url))}</a>`).join("")}</div>` : ""}</div>`;
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${Math.round((r.confidence || 0) * 100)}% confidence</span></div><div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, query, r.sources || [])}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources" aria-label="Sources">${r.sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}"><img src="${esc(sourceFaviconUrl(s.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>` : ""}</div>`;
       ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
       ai.querySelectorAll("[data-followup]").forEach(b => b.onclick = () => { t.searchQuery = b.dataset.followup; runSearch(t.searchQuery); });
     } else {
@@ -1612,6 +1612,18 @@ async function fetchAIAnswer(t, query, results, source = "web") {
   } catch {
     ai.classList.add("hidden");
   }
+}
+function sourceFaviconUrl(url) {
+  try { return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(url).hostname)}&sz=32`; } catch { return ""; }
+}
+function renderAnswerWithSourceLogos(answer, query, sources) {
+  const byId = new Map((sources || []).map(s => [String(s.id), s]));
+  return highlightTerms(answer, query).replace(/\[S(\d+)\]/g, (match, n) => {
+    const source = byId.get(`S${n}`);
+    if (!source) return match;
+    const label = source.title || displayUrl(source.url);
+    return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}"><img src="${esc(sourceFaviconUrl(source.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a>`;
+  });
 }
 function unsafeAiText(value) {
   const text = String(value || "");
