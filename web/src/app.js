@@ -582,7 +582,11 @@ function getOrCreateFrame(t) {
   f = document.createElement("iframe"); f.id = "frame-" + t.id; f.name = "veyraFrame_" + t.id; f.className = "tab-frame"; f.title = "Page content";
   
   
-  f.setAttribute("sandbox", "allow-scripts allow-forms allow-popups allow-downloads");
+  // Proxy pages are served from the Veyra API origin. Without allow-same-origin
+  // the sandbox gives them an opaque origin, which makes rewritten CSS, fonts,
+  // images and resource requests fail even though the HTML itself renders.
+  // The API origin remains cross-origin from the GitHub Pages shell.
+  f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads");
   f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
   $("frameWrap").insertBefore(f, $("frameLoader"));
