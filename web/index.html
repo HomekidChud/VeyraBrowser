@@ -9,7 +9,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.28.16-admin-session-policy"></script>
+  <script src="./src/bootstrap.js?v=8.28.17-session-resume-userscripts"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -131,7 +131,7 @@
     <footer class="land-foot">
       <div class="brand small"><svg class="brand-mark"><use href="#logo"/></svg><span>Veyra</span></div>
       <nav><a href="#" data-go="/browse">Open browser</a><a href="#" data-go="/settings/about">About</a></nav>
-      <small>Veyra runs pages on a remote server. Respect each site's terms of use. v8.28.9</small>
+      <small>Veyra runs pages on a remote server. Respect each site's terms of use. v8.28.17-session-resume-userscripts</small>
     </footer>
   </div>
 
@@ -280,8 +280,8 @@
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
               <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
-              <span class="muted small">Veyra packages are CSS-only: no scripts, service workers, cookie APIs, or network imports.</span>
-              <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json" hidden>
+              <span class="muted small">CSS packages are sandboxed. Developer mode also supports local <code>.user.js</code> scripts; service workers and background APIs stay blocked.</span>
+              <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json,.user.js,text/javascript" hidden>
             </div>
             <div class="ext-grid" id="extensionsGrid"></div>
           </div>
@@ -375,6 +375,15 @@
       <h2 id="sessionOverTitle">Session ended</h2>
       <p class="muted" id="sessionOverText">Your session ended. Veyra closed local tabs and requested server cleanup.</p>
       <div class="overlay-actions"><button class="btn primary" id="sessionRestart">Start a new session</button><button class="btn ghost" id="sessionHome">Back to new tab</button></div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="sessionResumeOverlay" role="alertdialog" aria-labelledby="sessionResumeTitle">
+    <div class="overlay-card">
+      <div class="timer-ring"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg><span>↻</span></div>
+      <h2 id="sessionResumeTitle">Revisit your existing session?</h2>
+      <p class="muted" id="sessionResumeText">A previous Veyra session is still available. Revisit it to keep its cookies and page session, or start fresh.</p>
+      <div class="overlay-actions"><button class="btn primary" id="sessionResume">Revisit session</button><button class="btn ghost" id="sessionDiscard">Start at home</button></div>
     </div>
   </div>
 

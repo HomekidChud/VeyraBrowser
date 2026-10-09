@@ -3,10 +3,10 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.9";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.9";
-import { initUI } from "./ui.js?v=8.28.9-consolelabs";
-import { initDevtools } from "./devtools.js?v=8.28.9";
+} from "./core.js?v=8.28.17-session-resume-userscripts";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.17-session-resume-userscripts";
+import { initUI } from "./ui.js?v=8.28.17-session-resume-userscripts";
+import { initDevtools } from "./devtools.js?v=8.28.17-session-resume-userscripts";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
@@ -53,7 +53,7 @@ export const state = {
   history: load("veyra-history", []).filter(x => x && typeof x === "object"),
   downloads: load("veyra-downloads", []).filter(x => x && typeof x === "object"),
   downloadControllers: new Map(),
-  session: null, sessionTimer: null, sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
+  session: null, sessionTimer: null, sessionHeartbeat: null, lastUserActivity: Date.now(), sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
   vpn: { status: null, connected: false, profile: null },
   incognito: INCOGNITO, server: { leanMode: false, version: "", checked: false }, sessionPromise: null,
   
@@ -91,7 +91,6 @@ function cleanupUnfinishedSessionHistory() {
     state.history = state.history.filter(h => h.sid !== previous.id);
     saveHistory();
   }
-  if (previous) remove("veyra-live-session");
 }
 export function clearLocalAccountData() {
   state.bookmarks = []; saveBookmarks();
@@ -817,16 +816,21 @@ export async function ensureSession() {
   })();
   try { return await state.sessionPromise; } finally { state.sessionPromise = null; }
 }
-async function startNewSession() {
-  const body = await createSessionWithWake();
+function adoptSession(body, resumed = false) {
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
-  state.session = { id: body.sessionId, startedAt: Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
+  state.session = { id: body.sessionId, startedAt: body.createdAt ? Date.parse(body.createdAt) : Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
   save("veyra-live-session", { id: body.sessionId, startedAt: state.session.startedAt });
-  state.sessionWarned = {};
-  addLog("info", `Session ${body.sessionId.slice(0, 8)} started${limit ? ` (${fmtClock(limit)} limit)` : ""}.`);
-  startSessionTimer();
+  state.lastUserActivity = Date.now(); state.sessionWarned = {};
+  addLog("info", `Session ${body.sessionId.slice(0, 8)} ${resumed ? "revisited" : "started"}${limit ? ` (${fmtClock(Number(body.remainingMs ?? limit))} remaining)` : ""}.`);
+  startSessionTimer(); startSessionHeartbeat();
   updateSessionPreferences({ silent: true }).catch(e => addLog("warn", `Could not apply session privacy preferences: ${e.message}`));
+  hooks.onSessionChanged?.();
+  return state.session;
+}
+async function startNewSession() {
+  const body = await createSessionWithWake();
+  adoptSession(body);
   if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(e => {
     
     
@@ -834,10 +838,42 @@ async function startNewSession() {
     saveSettings();
     addLog("warn", `Automatic VPN was disabled: ${e.message}`);
   });
-  hooks.onSessionChanged?.();
   return state.session;
 }
 function startSessionTimer() { clearInterval(state.sessionTimer); state.sessionTimer = setInterval(tickSession, 250); tickSession(); }
+function startSessionHeartbeat() {
+  clearInterval(state.sessionHeartbeat);
+  state.sessionHeartbeat = setInterval(async () => {
+    const s = state.session;
+    if (!s || document.visibilityState !== "visible" || Date.now() - state.lastUserActivity > 55000) return;
+    try {
+      const body = await api(`/api/session/${encodeURIComponent(s.id)}/heartbeat`, { method: "POST", timeoutMs: 8000 });
+      if (body?.remainingMs != null && s.expiresAt !== Infinity) s.expiresAt = Date.now() + Number(body.remainingMs);
+    } catch (e) { if (e.code !== "SESSION_EXPIRED") addLog("debug", `Session heartbeat skipped: ${e.message}`); }
+  }, 20000);
+}
+function markUserActivity() { state.lastUserActivity = Date.now(); }
+async function revisitSavedSession() {
+  if (INCOGNITO) return false;
+  const saved = load("veyra-live-session", null);
+  if (!saved?.id) return false;
+  let body;
+  try { body = await api(`/api/session/${encodeURIComponent(saved.id)}`, { timeoutMs: 8000 }); } catch { return false; }
+  if (!body?.active) { remove("veyra-live-session"); return false; }
+  return await new Promise(resolve => {
+    const overlay = $("sessionResumeOverlay"); if (!overlay) return resolve(false);
+    $("sessionResumeText").textContent = `Session ${String(saved.id).slice(0, 8)}… is still available with ${body.remainingMs == null ? "no fixed time limit" : fmtClock(body.remainingMs)} remaining. Revisit it or start at home.`;
+    overlay.classList.remove("hidden");
+    const finish = async keep => {
+      $("sessionResume").onclick = null; $("sessionDiscard").onclick = null; overlay.classList.add("hidden");
+      if (keep) { adoptSession(body, true); resolve(true); return; }
+      try { await api(`/api/session/${encodeURIComponent(saved.id)}/close`, { method: "POST", timeoutMs: 5000 }); } catch {}
+      remove("veyra-live-session"); resolve(false);
+    };
+    $("sessionResume").onclick = () => finish(true);
+    $("sessionDiscard").onclick = () => finish(false);
+  });
+}
 export async function updateSessionPreferences({ silent = false } = {}) {
   const session = state.session;
   if (!session) return { pending: true };
@@ -872,7 +908,7 @@ export async function endSession(reason = "timer") {
     // Session cookies are temporary, but signed-in user storage is not. Flush
     // it before closing the session; incognito is excluded by the hook.
     try { await hooks.flushSync?.(); } catch (e) { addLog("warn", `Could not save account storage before session end: ${e.message}`); }
-    state.session = null; clearInterval(state.sessionTimer);
+    state.session = null; clearInterval(state.sessionTimer); clearInterval(state.sessionHeartbeat);
     
     const pageTabs = state.tabs.filter(t => t.view === "page");
     const restoreUrls = [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
@@ -921,7 +957,8 @@ hooks.onSessionRenewed = expiresAt => {
   tickSession();
   addLog("info", `Session renewed — new expiry ${new Date(expiresAt).toLocaleTimeString()}`);
 };
-window.addEventListener("pagehide", () => { const s = state.session; if (s) try { navigator.sendBeacon(`${API}/api/session/${encodeURIComponent(s.id)}/close`, ""); } catch {} });
+// Refresh is not an explicit close. The server reclaims sessions after 60
+// seconds without a visible, active browser heartbeat.
 
 
 function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
@@ -2329,6 +2366,8 @@ window.addEventListener("message", e => { handleMessage(e).catch(err => addLog("
 
 
 function wire() {
+  ["pointerdown", "keydown", "wheel", "touchstart", "focus"].forEach(type => window.addEventListener(type, markUserActivity, { passive: true }));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") markUserActivity(); });
   $("newTabBtn").onclick = () => newTab();
   $("backBtn").onclick = back; $("forwardBtn").onclick = forward; $("reloadBtn").onclick = () => reload(); $("homeBtn").onclick = goHome;
   $("starBtn").onclick = toggleBookmark; $("zoomChip").onclick = () => setZoom(1);
@@ -2397,6 +2436,7 @@ async function boot() {
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B); initCast(B);
     renderTabs(); tickSession();
+    await revisitSavedSession();
     applyRoute();
     applyStartup(params);
     api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));

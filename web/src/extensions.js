@@ -1,6 +1,6 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.9";
-import { dtCall, isRemote } from "./bridge.js?v=8.28.9";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.17-session-resume-userscripts";
+import { dtCall, isRemote } from "./bridge.js?v=8.28.17-session-resume-userscripts";
 
 let B;
 const BUILTIN = [];
@@ -54,6 +54,16 @@ function normalizePackage(m, source = "local") {
   const v = validateManifest(m);
   return { ...v, source, verified: source === "store" || source === "local", publisher: String(m?.publisher || (source === "store" ? "Veyra Store" : "Local") ).slice(0, 100), author: String(m?.author || "").slice(0, 100) };
 }
+function normalizeUserscript(raw, source = "local") {
+  const text = String(raw || "");
+  const meta = text.match(/==UserScript==([\s\S]*?)==\/UserScript==/i)?.[1] || "";
+  const get = key => meta.match(new RegExp(`^\\s*//\\s*@${key}\\s+(.+)$`, "mi"))?.[1]?.trim() || "";
+  const name = get("name") || "Unnamed userscript";
+  const slug = (get("namespace") + ":" + name).toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || uid();
+  const matchesList = [...meta.matchAll(/^\s*\/\/\s*@(?:match|include)\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean).slice(0, 30);
+  if (!text.trim() || text.length > 200000) throw new Error("Userscript is empty or exceeds 200 KB.");
+  return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
+}
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
   if (storeCache.loading) return storeCache.loading;
@@ -85,7 +95,7 @@ function matches(ext, rawUrl) {
     const [, scheme = "*", host = "", path = "/*"] = parsed;
     if (scheme !== "*" && url.protocol !== `${scheme}:`) return false;
     const hostname = url.hostname.toLowerCase();
-    const hostOk = host.startsWith("*.") ? hostname === host.slice(2) || hostname.endsWith(`.${host.slice(2)}`) : hostname === host || hostname === `www.${host}`;
+    const hostOk = host === "*" ? true : host.startsWith("*.") ? hostname === host.slice(2) || hostname.endsWith(`.${host.slice(2)}`) : hostname === host || hostname === `www.${host}`;
     if (!hostOk) return false;
     const re = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
     return re.test(url.pathname + url.search);
@@ -110,7 +120,10 @@ export async function applyToTab(t) {
   const s = state();
   const calls = [];
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
-  for (const d of devExts()) calls.push(["ext.css", { key: d.id, css: d.enabled && matches(d, t.url) ? safeCss(d.css) : "" }]);
+  for (const d of devExts()) {
+    const active = d.enabled && matches(d, t.url);
+    calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? d.script : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
+  }
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
   for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("debug", `Extension call ${m} failed: ${e.message}`); break; } }
   hooks.onExtensionsApplied?.(t);
@@ -258,7 +271,13 @@ function openPuzzle() {
 async function loadManifestFile(file) {
   try {
     if (file.size > 180000) throw new Error("That package is too large.");
-    const raw = JSON.parse(await file.text()); const list = Array.isArray(raw) ? raw : [raw];
+    const text = await file.text();
+    if (/==UserScript==/i.test(text) || /\.user\.js$/i.test(file.name)) {
+      if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before installing userscripts.");
+      const v = normalizeUserscript(text); const cur = devExts(); const i = cur.findIndex(x => x.id === v.id); if (i >= 0) cur[i] = v; else cur.unshift(v);
+      save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); renderExtensions(); return toast(`${v.name} installed`);
+    }
+    const raw = JSON.parse(text); const list = Array.isArray(raw) ? raw : [raw];
     const checked = [];
     for (const x of list) { const v = normalizePackage(x, "local"); const r = await api("/api/extensions/verify", { method: "POST", json: x }); if (!r?.safe) throw new Error(r?.reason || `Extension ${v.id} failed security validation.`); checked.push(v); }
     const cur = devExts(); for (const v of checked) { const i = cur.findIndex(c => c.id === v.id); const installed = { ...v, enabled: true, installedAt: Date.now() }; if (i >= 0) cur[i] = installed; else cur.unshift(installed); }

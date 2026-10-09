@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.9";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.17-session-resume-userscripts";
 
 const pending = new Map();
 const listeners = new Set();
