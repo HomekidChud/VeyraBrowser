@@ -17,7 +17,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.9";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.16-admin-session-policy";
 
 let refreshTimer = null;
 let currentTab = "overview";
@@ -117,8 +117,8 @@ async function tabSessions(body) {
   const se = await api("/api/sessions");
   const rows = (se.sessions || se.list || []).slice(0, 150);
   body.innerHTML = `<div class="s-section"><h2>Active sessions (${se.size ?? se.active ?? rows.length})</h2>
-    <div class="table-wrap"><table class="table"><thead><tr><th>Session</th><th>Age</th><th>Remaining</th><th>Requests</th><th>Cookies</th><th>Chromium</th><th>User</th><th></th></tr></thead><tbody>
-    ${rows.map(x => `<tr><td class="mono">${esc(String(x.id || x.sessionId || "").slice(0, 14))}</td><td>${x.ageMs != null ? fmtClock(x.ageMs) : "—"}</td><td>${x.remainingMs != null ? fmtClock(x.remainingMs) : "—"}</td><td>${esc(x.requests ?? 0)}</td><td>${esc(x.cookies ?? 0)}</td><td>${esc(x.browserSessions ?? 0)}</td><td>${esc(x.userId || "guest")}</td><td><button class="btn danger sm" data-kill="${esc(x.id || x.sessionId)}">End</button></td></tr>`).join("") || `<tr><td colspan="8" class="muted">No active sessions.</td></tr>`}
+    <div class="table-wrap"><table class="table"><thead><tr><th>Session</th><th>Role</th><th>Age</th><th>Remaining</th><th>Limit</th><th>Requests</th><th>Cookies</th><th>Chromium</th><th>User</th><th></th></tr></thead><tbody>
+    ${rows.map(x => `<tr><td class="mono">${esc(String(x.id || x.sessionId || "").slice(0, 14))}</td><td>${esc(x.role || "user")}</td><td>${x.ageMs != null ? fmtClock(x.ageMs) : "—"}</td><td>${x.remainingMs != null ? fmtClock(x.remainingMs) : "Live"}</td><td>${x.timeLimitMs ? fmtClock(x.timeLimitMs) : "none"}</td><td>${esc(x.requests ?? 0)}</td><td>${esc(x.cookies ?? 0)}</td><td>${esc(x.browserSessions ?? 0)}</td><td>${esc(x.userId || "guest")}</td><td><button class="btn danger sm" data-kill="${esc(x.sessionId || x.id)}">End</button></td></tr>`).join("") || `<tr><td colspan="10" class="muted">No active sessions.</td></tr>`}
     </tbody></table></div></div>`;
   body.querySelector("tbody").onclick = async e => {
     const b = e.target.closest("[data-kill]"); if (!b) return;
