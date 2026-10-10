@@ -276,15 +276,20 @@
         <!-- Extensions -->
         <section class="view" id="view-extensions">
           <div class="page-shell">
-            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Extensions are isolated CSS-only packages that run through the Veyra page bridge.</p></div>
+            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Store packages are CSS-only, quarantined, reviewed, and integrity-checked before publication.</p></div>
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
               <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
-              <span class="muted small">CSS is sandboxed. Developer mode supports <code>.user.js</code> and JSON Chrome/Edge manifest bundles with content scripts; service workers and privileged APIs stay blocked.</span>
+              <span class="muted small">Local developer scripts are unsigned and run only after an explicit warning. They are not synced, cannot request Veyra privileges, and network, cookie, and dynamic-code patterns are blocked.</span>
               <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json,.user.js,text/javascript" hidden>
             </div>
             <div class="ext-grid" id="extensionsGrid"></div>
           </div>
+        </section>
+
+        <!-- Veyra Assistant -->
+        <section class="view" id="view-assistant">
+          <div class="page-shell" id="assistantPanel"></div>
         </section>
 
         <!-- Settings -->

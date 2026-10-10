@@ -1,7 +1,7 @@
 /* Global startup shared by root and /browse entry pages. */
 (() => {
   document.title = "/web";
-  const knownRoutes = /^(.*?)\/(?:browse|search|calculator|downloads|history|extensions|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/.*)?$/;
+  const knownRoutes = /^(.*?)\/(?:browse|search|calculator|downloads|history|extensions|assistant|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/.*)?$/;
   const match = location.pathname.match(knownRoutes);
   const base = match ? `${match[1]}/` : location.pathname.replace(/[^/]*$/, "");
   window.VEYRA_BASE = base;

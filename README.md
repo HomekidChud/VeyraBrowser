@@ -2,6 +2,10 @@
 
 Veyra Browser is a static JavaScript client for the Veyra Browser API and a Capacitor Android application.
 
+## Extension security
+
+The Store keeps legacy CSS-only packages and supports signed, human-reviewed v2 bundles with content scripts and a restricted background iframe. Executable packages require a trusted Ed25519 signature, explicit HTTPS site scope, and per-device install consent. Content scripts run in the visited page context, so signatures and static checks do not guarantee harmless behavior. Executable bundles are not automatically synced between devices.
+
 ## Development
 
 ```bash

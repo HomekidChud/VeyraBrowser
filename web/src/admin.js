@@ -24,8 +24,9 @@ let currentTab = "overview";
 
 const TABS = [
   ["overview", "Overview"], ["sessions", "Sessions"], ["crawls", "Crawls"], ["requests", "Requests"],
-  ["logs", "Logs"], ["ads", "Ads & renewal"], ["config", "Config"], ["tools", "Tools"]
+  ["logs", "Logs"], ["training", "Agent training"], ["ads", "Ads & renewal"], ["config", "Config"], ["tools", "Tools"]
 ];
+let lastTrainingSpeech = "";
 
 
 export function renderAdmin(section = "") {
@@ -66,6 +67,7 @@ async function refreshAdmin(force = false) {
       case "crawls": return await tabCrawls(body);
       case "requests": return await tabRequests(body);
       case "logs": return await tabLogs(body);
+      case "training": return await tabAgentTraining(body);
       case "ads": return await tabAds(body);
       case "config": return await tabConfig(body);
       case "tools": return await tabTools(body);
@@ -74,6 +76,53 @@ async function refreshAdmin(force = false) {
     if (e.status === 403) { body.innerHTML = `<div class="empty"><svg><use href="#i-ban"/></svg><b>Admin access required</b><span>Sign in as an administrator (or use test mode) to view this panel. You can also set an admin token in Settings → Developer.</span></div>`; return; }
     body.innerHTML = `<div class="empty"><b>Could not load admin data</b><span>${esc(e.message)}</span></div>`;
   }
+}
+
+async function tabAgentTraining(body) {
+  const response = await api("/api/admin/agent-training");
+  const training = response.training || {};
+  const live = training.live;
+  const counters = training.counters || {};
+  const agents = live?.agents || [];
+  const agentAt = new Map();
+  for (const agent of agents) {
+    const key = `${agent.x},${agent.y}`;
+    agentAt.set(key, (agentAt.get(key) || "") + (agent.id === "scout" ? "S" : agent.id === "mapper" ? "M" : "C"));
+  }
+  const grid = live?.observation?.map((row, y) => row.split("").map((cell, x) => {
+    const symbols = agentAt.get(`${x},${y}`);
+    const value = symbols || (cell === "?" ? "·" : cell === "#" ? "█" : cell === "E" ? "E" : cell === "k" ? "◆" : " ");
+    const type = symbols ? "agent" : cell === "?" ? "unknown" : cell === "#" ? "wall" : cell === "E" ? "exit" : cell === "k" ? "key" : "path";
+    return `<span class="train-cell ${type}" title="${y},${x}">${value}</span>`;
+  }).join("")).join("<br>") || "No active episode yet.";
+  const events = training.events || [];
+  const voice = localStorage.getItem("veyra-agent-training-voice") === "true";
+  const persistence = training.persistence || {};
+  const mongoState = persistence.mongodbConfigured ? (persistence.mongodbConnected ? "connected" : "configured, reconnecting") : "not configured";
+  const persistenceText = persistence.mongodbRequired
+    ? `MongoDB required (${mongoState}); local checkpoint disabled.`
+    : `MongoDB ${mongoState}; development local checkpoint ${persistence.localCheckpoint ? "enabled" : "unavailable"}.`;
+  if (voice && events.length) {
+    const latest = events[events.length - 1];
+    if (latest.id && latest.id !== lastTrainingSpeech && ["success", "sanction", "episode", "system"].includes(latest.type)) {
+      lastTrainingSpeech = latest.id;
+      if ("speechSynthesis" in window) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(String(latest.message || "").slice(0, 220))); }
+    }
+  }
+  body.innerHTML = `<div class="s-section">
+    <div class="row" style="justify-content:space-between;gap:12px;align-items:flex-start"><div><h2>Veyra Assistance · cooperative training</h2><p class="muted">Server-side, keyless agent simulation. Scout, Mapper, and Coordinator share verified maze observations. Agents explore and coordinate within the generated maze; code execution, external network, user accounts, browser sessions, and host files remain outside their sandbox. This is not foundation-model training or evidence of AGI.</p></div><div class="head-actions"><button class="btn ${training.status === "running" ? "danger" : "primary"}" data-training-control="${training.status === "running" ? "pause" : "resume"}">${training.status === "running" ? "Pause training" : "Resume training"}</button><label class="switch-row"><input class="switch" id="trainingVoice" type="checkbox" ${voice ? "checked" : ""}><span>Voice events</span></label></div></div>
+    <div class="dev-grid">${card("Status", training.status || "—")}${card("Episodes", counters.episodes ?? 0)}${card("Success rate", `${counters.successRate ?? 0}%`)}${card("Steps", counters.totalSteps ?? 0)}${card("Safe sanctions", counters.sanctions ?? 0)}${card("Best reward", counters.bestScore ?? 0)}</div>
+    <div class="s-section"><h2>Live challenge ${live ? `· ${esc(live.size)}×${esc(live.size)} · turn ${esc(live.step)}` : "· waiting for next episode"}</h2><p class="muted">Legend: S Scout · M Mapper · C Coordinator · ◆ key · E exit · █ wall · dots unexplored. Agents can move only inside the generated maze.</p><div class="training-maze" aria-label="Live maze map">${grid}</div></div>
+    <div class="s-section"><h2>Agent team</h2><div class="table-wrap"><table class="table"><thead><tr><th>Agent</th><th>Role</th><th>Position</th><th>Messages</th><th>Sanctions</th><th>Policy reward</th></tr></thead><tbody>${agents.map(agent => `<tr><td><b>${esc(agent.name)}</b></td><td>${esc(agent.task)}</td><td>${esc(agent.x)}, ${esc(agent.y)}</td><td>${esc(agent.messages)}</td><td>${esc(agent.sanctions)}${agent.cooldown ? ` · cooldown ${esc(agent.cooldown)}` : ""}</td><td>${esc(training.policy?.[agent.id]?.reward ?? 0)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Waiting for agents…</td></tr>`}</tbody></table></div></div>
+    <div class="s-section"><h2>Live team messages & events</h2><div class="table-wrap" style="max-height:340px"><table class="table"><thead><tr><th>Time</th><th>Type</th><th>Event</th></tr></thead><tbody>${events.slice(-24).reverse().map(event => `<tr><td>${new Date(event.at).toLocaleTimeString([], { hour12: false })}</td><td><span class="pill ${event.type === "sanction" ? "err" : event.type === "success" ? "ok" : ""}">${esc(event.type)}</span></td><td>${esc(event.message)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">No events yet.</td></tr>`}</tbody></table></div></div>
+    <p class="muted small">Persistence: ${esc(persistenceText)} The live loop runs only while the Veyra server process is running; Render's Free plan can spin down while idle.</p>
+  </div>`;
+  body.querySelector("[data-training-control]")?.addEventListener("click", async event => {
+    const button = event.currentTarget; button.disabled = true;
+    try { await api("/api/admin/agent-training/control", { method: "POST", json: { action: button.dataset.trainingControl } }); await refreshAdmin(true); }
+    catch (error) { toast(error.message, { kind: "err" }); button.disabled = false; }
+  });
+  $("trainingVoice").onchange = event => { localStorage.setItem("veyra-agent-training-voice", String(event.target.checked)); if (!event.target.checked && "speechSynthesis" in window) speechSynthesis.cancel(); };
 }
 
 const card = (a, b, cls = "") => `<div class="stat-card ${cls}"><span>${esc(a)}</span><b>${esc(String(b))}</b></div>`;

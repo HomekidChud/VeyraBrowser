@@ -4,6 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.28.17-session-resume-userscripts";
 import { initExtensions } from "./extensions.js";
+import { initAssistant } from "./assistant.js";
 import { initSettings } from "./settings.js?v=8.28.17-session-resume-userscripts";
 
 let B;
@@ -64,6 +65,7 @@ export const COMMANDS = [
   { id: "history", label: "History", group: "Veyra", keys: ["Mod+H"], run: () => B.openInternal("history") },
   { id: "bookmarksBar", label: "Show bookmarks bar", group: "Veyra", keys: ["Mod+Shift+B"], run: () => { settings.showBookmarksBar = !settings.showBookmarksBar; saveSettings(); } },
   { id: "search", label: "Veyra Search", group: "Veyra", keys: ["Mod+K"], run: () => B.showSearch("") },
+  { id: "assistant", label: "Veyra Assistant", group: "Veyra", keys: ["Mod+Shift+A"], run: () => B.openInternal("assistant") },
   { id: "vpn", label: "Veyra VPN", group: "Veyra", keys: ["Mod+Shift+V"], run: () => B.openInternal("vpn") },
   { id: "settings", label: "Settings", group: "Veyra", keys: ["Mod+,"], run: () => B.openInternal("settings") },
   { id: "clearData", label: "Clear browsing data", group: "Veyra", keys: ["Mod+Shift+Delete"], run: () => openClearData() },
@@ -215,6 +217,11 @@ hooks.onAuthChanged = onAuthChanged;
 
 
 let syncing = false;
+function syncableExtension(ext) {
+  const digest = ext?.verification?.integrity?.value;
+  const hasExecutable = !!(ext?.script || ext?.backgroundScript || Object.keys(ext?.packageFiles || {}).some(name => name.endsWith(".js")));
+  return !!(ext && !hasExecutable && !ext.localOnly && ext.source === "store" && ext.verification?.scan?.verdict === "PASS" && /^[a-f0-9]{64}$/i.test(String(digest || "")));
+}
 function syncPayload() {
   const s = { ...settings };
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
@@ -224,7 +231,7 @@ function syncPayload() {
     downloads: B.state.downloads.slice(0, settings.downloadsMax || 200),
     tabGroups: B.state.tabGroups.slice(0, 100),
     lastTabs: load("veyra-last-tabs", []).filter(u => /^https?:/.test(u)).slice(0, 100),
-    extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now()
+    extensions: load("veyra-extensions", {}), devExtensions: load("veyra-dev-extensions", []).filter(syncableExtension).slice(0, 20), notes: load("veyra-notes", {}), savedAt: Date.now()
   };
 }
 export async function pushSync() {
@@ -254,7 +261,7 @@ export async function pullSync() {
     if (Array.isArray(d.tabGroups)) { B.state.tabGroups = d.tabGroups; save("veyra-tab-groups", B.state.tabGroups); }
     if (Array.isArray(d.lastTabs)) save("veyra-last-tabs", d.lastTabs.filter(u => /^https?:/.test(u)));
     if (d.extensions) save("veyra-extensions", d.extensions);
-    if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);
+    if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions.filter(syncableExtension));
     if (d.notes) save("veyra-notes", d.notes);
     applyTheme(); B.renderActive({ push: false }); hooks.lastSync = Date.now();
   } catch (e) { addLog("warn", `Couldn't load synced data: ${e.message}`); }
@@ -414,6 +421,7 @@ function openMainMenu() {
     "-",
     menuItem("i-vpn", "Veyra VPN", "vpn", () => B.openInternal("vpn"), { badge: B.state.vpn.connected ? "ON" : "" }),
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
+    menuItem("i-bolt", "Veyra Assistant", "", () => B.openInternal("assistant")),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
     menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast")),
@@ -534,7 +542,7 @@ export function initUI(b) {
   setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
   if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
-  initExtensions(B); initSettings(B);
+  initExtensions(B); initAssistant(); initSettings(B);
   onAuthChanged(); verifyAuth().then(() => auth.token && pullSync());
   addLog("debug", `UI ready (${COMMANDS.length} commands)`);
 }

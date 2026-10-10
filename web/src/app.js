@@ -69,6 +69,7 @@ const INTERNAL = {
   downloads: { title: "Downloads", icon: "i-download", path: "/downloads" },
   history: { title: "History", icon: "i-history", path: "/history" },
   extensions: { title: "Extensions", icon: "i-puzzle", path: "/extensions" },
+  assistant: { title: "Veyra Assistant", icon: "i-bolt", path: "/assistant" },
   settings: { title: "Settings", icon: "i-settings", path: "/settings" },
   vpn: { title: "Veyra VPN", icon: "i-vpn", path: "/vpn" },
   resources: { title: "Page resources", icon: "i-file", path: "/resources" },
@@ -431,7 +432,7 @@ function applyRoute() {
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
   if (location.hash === "#console") return openInternal("console", { push: false });
   const [, first, second, third] = route.split("/");
-  const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
+  const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", assistant: "assistant", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
     
     
@@ -491,7 +492,7 @@ export function renderActive({ push = true, replace = false } = {}) {
   updateAddress(); updateNavButtons(); updateIdentity();
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
-    downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
+    downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), assistant: () => hooks.renderAssistant?.(), settings: () => hooks.renderSettings?.(t.section),
     vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdmin(t.section),
     cast: () => hooks.renderCast?.(), internet: () => hooks.renderInternet?.()
   }[t.view]; r?.();
