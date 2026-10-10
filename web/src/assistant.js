@@ -7,7 +7,7 @@ function list(items, empty = "None") {
 }
 
 function renderResult(result) {
-  if (!result) return `<div class="assistant-empty"><b>Ask Veyra Assistant anything you want to plan, explain, or review.</b><span>It uses two independent analysts and a verifier. It cannot browse pages or read your session unless you explicitly paste approved text below.</span></div>`;
+  if (!result) return `<div class="assistant-empty"><b>Veyra Assistance is a local training prototype.</b><span>It can report on the cooperative maze-training system. It has no general-purpose language model, does not use an external API key, and is not AGI.</span></div>`;
   const workflow = result.workflow?.agents || [];
   return `<article class="assistant-result" aria-live="polite">
     <header><div><span class="pill accent">${esc(result.evidenceStatus || "general-guidance")}</span><h2>Veyra Assistant</h2></div><span class="muted small">Task ${esc(String(result.taskId || "").slice(0, 8))}</span></header>
@@ -16,7 +16,7 @@ function renderResult(result) {
       <section><h3>Caveats</h3>${list(result.caveats, "No additional caveats returned.")}</section>
       <section><h3>Suggested next steps</h3>${list(result.nextSteps, "No next steps returned.")}</section>
     </div>
-    <footer><span class="muted small">${result.context?.included ? "Only the page text you approved was sent to the configured provider." : "No browser page text was sent."}</span><div class="assistant-agents">${workflow.map(agent => `<span class="pill ok">${esc(agent.role)} · ${esc(agent.status)}</span>`).join("")}</div></footer>
+    <footer><span class="muted small">Processed locally · no page access · no external model API</span><div class="assistant-agents">${workflow.map(agent => `<span class="pill ok">${esc(agent.role)} · ${esc(agent.status)}</span>`).join("")}</div></footer>
   </article>`;
 }
 
@@ -56,16 +56,11 @@ function renderPanel(status = null) {
     box.innerHTML = `<div class="assistant-empty"><b>Veyra Assistant is private to your signed-in account.</b><span>Sign in before submitting a question. Page content is never collected automatically.</span><button class="btn primary" data-auth="login">Sign in</button></div>`;
     return;
   }
-  if (status && !status.available) {
-    box.innerHTML = `<div class="assistant-empty"><b>Veyra Assistant is not configured on this server.</b><span>Set the server-side AI provider variables before requests can run. No prompt or browsing data has been sent.</span></div>`;
-    return;
-  }
   box.innerHTML = `<div class="assistant-layout">
     <form class="assistant-form" id="assistantForm">
-      <div><span class="kicker">Consent-aware agent workflow</span><h1>Veyra Assistant</h1><p class="muted">Two analysts independently work on your question, then a verifier reconciles the result. It does not run browser actions, browse the web, or read page data by default.</p></div>
-      <label class="field"><span>What would you like help with?</span><textarea class="input" name="question" rows="5" maxlength="4000" placeholder="For example: Turn these requirements into a safe implementation plan." required></textarea></label>
-      <details class="assistant-context"><summary>Optional page context</summary><p>Paste only text you want sent to the configured AI provider. Do not include passwords, payment details, or private data you do not want processed externally.</p><label class="field"><span>Page URL (optional)</span><input class="input" name="contextUrl" inputmode="url" maxlength="1000" placeholder="https://example.com/article"></label><label class="field"><span>Page title (optional)</span><input class="input" name="contextTitle" maxlength="300" placeholder="Article title"></label><label class="field"><span>Selected page text (optional)</span><textarea class="input" name="selectedText" rows="6" maxlength="12000" placeholder="Paste only the relevant text."></textarea></label><label class="switch-row"><input type="checkbox" class="switch" name="sendPageContext"><span>I approve sending this pasted page context to the configured AI provider.</span></label></details>
-      <div class="assistant-form-actions"><button class="btn primary" type="submit">Ask Veyra Assistant</button><span class="muted small">${esc(status?.contextPolicy || "Only explicitly approved text is shared.")}</span></div>
+      <div><span class="kicker">Local cooperative agents · no API key</span><h1>Veyra Assistance</h1><p class="muted">A bounded local prototype. Scout, Mapper, and Coordinator train together in a generated maze. Questions about that training are answered from server state. General-purpose reasoning is not implemented yet; this system is not AGI.</p></div>
+      <label class="field"><span>Ask about agent training</span><textarea class="input" name="question" rows="5" maxlength="4000" placeholder="How are the agents doing in the maze?" required></textarea></label>
+      <div class="assistant-form-actions"><button class="btn primary" type="submit">Ask Veyra Assistance</button><span class="muted small">Processed locally; no external provider, API key, or browser context.</span></div>
       <p class="form-error" id="assistantError" aria-live="polite"></p>
     </form>
     <div class="assistant-output" id="assistantOutput">${renderResult(lastTask?.result)}</div>
@@ -76,24 +71,18 @@ function renderPanel(status = null) {
   form.onsubmit = async event => {
     event.preventDefault();
     const data = new FormData(form);
-    const hasContext = ["contextUrl", "contextTitle", "selectedText"].some(name => String(data.get(name) || "").trim());
-    const consent = data.get("sendPageContext") === "on";
     const error = $("assistantError");
-    if (hasContext && !consent) {
-      error.textContent = "Approve page-context sharing before submitting pasted page text.";
-      return;
-    }
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
     error.textContent = "";
-    $("assistantOutput").innerHTML = `<div class="assistant-empty"><b>Independent agents are reviewing your request.</b><span>Veyra will show only the verified answer, not hidden reasoning.</span></div>`;
+      $("assistantOutput").innerHTML = `<div class="assistant-empty"><b>Local Veyra agents are checking training status.</b><span>No external model provider is being called.</span></div>`;
     try {
       const question = String(data.get("question") || "").trim();
       const response = await api("/api/assistant/ask", {
         json: {
           question,
-          context: { url: data.get("contextUrl"), title: data.get("contextTitle"), selectedText: data.get("selectedText") },
-          consent: { sendPageContext: consent }
+          context: {},
+          consent: { sendPageContext: false }
         },
         timeoutMs: 65000
       });
