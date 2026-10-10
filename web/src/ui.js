@@ -168,6 +168,7 @@ export function openAuth(mode = "login") {
   $("authTitle").textContent = mode === "signup" ? "Create your Veyra account" : "Welcome back";
   $("authSub").textContent = mode === "signup" ? "Sync settings, bookmarks, shortcuts and extensions across devices." : "Sign in to sync your Veyra settings.";
   $("authNameRow").classList.toggle("hidden", mode !== "signup");
+  $("authSignupKeyRow")?.classList.toggle("hidden", mode !== "signup" || auth.config?.signupKeyRequired !== true);
   $("authSubmit").textContent = mode === "signup" ? "Create account" : "Sign in";
   f.password.autocomplete = mode === "signup" ? "new-password" : "current-password";
   $("authError").textContent = "";
@@ -176,13 +177,13 @@ export function openAuth(mode = "login") {
 }
 async function submitAuth(e) {
   e.preventDefault(); const f = $("authForm"); const err = $("authError");
-  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim();
+  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim(), signupKey = f.signupKey?.value || "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = "Enter a valid email address."; f.email.focus(); return; }
   if (authMode === "signup" && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) { err.textContent = "Use at least 8 characters with a letter and a number."; f.password.focus(); return; }
   if (!password) { err.textContent = "Enter your password."; f.password.focus(); return; }
   const btn = $("authSubmit"); btn.disabled = true; btn.textContent = authMode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
   try {
-    const r = await api(`/api/auth/${authMode}`, { json: authMode === "signup" ? { email, password, name } : { email, password } });
+    const r = await api(`/api/auth/${authMode}`, { json: authMode === "signup" ? { email, password, name, signupKey } : { email, password } });
     setAuth(r.token, r.user); auth.admin = r.user?.role === "admin";
     f.reset(); $("authDialog").close();
     await pullSync({ initial: authMode === "login" });

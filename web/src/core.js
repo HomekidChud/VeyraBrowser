@@ -14,8 +14,11 @@ export function bootParam(name) {
 const DEFAULT_API = "https://veyraserver-xscy.onrender.com";
 function deploymentApi() {
   try {
-    const raw = document.querySelector('meta[name="veyra-api"]')?.content || DEFAULT_API;
+    const localPage = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+    const hinted = localPage ? (bootParam("veyra_api") || "") : "";
+    const raw = hinted || document.querySelector('meta[name="veyra-api"]')?.content || DEFAULT_API;
     const u = new URL(raw); if (!/^https?:$/.test(u.protocol) || u.username || u.password || u.search || u.hash) throw new Error("invalid API metadata");
+    if (hinted && !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) throw new Error("local API override must target loopback");
     return u.href.replace(/\/$/, "");
   } catch { return DEFAULT_API; }
 }
