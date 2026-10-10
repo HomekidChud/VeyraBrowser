@@ -64,6 +64,7 @@ export const COMMANDS = [
   { id: "history", label: "History", group: "Veyra", keys: ["Mod+H"], run: () => B.openInternal("history") },
   { id: "bookmarksBar", label: "Show bookmarks bar", group: "Veyra", keys: ["Mod+Shift+B"], run: () => { settings.showBookmarksBar = !settings.showBookmarksBar; saveSettings(); } },
   { id: "search", label: "Veyra Search", group: "Veyra", keys: ["Mod+K"], run: () => B.showSearch("") },
+  { id: "commandPalette", label: "Command palette", group: "Veyra", keys: ["Mod+Shift+P"], run: () => openCommandPalette() },
   { id: "vpn", label: "Veyra VPN", group: "Veyra", keys: ["Mod+Shift+V"], run: () => B.openInternal("vpn") },
   { id: "settings", label: "Settings", group: "Veyra", keys: ["Mod+,"], run: () => B.openInternal("settings") },
   { id: "clearData", label: "Clear browsing data", group: "Veyra", keys: ["Mod+Shift+Delete"], run: () => openClearData() },
@@ -112,6 +113,7 @@ function onKeyDown(e) {
   if (runCombo(combo, { editable: isEditable(e.target) })) { e.preventDefault(); e.stopPropagation(); }
 }
 function escape() {
+  if (document.querySelector(".command-palette")) { closeCommandPalette(); return true; }
   if (!$("mainMenu").classList.contains("hidden") || !$("popover").classList.contains("hidden") || !$("ctxMenu").classList.contains("hidden")) { closeFloating(); return true; }
   if (!$("omniPop").classList.contains("hidden")) { hideOmni(); B.updateIdentity(); return true; }
   if (hooks.dt?.cancelPicking?.()) return true;
@@ -119,6 +121,21 @@ function escape() {
   if ($("reloadBtn").dataset.loading === "1") { B.stopLoad(); return true; }
   const t = B.activeTab(); if (t?.readerOpen) { hooks.closeReader?.(); return true; }
   return false;
+}
+let commandPalette;
+function closeCommandPalette() { commandPalette?.remove(); commandPalette = null; }
+function openCommandPalette() {
+  closeFloating();
+  const wrap = document.createElement("div"); commandPalette = wrap; wrap.className = "command-palette";
+  wrap.innerHTML = `<div class="command-backdrop" data-close></div><section class="command-card" role="dialog" aria-modal="true" aria-label="Command palette"><header><svg><use href="#i-search"/></svg><input id="commandSearch" autocomplete="off" placeholder="Search commands…" aria-label="Search commands"><kbd>Esc</kbd></header><div class="command-results" id="commandResults"></div><footer><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></footer></section>`;
+  document.body.appendChild(wrap);
+  const input = wrap.querySelector("#commandSearch"), results = wrap.querySelector("#commandResults"); let selected = 0;
+  const draw = () => { const q = input.value.trim().toLowerCase(); const list = COMMANDS.filter(c => !c.hidden && (!q || `${c.label} ${c.group}`.toLowerCase().includes(q))).slice(0, 18); selected = Math.min(selected, Math.max(0, list.length - 1)); results.innerHTML = list.length ? list.map((c, i) => `<button class="command-item ${i === selected ? "on" : ""}" data-command="${esc(c.id)}"><span class="command-item-icon"><svg><use href="#${c.group === "Developer" ? "i-code" : c.group === "Navigation" ? "i-globe" : "i-bolt"}"/></svg></span><span><b>${esc(c.label)}</b><small>${esc(c.group)}</small></span><span class="command-keys">${keysFor(c.id).slice(0, 1).map(k => `<kbd>${esc(prettyCombo(k))}</kbd>`).join("")}</span></button>`).join("") : `<div class="command-empty">No matching commands</div>`; };
+  const run = () => { const b = results.querySelectorAll("[data-command]")[selected]; if (!b) return; const c = cmd(b.dataset.command); closeCommandPalette(); c?.run(); };
+  input.addEventListener("input", () => { selected = 0; draw(); });
+  input.addEventListener("keydown", e => { const n = results.querySelectorAll("[data-command]").length; if (e.key === "ArrowDown") { e.preventDefault(); selected = n ? (selected + 1) % n : 0; draw(); } else if (e.key === "ArrowUp") { e.preventDefault(); selected = n ? (selected - 1 + n) % n : 0; draw(); } else if (e.key === "Enter") { e.preventDefault(); run(); } else if (e.key === "Escape") { e.preventDefault(); closeCommandPalette(); } });
+  results.addEventListener("click", e => { const b = e.target.closest("[data-command]"); if (!b) return; selected = [...results.querySelectorAll("[data-command]")].indexOf(b); run(); });
+  wrap.addEventListener("click", e => { if (e.target.matches("[data-close]")) closeCommandPalette(); }); draw(); input.focus();
 }
 hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true }); };
 hooks.forwardableCombos = () => COMMANDS.flatMap(c => keysFor(c.id));

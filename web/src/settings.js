@@ -24,6 +24,12 @@ const SECTIONS = [
   { id: "reset", label: "Reset settings", desc: "Restore default settings", icon: "i-reload" },
   { id: "about", label: "About Veyra", desc: "Version, server health and backend", icon: "i-info" }
 ];
+const SECTION_GROUPS = [
+  ["Personalization", ["account", "appearance", "startup", "newtab", "accessibility"]],
+  ["Search and privacy", ["search", "privacy", "sessions", "downloads"]],
+  ["Veyra features", ["shortcuts", "extensions", "vpn", "system", "neural"]],
+  ["Advanced", ["developer", "admin", "reset", "about"]]
+];
 
 
 const row = (label, desc, ctl, extra = "") => `<div class="s-row" ${extra}><div class="s-label"><b>${esc(label)}</b>${desc ? `<span>${esc(desc)}</span>` : ""}</div><div class="s-ctl">${ctl}</div></div>`;
@@ -209,8 +215,9 @@ function render(active) {
   const q = $("settingsSearch").value.trim();
   const t = B?.activeTab?.();
   if (t && t.view === "settings" && active && !cur) t.section = ""; 
-  nav.innerHTML = `<button class="snav ${!cur ? "on" : ""}" data-snav=""><svg><use href="#i-grid"/></svg>Overview</button>` +
-    visible.map(s => `<button class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}><svg><use href="#${s.icon}"/></svg>${esc(s.label)}</button>`).join("");
+  const byId = new Map(visible.map(s => [s.id, s]));
+  nav.innerHTML = `<button class="snav ${!cur ? "on" : ""}" data-snav=""><svg><use href="#i-grid"/></svg><span>Overview</span></button>` +
+    SECTION_GROUPS.map(([group, ids]) => { const items = ids.map(id => byId.get(id)).filter(Boolean); return items.length ? `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${items.map(s => `<button class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}><svg><use href="#${s.icon}"/></svg><span>${esc(s.label)}</span></button>`).join("")}</div>` : ""; }).join("");
   const parts = PARTS();
   const empty = `<p class="muted s-empty" id="settingsEmpty" style="display:none">No settings match your search.</p>`;
   if (q) {
