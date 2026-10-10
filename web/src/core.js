@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.10";
+export const VERSION = "8.28.18";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];

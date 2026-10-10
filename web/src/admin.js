@@ -17,7 +17,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.17-session-resume-userscripts";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.18-professional-shell";
 
 let refreshTimer = null;
 let currentTab = "overview";
