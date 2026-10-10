@@ -7,7 +7,7 @@ function list(items, empty = "None") {
 }
 
 function renderResult(result) {
-  if (!result) return `<div class="assistant-empty"><b>Veyra Assistance is a local training prototype.</b><span>It can report on the cooperative maze-training system. It has no general-purpose language model, does not use an external API key, and is not AGI.</span></div>`;
+  if (!result) return `<div class="assistant-empty"><b>Veyra Assistance is a server-side training prototype.</b><span>It can report on the cooperative maze-training system. It has no general-purpose language model, does not use an external API key, and is not AGI.</span></div>`;
   const workflow = result.workflow?.agents || [];
   return `<article class="assistant-result" aria-live="polite">
     <header><div><span class="pill accent">${esc(result.evidenceStatus || "general-guidance")}</span><h2>Veyra Assistant</h2></div><span class="muted small">Task ${esc(String(result.taskId || "").slice(0, 8))}</span></header>
@@ -16,7 +16,7 @@ function renderResult(result) {
       <section><h3>Caveats</h3>${list(result.caveats, "No additional caveats returned.")}</section>
       <section><h3>Suggested next steps</h3>${list(result.nextSteps, "No next steps returned.")}</section>
     </div>
-    <footer><span class="muted small">Processed locally · no page access · no external model API</span><div class="assistant-agents">${workflow.map(agent => `<span class="pill ok">${esc(agent.role)} · ${esc(agent.status)}</span>`).join("")}</div></footer>
+    <footer><span class="muted small">Processed on the Veyra server · no page access · no external model API</span><div class="assistant-agents">${workflow.map(agent => `<span class="pill ok">${esc(agent.role)} · ${esc(agent.status)}</span>`).join("")}</div></footer>
   </article>`;
 }
 
@@ -58,9 +58,9 @@ function renderPanel(status = null) {
   }
   box.innerHTML = `<div class="assistant-layout">
     <form class="assistant-form" id="assistantForm">
-      <div><span class="kicker">Local cooperative agents · no API key</span><h1>Veyra Assistance</h1><p class="muted">A bounded local prototype. Scout, Mapper, and Coordinator train together in a generated maze. Questions about that training are answered from server state. General-purpose reasoning is not implemented yet; this system is not AGI.</p></div>
+      <div><span class="kicker">Server-side cooperative agents · no API key</span><h1>Veyra Assistance</h1><p class="muted">A bounded server-side prototype. Scout, Mapper, and Coordinator train together in a generated maze. Questions about that training are answered from server state. General-purpose reasoning is not implemented yet; this system is not AGI.</p></div>
       <label class="field"><span>Ask about agent training</span><textarea class="input" name="question" rows="5" maxlength="4000" placeholder="How are the agents doing in the maze?" required></textarea></label>
-      <div class="assistant-form-actions"><button class="btn primary" type="submit">Ask Veyra Assistance</button><span class="muted small">Processed locally; no external provider, API key, or browser context.</span></div>
+      <div class="assistant-form-actions"><button class="btn primary" type="submit">Ask Veyra Assistance</button><span class="muted small">Processed on the Veyra server; no external provider, API key, or browser context.</span></div>
       <p class="form-error" id="assistantError" aria-live="polite"></p>
     </form>
     <div class="assistant-output" id="assistantOutput">${renderResult(lastTask?.result)}</div>
@@ -75,7 +75,7 @@ function renderPanel(status = null) {
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
     error.textContent = "";
-      $("assistantOutput").innerHTML = `<div class="assistant-empty"><b>Local Veyra agents are checking training status.</b><span>No external model provider is being called.</span></div>`;
+      $("assistantOutput").innerHTML = `<div class="assistant-empty"><b>Veyra server agents are checking training status.</b><span>No external model provider is being called.</span></div>`;
     try {
       const question = String(data.get("question") || "").trim();
       const response = await api("/api/assistant/ask", {
