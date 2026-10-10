@@ -3,7 +3,7 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.18-professional-shell";
+} from "./core.js?v=8.28.19-virtual-source-address";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.19-virtual-source-address";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";

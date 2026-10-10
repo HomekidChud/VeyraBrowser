@@ -1,6 +1,6 @@
 "use strict";
 /** Session renewal ads: automatic, labeled, time-bounded sponsor gate. */
-import { $, esc, api, proxyUrl, toast, addLog, fmtClock, hooks } from "./core.js?v=8.28.18-professional-shell";
+import { $, esc, api, proxyUrl, toast, addLog, fmtClock, hooks } from "./core.js?v=8.28.19-virtual-source-address";
 
 let active = false;
 let lastSessionId = "";

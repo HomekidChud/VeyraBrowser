@@ -1,6 +1,6 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.18-professional-shell";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.19-virtual-source-address";
 import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
 
 let B, root, openState = false, panel = "elements";

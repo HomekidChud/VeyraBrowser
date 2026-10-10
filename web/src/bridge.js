@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.18-professional-shell";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.19-virtual-source-address";
 
 const pending = new Map();
 const listeners = new Set();
