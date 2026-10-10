@@ -17,8 +17,8 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.17-session-resume-userscripts/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.17-session-resume-userscripts/);
+assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.19-virtual-source-address/);
+assert.match(bootstrap, /app\.js\?v=8\.28\.19-virtual-source-address/);
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /Chromium is required for/);
 assert.match(app, /t\.requiresBrowser = true/);
@@ -47,9 +47,9 @@ assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme 
 const resolveConsoleLabsTarget = appBase => new URL(`${appBase}/console-lab/`, "https://homekidchud.github.io").href;
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser/web"), "https://homekidchud.github.io/VeyraBrowser/web/console-lab/");
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser"), "https://homekidchud.github.io/VeyraBrowser/console-lab/");
-assert.match(app, /ui\.js\?v=8\.28\.17-session-resume-userscripts/);
-assert.match(ui, /settings\.js\?v=8\.28\.17-session-resume-userscripts/);
-assert.match(settings, /ui\.js\?v=8\.28\.17-session-resume-userscripts/);
+assert.match(app, /ui\.js\?v=8\.28\.18-professional-shell/);
+assert.match(ui, /settings\.js\?v=8\.28\.18-professional-shell/);
+assert.match(settings, /ui\.js\?v=8\.28\.18-professional-shell/);
 
 for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);

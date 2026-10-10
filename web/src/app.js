@@ -4,6 +4,7 @@ import {
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
 } from "./core.js?v=8.28.18-professional-shell";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.19-virtual-source-address";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
@@ -341,11 +342,11 @@ export function switchTab(id) {
   const t = tabById(id); if (!t) return;
   state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
 }
-export function newTab({ url = "", view = "", index = -1, background = false, section = "" } = {}) {
+export function newTab({ url = "", view = "", index = -1, background = false, section = "", displayUrl = "" } = {}) {
   const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
   if (!background) state.activeId = t.id;
   renderTabs();
-  if (url) go(url, { tab: t, activate: !background });
+  if (url) { if (displayUrl) navigate(url, { tab: t, activate: !background, displayUrl }); else go(url, { tab: t, activate: !background }); }
   else if (view) openInternal(view, { tab: t, section });
   else if (settings.homepage) go(settings.homepage, { tab: t });
   else { t.view = "newtab"; if (!background) renderActive({ push: true }); }
@@ -505,7 +506,7 @@ export function renderActive({ push = true, replace = false } = {}) {
 }
 function updateAddress() {
   const t = activeTab(); const input = $("address"); if (!t || document.activeElement === input) return;
-  input.value = t.view === "page" ? (INCOGNITO ? incognitoAddressToken() : (t.url || "")) : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
+  input.value = t.view === "page" ? (INCOGNITO ? incognitoAddressToken() : (t.displayUrl || t.url || "")) : t.view === "search" ? t.searchQuery : t.view === "newtab" ? "" : `veyra://${t.view}${t.section ? "/" + t.section : ""}`;
 }
 const INCOGNITO_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 let incognitoToken = "";
@@ -964,6 +965,8 @@ hooks.onSessionRenewed = expiresAt => {
 function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
 export function classify(input) {
   const v = String(input || "").trim(); if (!v) return null;
+  const source = parseSourceUri(v);
+  if (source) { const resolved = resolveSourceUri(v, API); return resolved ? { kind: "source", uri: resolved.uri, url: resolved.url } : { kind: "unsupported", value: v }; }
   const internal = v.match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
   if (internal) return INTERNAL[internal[1].toLowerCase()] ? { kind: "internal", view: internal[1].toLowerCase(), section: internal[2] || "" } : { kind: "search", query: v };
   if (/^(?:javascript|data|blob|file|chrome|about):/i.test(v)) return { kind: "unsupported", value: v };
@@ -975,6 +978,10 @@ export function classify(input) {
 }
 export async function go(input, { tab = null, push = true, newTab: inNew = false, activate = true } = {}) {
   const r = classify(input); if (!r) return;
+  if (r.kind === "source") {
+    if (inNew) return newTab({ url: r.url, displayUrl: r.uri, background: !activate });
+    return navigate(r.url, { tab, push, activate, displayUrl: r.uri });
+  }
   if (r.kind === "internal" && r.view === "console-labs") {
     if (!isAdmin()) { toast("That page is only available to Veyra administrators", { kind: "warn" }); return; }
     const target = new URL(`${APP_BASE}/console-lab/`, location.origin).href;
@@ -993,13 +1000,13 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   let url; try { url = new URL(r.url).href; } catch { toast("That address isn't valid", { kind: "err" }); return; }
   return navigate(url, { tab, push, activate });
 }
-export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true } = {}) {
+export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true, displayUrl = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
   if (pushHist) pushTabHistory(t, url);
   sendNeuralFeedback(url, true, 0.5); 
-  await loadInTab(t, url, { loadFrame: true, record });
+  await loadInTab(t, url, { loadFrame: true, record, displayUrl });
   if (push && activeTab() === t) syncRoute();
 }
 async function capability(url) {
@@ -1087,11 +1094,15 @@ function openCrawl(t, url, session, enabled = true) {
     return null;
   });
 }
-async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false } = {}) {
+async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "" } = {}) {
   const previousUrl = t.url;
+  t.sourceDisplayAliases ||= new Map();
+  const suppliedDisplayUrl = validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
+  if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
+  const resolvedDisplayUrl = suppliedDisplayUrl || t.sourceDisplayAliases.get(url) || (t.url === url ? validateSourceDisplayUrl(t.displayUrl, url, API_ORIGIN) : "");
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
-  Object.assign(t, { url, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
+  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
@@ -1644,14 +1655,30 @@ async function fetchAIAnswer(t, query, results, source = "web") {
     if (activeTab() !== t || t.searchQuery !== query) return;
     if (r.hasAnswer && !unsafeAiText(r.answer)) {
       const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${esc(r.confidenceLabel || "Evidence quality")}</span></div><div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, query, r.sources || [])}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources" aria-label="Sources">${r.sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}"><img src="${esc(sourceFaviconUrl(s.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>` : ""}</div>`;
+      const feedbackId = /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${esc(r.confidenceLabel || "Evidence quality")}</span></div><div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, query, r.sources || [])}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources" aria-label="Sources">${r.sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}"><img src="${esc(sourceFaviconUrl(s.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>` : ""}${feedbackId ? `<div class="ai-answer-feedback"><span>Was this summary helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful">Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful">Not helpful</button><span class="ai-feedback-status" data-ai-feedback-status aria-live="polite"></span></div>` : ""}</div>`;
       ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
       ai.querySelectorAll("[data-followup]").forEach(b => b.onclick = () => { t.searchQuery = b.dataset.followup; runSearch(t.searchQuery); });
+      ai.querySelectorAll("[data-ai-feedback]").forEach(button => button.addEventListener("click", async () => {
+        const buttons = [...ai.querySelectorAll("[data-ai-feedback]")], status = ai.querySelector("[data-ai-feedback-status]");
+        buttons.forEach(item => { item.disabled = true; }); if (status) status.textContent = "Saving feedback…";
+        try {
+          await api("/api/search/answer/feedback", { json: { observationId: feedbackId, rating: button.dataset.aiFeedback }, timeoutMs: 8000 });
+          if (status) status.textContent = "Thanks — this will help improve future summaries.";
+        } catch (error) {
+          buttons.forEach(item => { item.disabled = false; });
+          if (status) status.textContent = `Feedback was not saved: ${String(error?.message || "please try again").slice(0, 120)}`;
+        }
+      }));
     } else {
-      ai.classList.add("hidden");
+      const configured = r.code !== "AI_MODEL_NOT_CONFIGURED";
+      const title = configured ? "No safe summary returned" : "AI summaries are not configured yet";
+      const reason = unsafeAiText(r.reason) ? "The server could not produce a verified summary." : (r.reason || "The server did not return a grounded summary.");
+      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Summary status</span></div><div class="ai-answer-body ai-answer-unavailable"><b>${esc(title)}</b><p>${esc(reason)}</p><span>Search results are still available below. Veyra will not substitute copied source passages for an original, grounded summary.</span></div></div>`;
     }
-  } catch {
-    ai.classList.add("hidden");
+  } catch (error) {
+    if (activeTab() !== t || t.searchQuery !== query) return;
+    ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Summary status</span></div><div class="ai-answer-body ai-answer-unavailable"><b>Summary service unavailable</b><p>${esc(String(error?.message || "Veyra could not contact the answer service.").slice(0, 220))}</p><span>Search results remain available below.</span></div></div>`;
   }
 }
 function sourceFaviconUrl(url) {
@@ -2318,22 +2345,24 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
+    const sourceDisplayUrl = validateSourceDisplayUrl(d.veyraSourceUri, target, API_ORIGIN);
     if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
-    if (String(d.source).startsWith("history.")) { t.url = target; if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
+    if (String(d.source).startsWith("history.")) { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
       if (!same) {
         
         
         
-        void loadInTab(t, target, { loadFrame: true, record: null }).then(() => {
+        void loadInTab(t, target, { loadFrame: true, record: null, displayUrl: sourceDisplayUrl }).then(() => {
           if (activeTab() === t) syncRoute({ replace: true });
         });
         if (activeTab() === t) syncRoute({ replace: true });
         return;
       }
+      t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
       const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); }
-    } else { t.url = target; }
+    } else { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); }
     
     
     if (d.source === "document-navigation" && t.loading) { t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false); }
