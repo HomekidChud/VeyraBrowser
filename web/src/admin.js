@@ -17,7 +17,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.19-virtual-source-address";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.20-http-reader-fallback";
 
 let refreshTimer = null;
 let currentTab = "overview";

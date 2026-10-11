@@ -3,8 +3,8 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.19-virtual-source-address";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.19-virtual-source-address";
+} from "./core.js?v=8.28.20-http-reader-fallback";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.20-http-reader-fallback";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
@@ -56,7 +56,7 @@ export const state = {
   downloadControllers: new Map(),
   session: null, sessionTimer: null, sessionHeartbeat: null, lastUserActivity: Date.now(), sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
   vpn: { status: null, connected: false, profile: null },
-  incognito: INCOGNITO, server: { leanMode: false, version: "", checked: false }, sessionPromise: null,
+  incognito: INCOGNITO, server: { leanMode: false, chromiumEnabled: null, version: "", checked: false }, sessionPromise: null,
   
   tabGroups: load("veyra-tab-groups", []),
   
@@ -661,15 +661,57 @@ function proxyDocLooksBlank(t) {
   const blank = (s.text.length < 40 && s.kids < 4) || s.emptyRoot;
   return { blank, nodes: s.nodes };
 }
-function escalateBlankProxyPage(t, key) {
-  t.compatFallbackTried.add(key);
-  addLog("info", `Blank proxy shell detected on ${hostOf(t.url)}; switching to Chromium.`);
-  toast("This page stayed blank under the fast proxy. Switching to Chromium\u2026", { ms: 3500 });
-  void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
-}
 const browserFallbackAllowed = () => settings.browserFallback !== false && ["auto", "crawler"].includes(String(settings.runtime || "auto"));
+async function serverChromiumAvailable() {
+  if (typeof state.server.chromiumEnabled === "boolean") return state.server.chromiumEnabled;
+  try {
+    const status = await api("/api/acquisition/status", { timeoutMs: 6000 });
+    state.server.chromiumEnabled = status?.chromiumEnabled === true;
+    return state.server.chromiumEnabled;
+  } catch {
+    state.server.chromiumEnabled = false;
+    return false;
+  }
+}
+function showHttpReaderFallback(t, url, key, reason) {
+  if (!state.tabs.includes(t) || t.url !== url) return;
+  t.compatFallbackTried ||= new Set();
+  if (key) t.compatFallbackTried.add(key);
+  t.httpReaderFallback = true;
+  t.browserMode = "FAST_PROXY";
+  t.failoverReason = "http_reader";
+  t.browserSessionId = "";
+  t.browserStatus = "";
+  t.renderWinner = "proxy";
+  const readerUrl = new URL("/api/reader", API_ORIGIN);
+  readerUrl.searchParams.set("url", url);
+  if (t.sessionId) readerUrl.searchParams.set("sid", t.sessionId);
+  const frame = getOrCreateFrame(t);
+  frame.removeAttribute("srcdoc");
+  frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+  frame.src = readerUrl.href;
+  if (activeTab() === t) {
+    showFrameForTab(t);
+    setLoading(true, 68, "Extracting available page text over HTTP…");
+  }
+  addLog("info", `${hostOf(url)} needs JavaScript rendering; using the bounded HTTP reader instead of server Chromium (${reason || "browser-required"}).`);
+  toast("Showing the page's available text in HTTP Reader; interactive JavaScript features are unavailable.", { kind: "warn", ms: 5000 });
+  renderTabsSoon();
+}
+async function routeBrowserRequired(t, url, key, reason) {
+  if (!state.tabs.includes(t) || t.url !== url || t.httpReaderFallback) return;
+  t.compatFallbackTried ||= new Set();
+  if (t.compatFallbackTried.has(key)) return;
+  const explicitBrowser = String(settings.runtime || "auto") === "browser";
+  if (!explicitBrowser && !browserFallbackAllowed()) return showHttpReaderFallback(t, url, key, reason);
+  if (!(await serverChromiumAvailable())) return showHttpReaderFallback(t, url, key, reason);
+  escalateBrowserRequired(t, url, key, reason);
+}
+function escalateBlankProxyPage(t, key) {
+  void routeBrowserRequired(t, t.url, key, "empty-spa-shell");
+}
 function detectBlankProxyPage(t) {
-  if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
+  if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url || t.httpReaderFallback) return;
   if (t.browserMode === "BROWSER_ENGINE") return;
   t.compatFallbackTried ||= new Set();
   const key = `${t.url}|blank-shell`;
@@ -677,13 +719,12 @@ function detectBlankProxyPage(t) {
   
   
   
-  if (!browserFallbackAllowed()) return;
   const first = proxyDocLooksBlank(t);
   if (!first.blank) return;
   
   
   
-  if (first.nodes >= 0) {
+  if (first.nodes >= 0 && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {
     setTimeout(() => {
       if (!state.tabs.includes(t) || t.view !== "page" || t.browserMode === "BROWSER_ENGINE") return;
       if (t.compatFallbackTried?.has(key)) return;
@@ -1102,7 +1143,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const resolvedDisplayUrl = suppliedDisplayUrl || t.sourceDisplayAliases.get(url) || (t.url === url ? validateSourceDisplayUrl(t.displayUrl, url, API_ORIGIN) : "");
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
-  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
+  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, httpReaderFallback: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
@@ -1120,6 +1161,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
     showSearch(q, { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
     return;
+  }
+  if (strategy.youtubeProxy) {
+    showHttpReaderFallback(t, url, `${url}|youtube-http-reader`, "youtube-http-reader");
+    return renderTabs();
   }
 
   t.done = true;
@@ -2272,16 +2317,14 @@ async function handleMessage(e) {
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
-    if (u && t.view === "page" && !isRemote(t)) {
-      
-      
-      if (!browserFallbackAllowed()) {
-        addLog("debug", `${hostOf(u)} wanted a browser feature (${d.reason || "site feature"}); staying on the forced fast proxy.`);
-        return;
-      }
+    if (u && t.view === "page" && !isRemote(t) && !t.httpReaderFallback) {
       t.compatFallbackTried ||= new Set();
       const key = `${u}|${String(d.reason || "browser-required")}`;
       if (!t.compatFallbackTried.has(key)) {
+        if (!browserFallbackAllowed() && String(settings.runtime || "auto") !== "browser") {
+          showHttpReaderFallback(t, u, key, d.reason);
+          return;
+        }
         
         
         
@@ -2297,12 +2340,12 @@ async function handleMessage(e) {
                 addLog("debug", `Proxy shell on ${hostOf(u)} is still hydrating (${first.nodes} → ${second.nodes} nodes); keeping the fast proxy.`);
                 return;
               }
-              escalateBrowserRequired(t, u, key, d.reason);
+              void routeBrowserRequired(t, u, key, d.reason);
             }, 9000);
             return;
           }
         }
-        escalateBrowserRequired(t, u, key, d.reason);
+        void routeBrowserRequired(t, u, key, d.reason);
       }
     }
     return;
@@ -2311,14 +2354,12 @@ async function handleMessage(e) {
     const entry = pageConsoleEntry(d, t);
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
-    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !t.httpReaderFallback) {
       t.compatFallbackTried ||= new Set();
       const key = `${t.url}|react-hydration`;
       if (!t.compatFallbackTried.has(key)) {
-        t.compatFallbackTried.add(key);
-        addLog("info", `React hydration mismatch detected on ${hostOf(t.url)}; switching to Chromium.`);
-        toast("This site needs full browser rendering. Switching to Chromium…", { ms: 3000 });
-        void loadInTab(t, t.url, { forceBrowser: true, loadFrame: true, record: null });
+        addLog("info", `React hydration mismatch detected on ${hostOf(t.url)}; selecting the available HTTP/browser fallback.`);
+        void routeBrowserRequired(t, t.url, key, "react-hydration");
       }
     }
     t.console.push(entry); if (t.console.length > 2000) t.console.splice(0, t.console.length - 2000);
@@ -2339,8 +2380,7 @@ async function handleMessage(e) {
     t.challengeTried ||= new Set();
     if (!d.manual && (!d.auto || settings.challengeHandoff === false || t.challengeTried.has(u))) { if (!d.manual) toast("This site wants a security check. Use \u201cVerify in real Chromium\u201d to complete it", { kind: "warn", ms: 5000 }); return; }
     t.challengeTried.add(u);
-    toast("Security check detected, opening it in real Chromium", { ms: 3000 });
-    loadInTab(t, u, { forceBrowser: true });
+    void routeBrowserRequired(t, u, `${u}|security-challenge`, "security-challenge");
     return;
   }
   if (d.type === "veyra:navigate" && d.url) {
