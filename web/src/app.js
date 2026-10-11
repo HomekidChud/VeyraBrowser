@@ -3,48 +3,18 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.21-fast-proxy";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.21-fast-proxy";
+} from "./core.js?v=8.28.23-youtube-fallback";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.23-youtube-fallback";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
+import { isYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.23-youtube-fallback";
 
 
 
-
-
-function youtubeEmbedUrl(raw) {
-  try {
-    const u = new URL(String(raw));
-    const host = u.hostname.toLowerCase().replace(/^www\./, "");
-    let id = "";
-    if (host === "youtu.be") id = u.pathname.split("/").filter(Boolean)[0] || "";
-    else if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
-      if (u.pathname === "/watch") id = u.searchParams.get("v") || "";
-      else if (/^\/(shorts|live|embed)\//.test(u.pathname)) id = u.pathname.split("/").filter(Boolean)[1] || "";
-    }
-    if (!id || !/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
-    const params = new URLSearchParams({
-      enablejsapi: "1",
-      playsinline: "1",
-      rel: "0",
-      origin: location.origin,
-      widget_referrer: location.origin
-    });
-    const start = u.searchParams.get("start") || u.searchParams.get("t");
-    if (start && /^\d+$/.test(String(start))) params.set("start", String(start));
-    if (u.searchParams.get("list")) params.set("list", u.searchParams.get("list"));
-    if (u.searchParams.get("index")) params.set("index", u.searchParams.get("index"));
-    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.toString()}`;
-  } catch { return null; }
-}
-function isYouTubeUrl(raw) {
-  try { return /(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(new URL(String(raw)).hostname.toLowerCase()); }
-  catch { return false; }
-}
 
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -1180,6 +1150,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     if (!loadFrame) return;
     t.browserMode = "FAST_PROXY";
     const f = getOrCreateFrame(t);
+    if (isYouTubeUrl(url)) {
+      t.youtubeEmbed = !!youtubeEmbedUrl(url);
+      f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+      f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      f.removeAttribute("src");
+      f.srcdoc = youtubeFallbackHtml(url);
+      if (activeTab() === t) showFrameForTab(t);
+      return;
+    }
     f.removeAttribute("srcdoc");
     
     

@@ -11,6 +11,6 @@ assert.match(appSource, /keeping the FAST_PROXY page/, "when Chromium is unavail
 assert.match(appSource, /t\.requiresBrowser = false/, "a failed or unavailable browser attempt must not prevent proxy fallback");
 assert.match(appSource, /youtubeProxy: true/, "YouTube keeps its dedicated no-Chromium fast-proxy strategy");
 assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\/reader|HTTP Reader/, "the browser UI no longer replaces the upstream page with an extracted-text reader");
-assert.doesNotMatch(appSource, /if \(strategy\.youtubeProxy\)/, "YouTube must continue into the ordinary fast-proxy page load");
+assert.match(appSource, /if \(isYouTubeUrl\(url\)\)\s*\{\s*t\.youtubeEmbed = !!youtubeEmbedUrl\(url\);[\s\S]{0,240}f\.srcdoc = youtubeFallbackHtml\(url\)/, "YouTube pages use a player or a clear direct-open fallback instead of the broken upstream skeleton");
 
 console.log("VeyraBrowser FAST_PROXY fallback checks passed");

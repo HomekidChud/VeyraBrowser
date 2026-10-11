@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.21-fast-proxy";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.23-youtube-fallback";
 
 const pending = new Map();
 const listeners = new Set();
