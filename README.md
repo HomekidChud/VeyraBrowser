@@ -31,6 +31,12 @@ python3 -m http.server 8080 --directory web
 
 The override is accepted only when the page itself is served from `localhost`, `127.0.0.1`, or `::1`; public deployments continue using the fixed Render metadata.
 
+## Debugging and known issues
+
+For live end-to-end debugging sessions (GeoFS / Cesium through the Fast Proxy, OSM tile-template preload fix, session time-limit config mismatch) see
+[`../VeyraServer/docs/DEBUG_SESSION_2026-10-11_B.md`](https://github.com/HomekidChud/VeyraServer/blob/fix/osm-tile-template-preload/docs/DEBUG_SESSION_2026-10-11_B.md) (also [PR #12](https://github.com/HomekidChud/VeyraServer/pull/12)) and
+[`../VeyraServer/docs/GEOFS_DEBUG_REPORT.md`](https://github.com/HomekidChud/VeyraServer/blob/main/docs/GEOFS_DEBUG_REPORT.md).
+
 ## Structure
 
 See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
