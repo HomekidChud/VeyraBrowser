@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.27-youtube-link-tabs";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.18-professional-shell";
-import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
+} from "./core.js?v=8.28.28-browser-qa";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.28-browser-qa";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab, bridgeTargetOrigin } from "./bridge.js?v=8.28.28-browser-qa";
+import { initUI } from "./ui.js?v=8.28.28-browser-qa";
+import { initDevtools } from "./devtools.js?v=8.28.28-browser-qa";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.28-browser-qa";
 
 
 
@@ -1598,7 +1598,8 @@ export async function stopLoad() {
 export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
 export function pageCommand(type, payload = {}, t = activeTab()) {
   const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false;
-  const targetOrigin = f.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
+  const targetOrigin = bridgeTargetOrigin(f);
+  if (!targetOrigin) return false;
   try { f.contentWindow.postMessage({ type, ...payload }, targetOrigin); return true; } catch { return false; }
 }
 export function printPage() { const t = activeTab(); if (t?.view !== "page" || !t.url) { window.print(); return; } if (isRemote(t)) { window.open(`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot`, "_blank", "noopener"); return; } if (!pageCommand("veyra:print")) toast("This page can't be printed yet", { kind: "warn" }); }

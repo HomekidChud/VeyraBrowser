@@ -1,0 +1,463 @@
+{
+  "base": "http://127.0.0.1:3000/web/?veyra_api=http%3A%2F%2F127.0.0.1%3A10000",
+  "recordedAt": "2026-10-11T23:39:20.050Z",
+  "results": [
+    {
+      "name": "InternetArchive",
+      "target": "https://archive.org/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 16445,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://sink.archive.org/api/2/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        }
+      ]
+    },
+    {
+      "name": "TikTok",
+      "target": "https://www.tiktok.com/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 5291,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "Reflect is already polyfilled.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "loadable: `loadableReady()` requires state, please use `getScriptTags` or `getScriptElements` server-side",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "ServiceWorker register failed:  NotSupportedError: This page requires browser service-worker support.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/9654.e1730c82.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/26025.6d68a7f2.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/instance.4693fdb7.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/95572.a6659754.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/56789.127d31c4.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/modules-video-detail-mode-fifa-download-popup.5059f652.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/modules-cinema-mode.287cb453.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/62045.248e1edb.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/17952.fb7612fb.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/5004.9b9292d4.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/13689.dc2281fb.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/75640.c61f2bef.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/devtools.js?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/26893.06034b67.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/86177.10140e55.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/modules-cinema-mode-debug-debug-mount.5ae5f867.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/2135.7c2fafe8.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/6160.23a965f9.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/modal-side-effect-island.4d12f8c1.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/69195.5f0b3084.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/31864.81d6ce66.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/73921.9b0ca3f9.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/video-player.6427879d.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/96454.772fd0f9.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/26190.7360af5f.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/24387.ef1c460d.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/6869.b44f31de.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/86510.8d5b73c0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/23462.45845426.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/43402.3d90715f.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok_fonts/TikTokFont-Semibold.woff2?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok_fonts/TikTokFont-Regular.woff2?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok_fonts/TikTokFont-Bold.woff2?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/tiktok_fonts/TikTokFont-Semibold.woff2?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        }
+      ]
+    }
+  ]
+}

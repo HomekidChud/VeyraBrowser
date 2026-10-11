@@ -1,12 +1,20 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.28-browser-qa";
 
 const pending = new Map();
 const listeners = new Set();
 
 export function frameFor(tab) { return tab ? document.getElementById("frame-" + tab.id) : null; }
 export function isRemote(tab) { return tab?.browserMode === "BROWSER_ENGINE" && !!tab.browserSessionId; }
+export function bridgeTargetOrigin(frame) {
+  if (!frame?.contentWindow || !frame.getAttribute("src") || frame.src === "about:blank") return null;
+  // A newly created iframe is still about:blank even after assigning its src.
+  // Sending to the future API origin at this point causes browser errors.
+  try { if (frame.contentWindow.location.href === "about:blank") return null; } catch {}
+  if (!frame.sandbox?.contains("allow-same-origin")) return "*";
+  try { return new URL(frame.src).origin === API_ORIGIN ? API_ORIGIN : null; } catch { return null; }
+}
 
 export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
   if (!tab) return Promise.reject(new Error("No tab."));
@@ -21,7 +29,8 @@ export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
     pending.set(id, { resolve, reject, timer, tabId: tab.id });
     
     
-    const targetOrigin = frame.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
+    const targetOrigin = bridgeTargetOrigin(frame);
+    if (!targetOrigin) { clearTimeout(timer); pending.delete(id); reject(new Error("The page frame is still loading.")); return; }
     try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params }, targetOrigin); }
     catch (e) { clearTimeout(timer); pending.delete(id); reject(e); }
   });

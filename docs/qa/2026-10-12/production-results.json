@@ -1,0 +1,1549 @@
+{
+  "base": "https://homekidchud.github.io/VeyraBrowser/web/",
+  "recordedAt": "2026-10-11T23:25:11.442Z",
+  "results": [
+    {
+      "name": "YouTube",
+      "target": "https://www.youtube.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 13462,
+      "content": "Skip navigation\nSign in\nTry searching to get started\nStart watching videos to help us build a feed of videos you'll love.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Sc",
+          "stack": "Error: Sc\n    at RpE (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at cFl (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at z8e.execute (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at Zy9 (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at Ku.onLoad (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at _.T.setLoaded (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at _.T.setAllModuleInfoString (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at _._ModuleManager_initialize (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "TikTok",
+      "target": "https://www.tiktok.com/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 21676,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Unexpected token ';'",
+          "stack": ""
+        },
+        {
+          "type": "error",
+          "message": "Permissions policy violation: accelerometer is not allowed in this document.",
+          "location": "https://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/webmssdk_ex/2.0.0.1667/webmssdk_ex.js"
+        },
+        {
+          "type": "warning",
+          "message": "The devicemotion events are blocked by permissions policy. See https://github.com/w3c/webappsec-permissions-policy/blob/master/features.md",
+          "location": "https://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/webmssdk_ex/2.0.0.1667/webmssdk_ex.js"
+        },
+        {
+          "type": "pageerror",
+          "message": "Unexpected token ';'",
+          "stack": ""
+        },
+        {
+          "type": "error",
+          "message": "Executing inline event handler violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/browse"
+        },
+        {
+          "type": "warning",
+          "message": "No available adapters.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        }
+      ],
+      "httpErrors": [],
+      "screenshot": "empty-or-visual-only-TikTok.png"
+    },
+    {
+      "name": "Wikipedia",
+      "target": "https://en.wikipedia.org/wiki/Web_browser",
+      "outcome": "content-rendered",
+      "elapsedMs": 12272,
+      "content": "Jump to content\nMain menu\nSearch\nDonate\nCreate account\nLog in\nContents hide\n(Top)\nFunction\nHistory\nFeatures\nBrowser market\nToggle Browser market subsection\nMarket share by type of device\nSecurity\nToggle Security subsection\nPrivacy\nSee also\nReferences\nExternal links\nWeb browser\n145 languages\nArticle\nTalk\nRead\nView source\nView history\nTools\nAppearance hide\nFrom Wikipedia, the free encyclopedia\nA web browser (Safari) on a MacBook displaying the Wikipedia web page\n\nA web browser, often abbreviated as browser, is an application for accessing websites. When a user requests a web page from a particular website, the browser retrieves its files from a web server and then displays the page on the user's screen. Browsers can also display content stored locally on the user's device.\n\nBrowsers are used on a range of devices, including desktops, laptops, tablets, smartphones, smartwatches, smart televisions and consoles.[1] As of 2026, the most used browsers worldwide are Google Chrome (~69% market share), Safari (~16%), Edge (~5%), Firefox (~2%), Samsung Browser (~2%), and Opera (~2%).[2][3] As of 2023, an estimated 5.4 billion people had used a browser.[4]\n\nFunction\nNavigating to English Wikipedia using a web browser (Firefox)\n\nThe purpose of a web browser is to fetch content and display it on the user's device.[5] This process begins when the user inputs a Uniform Resource Locator (URL), such as https://en.wikipedia.org/, into the browser's address bar. Virtually all URLs on the Web start with either http: or https: which means they are retrieved with the Hypertext Transfer Protocol (HTTP). For secure mode (HTTPS), the connection between the browser and web server is encrypted, providing a secure and private data transfer.[6] For this reason, a web browser is often referred to as an HTTP client[7][8] or a user agent. Requisite materials, including text, style sheets, images, and other types of multimedia, are downloaded from the server. Once the materials have been downloaded, the web browser's engine (also known as a layout engine or rendering engine) is responsible for converting those resources into an interactive visual representation of the page on the user's device.[9] Modern web browsers also contain separate JavaScript engines which enable more complex interactive applications inside the browser.[10] A web browser that does not render a graphical user interface is known as a headless browser.\n\nWeb pages usually contain hyperlinks to other pages and resources.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "GitHub",
+      "target": "https://github.com/",
+      "outcome": "timeout-or-navigation-error",
+      "elapsedMs": 28121,
+      "content": "",
+      "error": "frame.waitForLoadState: Timeout 20000ms exceeded.",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Unexpected token ';'",
+          "stack": ""
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": [],
+      "screenshot": "timeout-or-navigation-error-GitHub.png"
+    },
+    {
+      "name": "Reddit",
+      "target": "https://www.reddit.com/",
+      "outcome": "site-challenge",
+      "elapsedMs": 19248,
+      "content": "You've been blocked by network security.\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\nFile a ticket",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/form-get/aHR0cHM6Ly93d3cucmVkZGl0LmNvbS8/YjQ0ZDRmMTRiMzMyNDQ2N2EwN2Q1ZDQ0NmQ5YjVmNDE?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/neural/feedback",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/browser/capability",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/form-get/aHR0cHM6Ly93d3cucmVkZGl0LmNvbS8/YjQ0ZDRmMTRiMzMyNDQ2N2EwN2Q1ZDQ0NmQ5YjVmNDE?[redacted]",
+          "status": 403
+        }
+      ],
+      "screenshot": "site-challenge-Reddit.png"
+    },
+    {
+      "name": "Google",
+      "target": "https://www.google.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 6063,
+      "content": "About\nStore\nGmailImages\nSign in\n \nAdvertising\nBusiness\nHow Search works\nBuild, create, and do more with AI tools from Google\nPrivacy\nTerms\nSettings",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Blocked autofocusing on a <textarea> element in a cross-origin subframe.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "MDN",
+      "target": "https://developer.mozilla.org/en-US/",
+      "outcome": "content-rendered",
+      "elapsedMs": 7942,
+      "content": "Skip to main content\nSkip to search\nHTML\nCSS\nJavaScript\nWeb APIs\nAll\nLearn\nTools\nAbout\nBlog\nMDN\nResources for Developers,\nby Developers \n\nDocumenting CSS, HTML, and JavaScript, since 2005.\n\n   / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /\n  + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +\n{ { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }  \n   ../../    ../../    ../../    ../../    ../../    ../../    ../../\n<> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </>\nFeatured articles\nBlog\nCelebrating 20 years of MDN\n\nMDN turns 20! Let's look at how we started, how MDN became the most trusted resource for web developers, the impact it's had on the open web, and yes, there's cake, too.\n\nWeb APIs\nNavigation API\n\nThe Navigation API provides the ability to initiate, intercept, and manage browser navigation actions. It can also examine an application's history entries. This is a successor to previous web platform features such as the History API and window.location, which solves their shortcomings and is specifically aimed at the needs of single-page applications (SPAs).\n\nWeb APIs\nTrusted Types API\n\nThe Trusted Types API gives web developers a way to ensure that input has been passed through a user-specified transformation function before being passed to an API that might execute that input. This can help to protect against client-side cross-site scripting (XSS) attacks. Most commonly the transformation function sanitizes the input.\n\nCSS\nUsing CSS anchor positioning\n\nThe CSS anchor positioning module defines features that allow you to tether elements together. Elements can be defined as anchor elements and anchor-positioned elements. Anchor-positioned elements can be bound to anchor elements. The anchor-positioned elements can then have their size and position set relative to the size and location of the anchor elements to which they are bound.\n\nLatest news\ndeveloper.mozilla.org\nIntroducing the MDN MCP server\n4 months ago\n\nMDN's MCP server brings MDN's documentation and browser compatibility data directly into your editor or IDE, giving your LLM or coding agent access to accurate, up-to-date web platform information.\n\ndeveloper.mozilla.org\nUnder the hood of MDN's ne",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Blocked autofocusing on a <input> element in a cross-origin subframe.",
+          "location": "https://veyraserver-xscy.onrender.com/api/4585.e30f706b333273cd.js"
+        },
+        {
+          "type": "error",
+          "message": "Error: Cannot find module './api.ftl'\n    at https://veyraserver-xscy.onrender.com/api/index.32b42b4f976b8500.js:159:7388\n    at async u (https://veyraserver-xscy.onrender.com/api/index.32b42b4f976b8500.js:276:9550)\n    at async https://veyraserver-xscy.onrender.com/api/index.32b42b4f976b8500.js:276:9990",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "BBC",
+      "target": "https://www.bbc.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 21440,
+      "content": "Skip to content\nWatch Live\nHome\nNews\nSport\nBusiness\nTechnology\nHealth\nCulture\nArts\nTravel\nEarth\nAudio\nVideo\nLive\nDocumentaries\nTrump's 'energy ceasefire' claim welcomed by Zelensky but Russia silent\n\nZelensky says Kyiv would support such a truce. Moscow has yet to comment.\n\n2 hrs ago\nEurope\nWatch: What's behind Trump's energy ceasefire claim?\n\nThe US president made the announcement in a social media post, which was an apparent surprise to Ukraine and Russia is yet to comment.\n\n2 hrs ago\nWorld\nOne killed, 11 injured in second Houthi strike on Riyadh airport in two days\n\nThe Saudi capital has been hit by multiple attacks from the Iran-backed Yemeni group over the weekend.\n\n36 mins ago\nMiddle East\nPM says it is 'clear' Russia interfered with Brexit vote\n\nHe says voters were not \"sufficiently\" informed about how foreign actors sought to disrupt UK democracy.\n\n5 hrs ago\nPolitics\nBuildings swept away as flash floods hit central Nepal\n\nA flash flood at the Budhi Gandaki River has swept away several buildings and bridges, two months after catastrophic floods hit the country.\n\n13 hrs ago\nAsia\nDozens of gold prospectors killed in strikes on Egypt-Sudan border, rights group says\n\nNeither Egypt nor Sudan has commented on the alleged strikes on an artisanal mining camp on Saturday.\n\n2 hrs ago\nAfrica\nChildren among 139 dead after boat capsizes off Djibouti, UN says\n\nThe boat was travelling from Djibouti to Yemen with 305 people on board, when it capsized near the port town of Obock on Thursday night.\n\n8 hrs ago\nWorld\nWEEKEND READS\nAI fears are growing – and unsettling new film Artificial puts them centre stage\n\nLuca Guadagnino's new film about Open AI and its co-founders Sam Altman and Ilya Sutskever offers a stark warning. Given recent news, its release couldn't be more provocatively timed.\n\nWhat blood sugar spikes reveal about your health\n\nIt's trendy to be concerned about blood sugar spikes, but these can be a normal response to eating. Here's when you don't need to worry.\n\nRECOMMENDED AUDIO\nGlobal News Podcast\nThe Global Story: Smart glasses or ‘pervert glasses’?\nSave\nThe Global Story\nWhat’s really happening with plague in Russia?\nSave\nThe Climate Question\nAre we ready for a super El Niño?\nSave\nWitness History\nThe boy behind the creation of the Winnie-the-Pooh books\nSave\nWitness History\nHow rats were trained to clear landmines\nSave\nThe Interface\nFacebook whistleblower Frances Haugen on the real Social Reckoning.\nSave\nMore or Less\nIs the UK state pension really the l",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "NGAS load timeout",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to read a named property 'search' from 'Location': Blocked a frame with origin \"https://veyraserver-xscy.onrender.com/\" from accessing a cross-origin frame.",
+          "stack": "SecurityError: Failed to read a named property 'search' from 'Location': Blocked a frame with origin \"https://veyraserver-xscy.onrender.com/\" from accessing a cross-origin frame.\n    at oe (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at rn (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/neural/feedback",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/acquisition/status",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "Amazon",
+      "target": "https://www.amazon.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 24510,
+      "content": "Skip to\nMain content\nKeyboard shortcuts\nSearch\nalt\n+\n/\nCart\nshift\n+\nalt\n+\nC\nHome\nshift\n+\nalt\n+\nH\nOrders\nshift\n+\nalt\n+\nO\nShow/Hide shortcuts\nshift\n+\nalt\n+\nZ\nTo move between items, use your keyboard's up or down arrows.\nDelivering to Decatur 30035\nUpdate location\nAll\nAll Departments\nAlexa Skills\nAmazon Autos\nAmazon Devices\nAmazon Fresh\nAmazon Global Store\nAmazon Haul\nAmazon One Medical\nAmazon Pharmacy\nAmazon Resale\nAppliances\nApps & Games\nArts, Crafts & Sewing\nAudible Books & Originals\nAutomotive Parts & Accessories\nBaby\nBeauty & Personal Care\nBooks\nCDs & Vinyl\nCell Phones & Accessories\nClothing, Shoes & Jewelry\nWomen's Clothing, Shoes & Jewelry\nMen's Clothing, Shoes & Jewelry\nGirl's Clothing, Shoes & Jewelry\nBoy's Clothing, Shoes & Jewelry\nBaby Clothing, Shoes & Jewelry\nCollectibles & Fine Art\nComputers\nCredit and Payment Cards\nDigital Music\nElectronics\nGarden & Outdoor\nGift Cards\nGrocery & Gourmet Food\nHandmade\nHealth, Household & Baby Care\nHome & Business Services\nHome & Kitchen\nIndustrial & Scientific\nJust for Prime\nKindle Store\nLuggage & Travel Gear\nLuxury Stores\nMagazine Subscriptions\nMovies & TV\nMusical Instruments\nOffice Products\nPet Supplies\nPremium Beauty\nPrime Video\nSame-Day Store\nSmart Home\nSoftware\nSports & Outdoors\nSubscribe & Save\nSubscription Boxes\nTools & Home Improvement\nToys & Games\nUnder $10\nVideo Games\nWhole Foods Market\nEN\nHello, sign in\nAccount & Lists\nReturns\n& Orders\n0\nCart\nSign in\nNew customer? Start here.\nAll\nPrime\nGroceries\nToday's Deals\nCoupons\nPharmacy\nAudible\nMusic\nWhole Foods\nAmazon Home\nRegistry\nAutomotive\nNew Releases\nVideo Games\nFashion\nBaby\nHandmade\nPet Supplies\nBeauty & Personal Care\nToys & Games\nSports & Outdoors\nSmart Home\nSubscribe & Save\nWorks with Alexa\nGift Shop\nBest Sellers\nAmazon Haul\nCustom Products\nLuxury\nKindle Books\nBooks\nCostumes under $50 for women\nPause\n$2 flash finds\nLimit 2 per customer\nPause\nSpend less on Halloween\nTrick-or-treat candy under $25\nNew arrivals in electronics\nFresh finds generating buzz\n$2 flash finds\nLimit 2 per customer\nPause\nThe reimagined sneaker shop\nadidas, PUMA & more\nPause\n\n\n\n\nBack to top\nGet to Know Us\nCareers\nAmazon Newsletter\nAbout Amazon\nAccessibility\nSustainability\nPress Center\nInvestor Relations\nAmazon Devices\nAmazon Science\n\t\t\nMake Money with Us\nSell on Amazon\nSell apps on Amazon\nSupply to Amazon\nProtect & Build Your Brand\nBecome an Affiliate\nBecome a Delivery Driver\nStart a Package Delivery Business\nAdvertise Your Products\nSelf-Publish with Us\nBecome an Amazon Hub Partner\n›S",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/neural/feedback",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/acquisition/status",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://m.media-amazon.com/images/I/B1Gv-DRyPiL.mp4",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://m.media-amazon.com/images/I/B1Gv-DRyPiL.mp4",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://m.media-amazon.com/images/I/B1DhndjJtWL.mp4",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "name": "Instagram",
+      "target": "https://www.instagram.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 11916,
+      "content": "Log in\nPage isn't available\nThe link may be broken, or the profile may have been removed.\nSign up for Instagram\nAfrikaans\nالعربية\nČeština\nDansk\nDeutsch\nΕλληνικά\nEnglish\nEnglish (UK)\nEspañol (España)\nEspañol\nفارسی\nSuomi\nFrançais\nעברית\nBahasa Indonesia\nItaliano\n日本語\n한국어\nBahasa Melayu\nNorsk\nNederlands\nPolski\nPortuguês (Brasil)\nPortuguês (Portugal)\nРусский\nSvenska\nภาษาไทย\nFilipino\nTürkçe\n中文(简体)\n中文(台灣)\nবাংলা\nગુજરાતી\nहिन्दी\nHrvatski\nMagyar\nಕನ್ನಡ\nമലയാളം\nमराठी\nनेपाली\nਪੰਜਾਬੀ\nසිංහල\nSlovenčina\nதமிழ்\nతెలుగు\nاردو\nTiếng Việt\n中文(香港)\nБългарски\nFrançais (Canada)\nRomână\nСрпски\nУкраїнська\nAllow the use of cookies from Instagram on this browser?\nWe use cookies and similar technologies to help provide and improve content on Meta Products. We also use them to provide a safer experience by using information we receive from cookies on and off Instagram, and to provide and improve Meta Products for people who have an account.\nEssential cookies: These cookies are required to use Meta Products and are necessary for our sites to work as intended.\nCookies from other companies: We use these cookies to show you ads off of Meta Products and to provide features like maps and videos on Meta Products. These cookies are optional.\nYou have control over the optional cookies we use. Learn more about cookies and how we use them, and review or change your choices at any time in our Cookies Policy.\nAbout cookies\nWhat are cookies?\nLearn more\nWhy do we use cookies?\nLearn more\nWhat are Meta Products?\nLearn more\nYour cookie choices\nLearn more\nOptional cookies\nCookies from other companies\nWe use cookies from other companies in order to show you ads off of our Products, and provide features like maps, payment services and video.\nChoose cookies by category\nHow we use these cookies\nIf you allow these cookies\nIf you don't allow these cookies\nOther ways you can control your information\nManage your ad experience in Accounts Center\nMore information about online advertising\nControlling cookies with browser settings\nAllow all cookies\nDecline optional cookies",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "Twitch",
+      "target": "https://www.twitch.tv/",
+      "outcome": "content-rendered",
+      "elapsedMs": 10178,
+      "content": "Skip to...\nAlt\nP\n\nBrowse\n\nLog In\nSign Up\n\nFailed to determine content classification\n\nFailed to load module.\n\nFailed to load module.\n\nFailed to load module.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Access to CSS stylesheet at 'https://assets.twitch.tv/assets/76892-791377552848048afbc3.css' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/76892-791377552848048afbc3.css"
+        },
+        {
+          "type": "error",
+          "message": "Access to CSS stylesheet at 'https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.chat-shell.components.chat-live-414bae34c1ecbb8706a6.css' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.chat-shell.components.chat-live-414bae34c1ecbb8706a6.css"
+        },
+        {
+          "type": "error",
+          "message": "Access to CSS stylesheet at 'https://assets.twitch.tv/assets/features.channel-skins.video-overlay-287e9c7eac94d7606c41.css' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/features.channel-skins.video-overlay-287e9c7eac94d7606c41.css"
+        },
+        {
+          "type": "error",
+          "message": "Access to CSS stylesheet at 'https://assets.twitch.tv/assets/features.ads.components.client-side-video-ads.instream-and-vertical-video-ad-player-2a55e4bca435919f392a.css' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/features.ads.components.client-side-video-ads.instream-and-vertical-video-ad-player-2a55e4bca435919f392a.css"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/23687-baf96fdd2dd1872caf6b.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/23687-baf96fdd2dd1872caf6b.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/38673-1460370dcaa4d895945d.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/38673-1460370dcaa4d895945d.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/player-core-variant-a-fab1da835e68d27f3be2.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/player-core-variant-a-fab1da835e68d27f3be2.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.watch-page-track-cd46c0116f272b70570f.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.watch-page-track-cd46c0116f272b70570f.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/10204-4628cc4375eb1ecdb1c8.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/10204-4628cc4375eb1ecdb1c8.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/75867-abf399590fface948c3a.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/75867-abf399590fface948c3a.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/6130-d481d77b95dcb34b50e6.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/6130-d481d77b95dcb34b50e6.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/58312-46057635b42855808867.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/58312-46057635b42855808867.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/8883-e121c2b713093134c403.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/8883-e121c2b713093134c403.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/18210-3e30428f0f38c1c274f7.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/18210-3e30428f0f38c1c274f7.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/29804-12005e534b68f8c25268.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/29804-12005e534b68f8c25268.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/42743-2bb3145f71ee1814081c.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/42743-2bb3145f71ee1814081c.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/76382-bc3bca641e7fff6c24da.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/76382-bc3bca641e7fff6c24da.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/37073-f025e4af9a98f34aa048.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/37073-f025e4af9a98f34aa048.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/73397-ad91648d230f98c796ba.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/73397-ad91648d230f98c796ba.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/13046-372cff1e8acfef3603a6.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/13046-372cff1e8acfef3603a6.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/75853-4e4a846c80e24969f85a.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/75853-4e4a846c80e24969f85a.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/69188-d415cb945d93e6344d60.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/69188-d415cb945d93e6344d60.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/68516-a1324a9ae93f48e2601e.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/68516-a1324a9ae93f48e2601e.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/49895-1b51a7a6173c5791e48d.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/49895-1b51a7a6173c5791e48d.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/41625-0fbd56d63f29744d7aff.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/41625-0fbd56d63f29744d7aff.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/71916-55aa68cb1f19ab695b6b.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/71916-55aa68cb1f19ab695b6b.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/12453-61fccac6c4f542a1ae7a.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/12453-61fccac6c4f542a1ae7a.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/69206-860d7db2f7d010bf37c3.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/69206-860d7db2f7d010bf37c3.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/77973-f65a32c0f6a39e928bae.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/77973-f65a32c0f6a39e928bae.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/64909-5e7318a526890fad6c29.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/64909-5e7318a526890fad6c29.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/53884-962e50eac0ec6a81939e.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/53884-962e50eac0ec6a81939e.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/94217-1c3de7537d8661e2239a.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/94217-1c3de7537d8661e2239a.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/6588-c79e3a21e99d505e0591.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/6588-c79e3a21e99d505e0591.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/41913-84da5bc2d0031dd471e9.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/41913-84da5bc2d0031dd471e9.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/76892-aa9fcf9d8a6bdecd0c23.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/76892-aa9fcf9d8a6bdecd0c23.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/92599-419892bb7cefb5aed463.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/92599-419892bb7cefb5aed463.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/49310-dfae565cab8dbfdaf2e2.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/49310-dfae565cab8dbfdaf2e2.js"
+        },
+        {
+          "type": "error",
+          "message": "Access to script at 'https://assets.twitch.tv/assets/45440-2205e6ef6c8f43f4d338.js' from origin 'https://veyraserver-xscy.onrender.com/' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_FAILED",
+          "location": "https://assets.twitch.tv/assets/45440-2205e6ef6c8f43f4d338.js"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://assets.twitch.tv/assets/76892-791377552848048afbc3.css",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.chat-shell.components.chat-live-414bae34c1ecbb8706a6.css",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/features.channel-skins.video-overlay-287e9c7eac94d7606c41.css",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/features.ads.components.client-side-video-ads.instream-and-vertical-video-ad-player-2a55e4bca435919f392a.css",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/23687-baf96fdd2dd1872caf6b.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/38673-1460370dcaa4d895945d.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/player-core-variant-a-fab1da835e68d27f3be2.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.watch-page-track-cd46c0116f272b70570f.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/10204-4628cc4375eb1ecdb1c8.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/75867-abf399590fface948c3a.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/6130-d481d77b95dcb34b50e6.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/58312-46057635b42855808867.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/8883-e121c2b713093134c403.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/18210-3e30428f0f38c1c274f7.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/29804-12005e534b68f8c25268.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/42743-2bb3145f71ee1814081c.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/76382-bc3bca641e7fff6c24da.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/37073-f025e4af9a98f34aa048.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/73397-ad91648d230f98c796ba.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/13046-372cff1e8acfef3603a6.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/75853-4e4a846c80e24969f85a.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/69188-d415cb945d93e6344d60.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/68516-a1324a9ae93f48e2601e.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/49895-1b51a7a6173c5791e48d.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/41625-0fbd56d63f29744d7aff.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/71916-55aa68cb1f19ab695b6b.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/12453-61fccac6c4f542a1ae7a.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/69206-860d7db2f7d010bf37c3.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/77973-f65a32c0f6a39e928bae.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/64909-5e7318a526890fad6c29.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/53884-962e50eac0ec6a81939e.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/94217-1c3de7537d8661e2239a.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/6588-c79e3a21e99d505e0591.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/41913-84da5bc2d0031dd471e9.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/76892-aa9fcf9d8a6bdecd0c23.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/92599-419892bb7cefb5aed463.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/49310-dfae565cab8dbfdaf2e2.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/45440-2205e6ef6c8f43f4d338.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/pages.channel.components.channel-shell.components.chat-shell.components.chat-live-138e1717fb6aed7d7b63.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/89071-5142077c29d8d3cd1237.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/69531-f39ca65c237a0919a5ff.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/88509-3d666958a735db26e953.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/42077-7c42bcbf2843d81f0e92.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/features.channel-skins.video-overlay-d5b24828b39a879a4add.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/21183-3c5c36d9766c42044215.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/features.ads.components.client-side-video-ads.instream-and-vertical-video-ad-player-bc1557c00def0021088e.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/features.guest-star.components.shared-viewership-tracking-bc34f856fa02c1806a08.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://assets.twitch.tv/assets/errors-ca9b49407a6280f47e46.js",
+          "error": "net::ERR_FAILED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://k.twitchcdn.net/149e9513-01fa-4fb0-aad4-566afd725d1b/2d206a39-8ed7-437e-a3be-862e0f06eea3/fp?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "name": "Discord",
+      "target": "https://discord.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 18550,
+      "content": "Skip to main content\nDownload\n1 of 9\nNitro\n2 of 9\nDiscover\n3 of 9\nSafety\n4 of 9\nQuests\n5 of 9\nSupport\n6 of 9\nBlog\n7 of 9\nDevelopers \n8 of 9\n \nCareers\n9 of 9\nLog In\nGROUP CHAT THAT’S ALL FUN & GAMES\n\nDiscord is great for playing games and chilling with friends, or even building a worldwide community. Customize your own space to talk, play, and hang out.\n\nDownload for Windows\nOpen Discord in your browser\nMAKE YOUR GROUP CHATS MORE FUN\n\nUse custom emoji, stickers, soundboard effects and more to add your personality to your voice, video, or text chat. Set your avatar and a custom status, and write your own profile to show up in chat your way.\n\nSTREAM LIKE YOU’RE IN THE SAME ROOM\n\nHigh quality and low latency streaming makes it feel like you're hanging out on the couch with friends while playing a game, watching shows, looking at photos, or idk doing homework or something.\n\nHOP IN WHEN YOU'RE FREE, NO NEED TO CALL\n\nEasily hop in and out of voice or text chats without having to call or invite anyone, so your party chat lasts before, during, and after your game session.\n\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nSEE WHO'S AROUND TO CHILL\n\nSee who's around, playing games, or just hanging out. For supported games, you can see what modes or characters your friends are playing and directly join up.\n\nALWAYS HAVE SOMETHING TO DO TOGETHER\n\nWatch videos, play built-in games, listen to music, or just scroll together and spam memes. Seamlessly text, call, video chat, and play games, all in one group chat.\n\nWHEREVER YOU GAME, HANG OUT HERE\n\nOn your PC, phone, or console, you can still hang out on Discord. Easily switch between devices and use tools to manage multiple group chats with friends.\n\nYOU CAN'T SCROLL ANYMORE.\nBETTER GO CHAT.\nDownload for Linux\nLanguage\nEnglish\nSocial\nProduct\nDownload\nNitro\nStatus\nApp Directory\nGift Cards\nCompany\nAbout\nJobs\nBrand\nNewsroom\nResources\nSupport\nSafety\nBlog\nCreators\nCommunity\nDevelopers\nQuests\nOfficial 3rd Party Merch\nFeedback\nPolicies\nTerms\nPrivacy\nCookie Settings\nGuidelines\nAcknowledgements\nLicenses\nCompany Information",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Unexpected token 'v', \"var OneTru\"... is not valid JSON",
+          "stack": "SyntaxError: Unexpected token 'v', \"var OneTru\"... is not valid JSON\n    at JSON.parse (<anonymous>)\n    at r.onload (https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/neural/feedback",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "StackOverflow",
+      "target": "https://stackoverflow.com/",
+      "outcome": "site-challenge",
+      "elapsedMs": 1250,
+      "content": "VEYRA BROWSER\nThis site requires its own security verification\n\nVeyra's server proxy detected a security or bot-verification page (security-verification). It was not indexed as site content and Veyra will not attempt to bypass the site's security controls.\n\nVerify in real Chromium\nOpen directly in a new tab\nRetry through Veyra\n\nChromium shows the site's own check so you can complete it. Veyra does not solve, evade, or weaken CAPTCHA/anti-bot checks.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "Microsoft",
+      "target": "https://www.microsoft.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 14954,
+      "content": "Skip to main content\nAll Microsoft\nSearch\nCart\nFollow Microsoft\n  \nBack to Top\nWhat's new\nSurface Laptop Ultra\nSurface Pro\nSurface Laptop\nSurface RTX Spark Dev Box\nExplore Copilot\nExplore Microsoft products\nWindows 11 apps\nMicrosoft Store\nAccount profile\nDownload Center\nMicrosoft Store support\nReturns\nOrder tracking\nCertified Refurbished\nWhy buy from Microsoft Store\nFlexible Payments\nEducation\nMicrosoft in education\nDevices for education\nMicrosoft Teams for Education\nMicrosoft 365 Education\nHow to buy for your school\nEducator training and development\nDeals for students and parents\nAI for education\nBusiness\nMicrosoft AI\nMicrosoft Security\nDynamics 365\nMicrosoft 365\nMicrosoft Power Platform\nMicrosoft Teams\nMicrosoft Copilot\nSmall Business\nDeveloper & IT\nAzure\nMicrosoft Developer\nMicrosoft Learn\nSupport for AI marketplace apps\nMicrosoft Tech Community\nMicrosoft Marketplace\nSoftware companies\nVisual Studio\nCompany\nCareers\nAbout Microsoft\nCompany news\nPrivacy at Microsoft\nInvestors\nDiversity and inclusion\nAccessibility\nSustainability\nEnglish (United States)\nYour Privacy Choices\nConsumer Health Privacy\nSitemap\nContact Microsoft\nPrivacy\nTerms of use\nTrademarks\nSafety & eco\nRecycling\nAbout our ads\n© Microsoft 2026",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/pagination-item.const-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/tag.const-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/util1-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/fill-color.mixin-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/secondary-nav-item.const-v1.38.0.js"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to initialize ReimagineTelemetry: ReferenceError: ReimagineDynamicSearchResultTelemetry is not defined\n    at G.createTelemetryObject (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at new G (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at HTMLDocument.m (https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'querySelectorAllDeep')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'querySelectorAllDeep')\n    at HTMLDocument.<anonymous> (https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/surface.styles-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/media/index-v1.38.0.js"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 ()",
+          "location": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 ()",
+          "location": "https://veyraserver-xscy.onrender.com/util6-v1.38.0.js"
+        },
+        {
+          "type": "warning",
+          "message": "Clarity not loaded: No matching Clarity project for this site",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/pagination-item.const-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/tag.const-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/util1-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/fill-color.mixin-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/secondary-nav-item.const-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/surface.styles-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/media/index-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/util6-v1.38.0.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/cascadeauth/store/account/silentauth?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/pagination-item.const-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/tag.const-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/util1-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/fill-color.mixin-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/secondary-nav-item.const-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/surface.styles-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/media/index-v1.38.0.js",
+          "status": 404
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/resource?[redacted]",
+          "status": 403
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/util6-v1.38.0.js",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "name": "Apple",
+      "target": "https://www.apple.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 28056,
+      "content": "Apple\nApple\nStore\nMac\niPad\niPhone\nWatch\nVision\nAirPods\nTV & Home\nEntertainment\nAccessories\nSupport\n0\n+\niPhone 18 Pro\n\nPro further.\n\nLearn more\nBuy\niPhone Duo\n\nHello, hello.\n\nPre-order starting 5:00 a.m. PT on 10.16 Available starting 10.23\n\nLearn more\nView pricing\nApple Watch Series 12\n\nThe most accurate heart rate sensing in a wearable.1\n\nLearn more\nBuy\nApple Watch Ultra 4\n\nA battery you can’t outrun.\n\nLearn more\nBuy\nMacBook Air\n\nNow supercharged by M5.\n\nLearn more\nBuy\niPad Air\n\nNow supercharged by M4.\n\nLearn more\nBuy\nAirPods Pro 3\n\nThe world’s best in-ear Active Noise Cancellation.\n\nLearn more\nBuy\nApple Upgrade\n\nLove it. Lease it. Upgrade it.2\n\nLearn more\nApple Card\n\nGet up to 3% Daily Cash back with every purchase.\n\nLearn more\nApply now\nEndless entertainment.\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nItem 9\nF1 on Apple TV\n\nEvery Grand Prix™, live and on demand—all in one place, all year long.\n\nStream now\n\nActionSave the world, bring your friends.\n\nStream now\n\nComedyFriends. And family?\n\nStream now\n\nComedyThe hit comedy is back and Tedder than ever.\n\nMLS on Apple TV\n\nWatch every club, every match, live—all season long.\n\nStream now\n\nThrillerMI5’s most unruly spies are back and under attack.\n\nStream now\n\nDocumentaryStep into the kitchen as expert chefs work to earn—and keep—Michelin Stars.\n\nStream now\n\nActionA friendship with major red flags.\n\nStream now\n\nMystery14 Emmy® Awards Including Best Comedy\n\nPlay now\n\nHello Kitty Island Adventure\n\nMiley: The Zane Lowe Interview\n\nListen now\nWatch now\n\nJoin the Team with “Ted Lasso”\n\nPlay now\n\nPowerWash Simulator\n\nNew Music Daily\n\nListen now\nWatch now\n\nMeditation with Christian\n\nPlay now\n\nMadden NFL 27 Arcade Edition\n\nToday’s Hits\n\nListen now\nWatch now\n\nPrograms\n\nApple Footer\nBased on data from an Apple-conducted study of heart rate accuracy, during July and August 2026, utilizing commercially available best-selling wearables available as of June 2026. For more information, visit apple.com/HRAccuracy.\nApple Upgrade is a device leasing program available in the U.S. (excluding U.S. territories). Leases are provided by Klarna: subject to eligibility and credit approval, including final approval at checkout. To be eligible, you must be a U.S. resident, at least 18 years old (or the legal age in your state), have an accepted credit or debit card, and have an Apple Account. Additional eligibility criteria apply. Device must be in good condition upon return; damage fees may apply. For iPhone only: In order to",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_INVALID_URL",
+          "location": "data:image/gif;base64"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/neural/feedback",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://veyraserver-xscy.onrender.com/api/browser/capability",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "InternetArchive",
+      "target": "https://archive.org/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 19265,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "Service Worker registration blocked by Playwright",
+          "location": ""
+        },
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://veyraserver-xscy.onrender.com/') does not match the recipient window's origin ('https://homekidchud.github.io/').",
+          "location": "https://homekidchud.github.io/VeyraBrowser/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'https://veyraserver-xscy.onrender.com/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry\n    at A (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at async https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry\n    at A (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at async https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"ia-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"ia-activity-indicator\" has already been used with this registry\n    at A (https://veyraserver-xscy.onrender.com/api/resource?[redacted]\n    at async Promise.all (index 1)\n    at async https://veyraserver-xscy.onrender.com/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource https://veyraserver-xscy.onrender.com/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "https://veyraserver-xscy.onrender.com/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    }
+  ]
+}

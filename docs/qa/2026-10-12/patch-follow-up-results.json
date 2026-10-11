@@ -1,0 +1,755 @@
+{
+  "base": "http://127.0.0.1:3000/web/?veyra_api=http%3A%2F%2F127.0.0.1%3A10000",
+  "recordedAt": "2026-10-11T23:32:44.800Z",
+  "results": [
+    {
+      "name": "TikTok",
+      "target": "https://www.tiktok.com/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 17157,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "Reflect is already polyfilled.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "loadable: `loadableReady()` requires state, please use `getScriptTags` or `getScriptElements` server-side",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "prefetch image SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at Object.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]\n    at C (http://127.0.0.1:10000/api/resource?[redacted]\n    at a (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at new Promise (<anonymous>)\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at sw (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "ServiceWorker register failed:  NotSupportedError: This page requires browser service-worker support.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Reflect is already polyfilled.",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[DEPRECATED] Default export is deprecated. Instead use `import { create } from 'zustand'`.",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[DEPRECATED] Default export is deprecated. Instead use `import { create } from 'zustand'`.",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[DEPRECATED] Default export is deprecated. Instead use `import { create } from 'zustand'`.",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "loadable: `loadableReady()` requires state, please use `getScriptTags` or `getScriptElements` server-side",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Executing inline event handler violates the following Content Security Policy directive 'script-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked.",
+          "location": "http://127.0.0.1:3000/web/browse"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Error: Request failed with status code 502\n    at e.exports (http://127.0.0.1:10000/api/resource?[redacted]\n    at e.exports (http://127.0.0.1:10000/api/resource?[redacted]\n    at s.E (http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Error: Request failed with status code 502\n    at e.exports (http://127.0.0.1:10000/api/resource?[redacted]\n    at e.exports (http://127.0.0.1:10000/api/resource?[redacted]\n    at s.E (http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "D.context: TypeError: t is not a function",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "D.mountBeforeSendEvent: TypeError: this._instance is not a function",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "D.config: TypeError: this._instance is not a function",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "D.start: TypeError: this._instance is not a function",
+          "location": "http://127.0.0.1:10000/404?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "this._instance is not a function",
+          "stack": "TypeError: this._instance is not a function\n    at l.init (http://127.0.0.1:10000/api/resource?[redacted]\n    at s._doInit (http://127.0.0.1:10000/api/resource?[redacted]\n    at s.init (http://127.0.0.1:10000/api/resource?[redacted]\n    at D.init (http://127.0.0.1:10000/api/resource?[redacted]\n    at o.value (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at zu (http://127.0.0.1:10000/api/resource?[redacted]\n    at t.unstable_runWithPriority (http://127.0.0.1:10000/api/resource?[redacted]\n    at Qo (http://127.0.0.1:10000/api/resource?[redacted]\n    at Ru (http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://lf16-cdn-tos.tiktokcdn-us.com/obj/static-tx/slardar/fe/sdk-web/plugins/common-monitors.1.16.9.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/64887.91e0025f.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/73955.21b24ba2.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://lf16-cdn-tos.tiktokcdn-us.com/obj/static-tx/secsdk/secsdk-lastest.umd.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://lf16-cdn-tos.tiktokcdn-us.com/obj/static-tx/slardar/fe/sdk-web/plugins/common-monitors.1.14.1.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://lf16-tiktok-web.tiktokcdn-us.com/obj/tiktok-web-tx/tiktok/webapp/main/react-v18/webapp-desktop/static/js/async/multi-account-controller.8940d2e3.js",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 403
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 502
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 502
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        }
+      ],
+      "screenshot": "empty-or-visual-only-TikTok.png"
+    },
+    {
+      "name": "GitHub",
+      "target": "https://github.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 3457,
+      "content": "Skip to content\nNavigation Menu\nPlatform\nSolutions\nResources\nOpen Source\nEnterprise\nPricing\nSearch\n/\nSign in\nSign up\nThe future of building happens together\n\nTools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.\n\nEnter your email\nSign up for GitHub\nDownload GitHub Copilot app\nGitHub features\nA demonstration animation of a code editor using GitHub Copilot Chat, where the user requests GitHub Copilot to refactor duplicated logic and extract it into a reusable function for a given code snippet.\nCodePlanCollaborateAutomateSecure\n\nWrite, test, and fix code quickly with GitHub Copilot, from simple boilerplate to complex features.\n\nGITHUB CUSTOMERS\nAccelerate your entire workflow\n\nFrom your first line of code to final deployment, GitHub provides AI and automation tools to help you build and ship better software faster.\n\nA Copilot chat window with the 'Ask' mode enabled. The user switches from 'Ask' mode to 'Agent' mode from a dropdown menu, then sends the prompt 'Update the website to allow searching for running races by name.' Copilot analyzes the codebase, then explains the required edits for three files before generating them. Copilot then confirms completion and summarizes the implemented changes for the new functionality allowing users to search races by name and view paginated, filtered results.\nYour AI partner everywhere. Copilot is ready to work with you at each step of the software development lifecycle.\nExplore GitHub Copilot\n\nDuolingo boosts developer speed by 25% with GitHub Copilot\n\nRead customer story\n\n2025 Gartner® Magic Quadrant™ for AI Code Assistants\n\nRead industry report\nAutomate your path to production\n\nShip faster with secure, reliable CI/CD.\n\nExplore GitHub Actions\nCode instantly from anywhere\n\nLaunch a full, cloud-based development environment in seconds.\n\nExplore GitHub Codespaces\nKeep momentum on the go\n\nManage projects and assign tasks to Copilot, all from your mobile device.\n\nExplore GitHub Mobile\nShape your toolchain\n\nExtend your stack with apps, actions, and AI models.\n\nExplore GitHub Marketplace\nBuilt-in application security where found means fixed\n\nUse AI to find and fix vulnerabilities so your team can ship more secure software faster.\n\nApply fixes in seconds. Spend less time debugging and more time building features with Copilot Autofix.\nExplore GitHub Advanced Security\n\nSecurity debt, solved. Leverage security campaigns and Copilot Autofix to reduce applicatio",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        }
+      ]
+    },
+    {
+      "name": "InternetArchive",
+      "target": "https://archive.org/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 16788,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry\n    at A (http://127.0.0.1:10000/api/resource?[redacted]\n    at async http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"horizontal-activity-indicator\" has already been used with this registry\n    at A (http://127.0.0.1:10000/api/resource?[redacted]\n    at async http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to execute 'define' on 'CustomElementRegistry': the name \"ia-activity-indicator\" has already been used with this registry",
+          "stack": "ImportRetryError: Failed to execute 'define' on 'CustomElementRegistry': the name \"ia-activity-indicator\" has already been used with this registry\n    at A (http://127.0.0.1:10000/api/resource?[redacted]\n    at async Promise.all (index 1)\n    at async http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The resource http://127.0.0.1:10000/api/resource?[redacted] was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://sink.archive.org/api/2/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        }
+      ]
+    }
+  ]
+}

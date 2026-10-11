@@ -13,7 +13,7 @@
  *   - Network quality indicator
  */
 
-import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.28-browser-qa";
 import { qrSvg } from "./qr.js";
 
 let B;
@@ -57,7 +57,7 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
     if (!result.ok) throw new Error(result.error || "Cast server rejected the session");
     castSessionId = result.sessionId;
     if (!castSession || castSession.id !== result.sessionId) castSession = {
-      id: result.sessionId, pairingCode: result.pairingCode, qrPayload: result.qrPayload, qrUrl: result.qrUrl,
+      id: result.sessionId, browserToken: result.browserToken, pairingCode: result.pairingCode, qrPayload: result.qrPayload, qrUrl: result.qrUrl,
       status: "waiting", deviceName: "", deviceType: "", connectionType: "", networkStrength: 0, frameCount: 0,
     };
     renderCastView();
@@ -65,9 +65,15 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
       if (castPollInFlight || generation !== castConnectionGeneration || !castSession?.id) return;
       castPollInFlight = true;
       try {
-        const msgs = await api(`/api/cast/poll/${encodeURIComponent(castSession.id)}`, { timeoutMs: 5000 });
+        const msgs = await api(`/api/cast/poll/${encodeURIComponent(castSession.id)}`, { headers: { Authorization: `Bearer ${castSession.browserToken || ""}` }, timeoutMs: 5000 });
         if (generation === castConnectionGeneration && msgs.ok && msgs.messages) for (const msg of msgs.messages) handleMessage(msg);
-      } catch {} finally { castPollInFlight = false; }
+      } catch (e) {
+        if (generation === castConnectionGeneration && [403, 404].includes(e.status)) {
+          stopPollingFallback(); stopRenderLoop(); frameBuffer = []; castSession = null;
+          renderCastView();
+          toast("Cast session closed. Generate a fresh pairing code.", { kind: "err" });
+        }
+      } finally { castPollInFlight = false; }
     }, 500);
   }).catch(e => {
     if (generation !== castConnectionGeneration) return;
@@ -82,7 +88,7 @@ function connectCastServer(sessionId = "") {
   castFallbackStarted = false;
   stopPollingFallback();
   if (castWs) { try { castWs.close(); } catch {} castWs = null; }
-  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=browser&session=${encodeURIComponent(sessionId)}`;
+  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=browser&session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(castSession?.browserToken || "")}`;
   try {
     castWs = new WebSocket(wsUrl);
   } catch (e) {
@@ -118,10 +124,12 @@ function connectCastServer(sessionId = "") {
     if (event.code !== 1000 && event.code !== 1001) {
       startPollingFallback(sessionId, generation);
     } else {
-      if (castSession?.status === "streaming") stopStreaming();
+      stopRenderLoop();
+      frameBuffer = [];
+      castSession = null;
       castWs = null;
       stopPollingFallback();
-      if (B?.renderActive) B.renderActive({ push: false });
+      renderCastView();
     }
   };
 }
@@ -134,6 +142,7 @@ function handleMessage(msg) {
       castFallbackStarted = false;
       castSession = {
         id: msg.sessionId,
+        browserToken: msg.browserToken,
         pairingCode: msg.pairingCode,
         qrPayload: msg.qrPayload,
         qrUrl: msg.qrUrl,
@@ -187,6 +196,12 @@ function handleMessage(msg) {
       renderCastView();
       break;
 
+    case "stream_ended":
+      stopStreaming({ preserveStatus: true });
+      if (castSession) castSession.status = "paired";
+      renderCastView();
+      break;
+
     case "network_update":
       if (castSession) {
         castSession.connectionType = msg.connectionType;
@@ -220,7 +235,7 @@ function disconnectCastSession(reason = "client_closed") {
   const ws = castWs;
   castWs = null;
   try { ws?.close(1000, reason); } catch {}
-  if (id) void api(`/api/cast/close/${encodeURIComponent(id)}`, { method: "POST", json: { reason }, timeoutMs: 5000 }).catch(() => {});
+  if (id) void api(`/api/cast/close/${encodeURIComponent(id)}`, { method: "POST", headers: { Authorization: `Bearer ${castSession?.browserToken || ""}` }, json: { reason }, timeoutMs: 5000 }).catch(() => {});
   castSession = null;
   castSessionId = null;
   castFallbackStarted = false;
@@ -271,7 +286,7 @@ function sendCastMessage(msg) {
     try { castWs.send(JSON.stringify(msg)); return true; } catch {}
   }
   if (!castSession?.id) return false;
-  void api(`/api/cast/send/${encodeURIComponent(castSession.id)}`, { method: "POST", json: msg, timeoutMs: 5000 })
+  void api(`/api/cast/send/${encodeURIComponent(castSession.id)}`, { method: "POST", headers: { Authorization: `Bearer ${castSession.browserToken || ""}` }, json: msg, timeoutMs: 5000 })
     .catch(e => addLog("warn", "CAST", `Command delivery failed: ${e.message}`));
   return true;
 }
@@ -543,6 +558,7 @@ function startDevicePolling(sessionId, code, body) {
   api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone" }, timeoutMs: 10000 }).then(result => {
     if (!result.ok) { body.innerHTML = `<p class="muted">Could not join: ${esc(result.error || "unknown error")}</p>`; return; }
     devicePollId = result.deviceId; 
+    devicePollToken = result.deviceToken;
     deviceJoined = true;
     const t = $("djTitle"), s = $("djSub");
     if (t) t.textContent = "Paired with Veyra";
@@ -554,7 +570,7 @@ function startDevicePolling(sessionId, code, body) {
       if (devicePollInFlight) return;
       devicePollInFlight = true;
       try {
-        const msgs = await api(`/api/cast/device/poll/${encodeURIComponent(result.deviceId)}`, { timeoutMs: 5000 });
+        const msgs = await api(`/api/cast/device/poll/${encodeURIComponent(result.deviceId)}`, { headers: { Authorization: `Bearer ${devicePollToken || ""}` }, timeoutMs: 5000 });
         if (msgs.ok && msgs.messages) {
           for (const msg of msgs.messages) {
             if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
@@ -576,6 +592,7 @@ function stopDevicePolling() {
 
 let deviceSessionId = null;
 let devicePollId = null;
+let devicePollToken = null;
 
 async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
   if (deviceStream) { if (manual) { const st = $("djStatus"); if (st) st.textContent = "Already sharing."; } return; }
@@ -629,10 +646,10 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
 }
 
 function pushDeviceFrame(frameData) {
-  if (!deviceSessionId) return;
+  if (!devicePollId || !devicePollToken) return;
   if (deviceUploadInFlight) { devicePendingFrame = frameData; return; }
   deviceUploadInFlight = true;
-  void api(`/api/cast/push/${encodeURIComponent(deviceSessionId)}`, { method: "POST", json: { type: "frame", data: frameData }, timeoutMs: 3000 })
+  void api(`/api/cast/device/push/${encodeURIComponent(devicePollId)}`, { method: "POST", headers: { Authorization: `Bearer ${devicePollToken}` }, json: { type: "frame", data: frameData }, timeoutMs: 3000 })
     .catch(() => {})
     .finally(() => { deviceUploadInFlight = false; const next = devicePendingFrame; devicePendingFrame = null; if (next) pushDeviceFrame(next); });
 }
@@ -654,11 +671,22 @@ function setDeviceFrameRate(fps) {
 }
 
 function stopDeviceStream() {
+  const wasStreaming = !!(deviceTimer || deviceStream);
   if (deviceTimer) { clearInterval(deviceTimer); deviceTimer = null; }
   if (deviceStream) { try { deviceStream.getTracks().forEach(t => t.stop()); } catch {} deviceStream = null; }
   deviceVideo = null; devicePendingFrame = null;
   const st = $("djStatus"); if (st) st.textContent = "";
   if (deviceCanvas) deviceCanvas.style.display = "none";
+  if (wasStreaming) {
+    if (deviceWs?.readyState === 1) {
+      try { deviceWs.send(JSON.stringify({ type: "stream_ended" })); } catch {}
+    } else if (devicePollId && devicePollToken) {
+      void api(`/api/cast/device/push/${encodeURIComponent(devicePollId)}`, {
+        method: "POST", headers: { Authorization: `Bearer ${devicePollToken}` },
+        json: { type: "stream_ended" }, timeoutMs: 3000,
+      }).catch(e => addLog("warn", "CAST", `Stop notification failed: ${e.message}`));
+    }
+  }
 }
 
 
