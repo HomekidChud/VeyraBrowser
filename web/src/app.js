@@ -3,8 +3,8 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.20-http-reader-fallback";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.20-http-reader-fallback";
+} from "./core.js?v=8.28.21-fast-proxy";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.21-fast-proxy";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
@@ -673,45 +673,30 @@ async function serverChromiumAvailable() {
     return false;
   }
 }
-function showHttpReaderFallback(t, url, key, reason) {
-  if (!state.tabs.includes(t) || t.url !== url) return;
-  t.compatFallbackTried ||= new Set();
-  if (key) t.compatFallbackTried.add(key);
-  t.httpReaderFallback = true;
-  t.browserMode = "FAST_PROXY";
-  t.failoverReason = "http_reader";
-  t.browserSessionId = "";
-  t.browserStatus = "";
-  t.renderWinner = "proxy";
-  const readerUrl = new URL("/api/reader", API_ORIGIN);
-  readerUrl.searchParams.set("url", url);
-  if (t.sessionId) readerUrl.searchParams.set("sid", t.sessionId);
-  const frame = getOrCreateFrame(t);
-  frame.removeAttribute("srcdoc");
-  frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-  frame.src = readerUrl.href;
-  if (activeTab() === t) {
-    showFrameForTab(t);
-    setLoading(true, 68, "Extracting available page text over HTTP…");
-  }
-  addLog("info", `${hostOf(url)} needs JavaScript rendering; using the bounded HTTP reader instead of server Chromium (${reason || "browser-required"}).`);
-  toast("Showing the page's available text in HTTP Reader; interactive JavaScript features are unavailable.", { kind: "warn", ms: 5000 });
-  renderTabsSoon();
-}
 async function routeBrowserRequired(t, url, key, reason) {
-  if (!state.tabs.includes(t) || t.url !== url || t.httpReaderFallback) return;
+  if (!state.tabs.includes(t) || t.url !== url) return;
   t.compatFallbackTried ||= new Set();
   if (t.compatFallbackTried.has(key)) return;
   const explicitBrowser = String(settings.runtime || "auto") === "browser";
-  if (!explicitBrowser && !browserFallbackAllowed()) return showHttpReaderFallback(t, url, key, reason);
-  if (!(await serverChromiumAvailable())) return showHttpReaderFallback(t, url, key, reason);
+  if (!explicitBrowser && !browserFallbackAllowed()) {
+    t.compatFallbackTried.add(key);
+    addLog("debug", `${hostOf(url)} requested a browser feature; keeping the full FAST_PROXY page (${reason || "browser-required"}).`);
+    return;
+  }
+  if (!(await serverChromiumAvailable())) {
+    if (!state.tabs.includes(t) || t.url !== url) return;
+    t.compatFallbackTried.add(key);
+    addLog("info", `${hostOf(url)} needs JavaScript rendering, but server Chromium is unavailable; keeping the FAST_PROXY page (${reason || "browser-required"}).`);
+    return;
+  }
+  if (!state.tabs.includes(t) || t.url !== url) return;
   escalateBrowserRequired(t, url, key, reason);
 }
 function escalateBlankProxyPage(t, key) {
   void routeBrowserRequired(t, t.url, key, "empty-spa-shell");
 }
 function detectBlankProxyPage(t) {
-  if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url || t.httpReaderFallback) return;
+  if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
   if (t.browserMode === "BROWSER_ENGINE") return;
   t.compatFallbackTried ||= new Set();
   const key = `${t.url}|blank-shell`;
@@ -1143,7 +1128,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const resolvedDisplayUrl = suppliedDisplayUrl || t.sourceDisplayAliases.get(url) || (t.url === url ? validateSourceDisplayUrl(t.displayUrl, url, API_ORIGIN) : "");
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
-  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, httpReaderFallback: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
+  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, requiresBrowser: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
@@ -1154,7 +1139,11 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!state.tabs.includes(t) || t.url !== url) return;
   t.sessionId = session.id;
   recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
-  const strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
+  let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
+  if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
+    strategy = { ...strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false, auto: false, forceBrowserHost: false };
+    addLog("info", `${hostOf(url)} will use the full FAST_PROXY page because this server has Chromium disabled.`);
+  }
   t.loadStrategy = strategy.key;
   if (!state.tabs.includes(t) || t.url !== url) return;
   if (strategy.googleSearchFallback) {
@@ -1162,15 +1151,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     showSearch(q, { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
     return;
   }
-  if (strategy.youtubeProxy) {
-    showHttpReaderFallback(t, url, `${url}|youtube-http-reader`, "youtube-http-reader");
-    return renderTabs();
-  }
-  if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
-    showHttpReaderFallback(t, url, `${url}|chromium-unavailable`, "chromium-unavailable");
-    return renderTabs();
-  }
-
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
@@ -1235,7 +1215,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       if (result?.ok === false) {
         if (t.requiresBrowser) {
           t.failoverReason = result.reason || "chromium_unavailable";
-          return renderError(t, "server", new Error(`Chromium is required for ${hostOf(url)}, but it is unavailable right now (${t.failoverReason}).`));
+          t.requiresBrowser = false;
+          return switchToFastProxy(t, url, session, t.failoverReason);
         }
         if (!t.renderWinner || t.renderWinner === "proxy") {
           switchToFastProxy(t, url, session, result.reason);
@@ -1258,7 +1239,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       if (e.code === "SESSION_EXPIRED") return;
       if (t.requiresBrowser && state.tabs.includes(t) && t.url === url) {
         t.failoverReason = e.code || "chromium_unavailable";
-        renderError(t, "server", new Error(`Chromium is required for ${hostOf(url)}, but the browser session could not start: ${e.message}`));
+        t.requiresBrowser = false;
+        switchToFastProxy(t, url, session, t.failoverReason);
         return;
       }
       addLog("debug", `Combined Chromium path unavailable: ${e.message}`);
@@ -1292,7 +1274,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
           if (!t.browserSessionId) {
             if (t.requiresBrowser) {
               t.failoverReason = "chromium_timeout";
-              renderError(t, "server", new Error(`Chromium did not become ready for ${hostOf(url)} within ${Math.round(softTimeoutMs / 1000)} seconds.`));
+              t.requiresBrowser = false;
+              switchToFastProxy(t, url, session, "chromium_timeout");
             } else {
               switchToFastProxy(t, url, session, "chromium_timeout");
             }
@@ -1370,7 +1353,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         addLog("warn", `Required Chromium path unavailable for ${hostOf(url)}: ${e.message}`);
         if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
         t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
-        return renderError(t, "server", Object.assign(new Error(`This site requires real Chromium, but Chromium is currently unavailable: ${e.message}`), { code: e.code }));
+        t.requiresBrowser = false;
       }
       if (e.code === "BROWSER_CAPACITY") addLog("warn", `Chromium is at capacity; using fast proxy: ${e.message}`);
       else addLog("warn", `Chromium unavailable, using fast proxy: ${e.message}`);
@@ -2321,17 +2304,10 @@ async function handleMessage(e) {
   if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
-    if (u && t.view === "page" && !isRemote(t) && !t.httpReaderFallback) {
+    if (u && t.view === "page" && !isRemote(t)) {
       t.compatFallbackTried ||= new Set();
       const key = `${u}|${String(d.reason || "browser-required")}`;
       if (!t.compatFallbackTried.has(key)) {
-        if (!browserFallbackAllowed() && String(settings.runtime || "auto") !== "browser") {
-          showHttpReaderFallback(t, u, key, d.reason);
-          return;
-        }
-        
-        
-        
         if (d.reason === "empty-spa-shell") {
           const first = proxyDocLooksBlank(t);
           if (first.nodes >= 0) {
@@ -2358,11 +2334,11 @@ async function handleMessage(e) {
     const entry = pageConsoleEntry(d, t);
     const pageErrorText = `${entry.message} ${entry.stack}`;
     const hydrationFailure = /minified react error #418|hydration failed|hydration mismatch/i.test(pageErrorText);
-    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url && !t.httpReaderFallback) {
+    if (hydrationFailure && t.view === "page" && !isRemote(t) && t.url) {
       t.compatFallbackTried ||= new Set();
       const key = `${t.url}|react-hydration`;
       if (!t.compatFallbackTried.has(key)) {
-        addLog("info", `React hydration mismatch detected on ${hostOf(t.url)}; selecting the available HTTP/browser fallback.`);
+        addLog("info", `React hydration mismatch detected on ${hostOf(t.url)}; retaining FAST_PROXY unless server Chromium is available.`);
         void routeBrowserRequired(t, t.url, key, "react-hydration");
       }
     }
