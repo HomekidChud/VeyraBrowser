@@ -1157,6 +1157,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       f.removeAttribute("src");
       f.srcdoc = youtubeFallbackHtml(url);
       if (activeTab() === t) showFrameForTab(t);
+      t.loading = false;
+      clearTimeout(t.loadGuard);
+      if (activeTab() === t) setLoading(false);
+      renderTabsSoon();
       return;
     }
     f.removeAttribute("srcdoc");
