@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { isSignInUrl } from "../web/src/site-auth.js";
 
 const appSource = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 assert.match(appSource, /async function serverChromiumAvailable\(\)/, "the client checks the server's advertised Chromium capability");
@@ -12,7 +13,14 @@ assert.match(appSource, /t\.requiresBrowser = false/, "a failed or unavailable b
 assert.match(appSource, /youtubeProxy: true/, "YouTube video URLs keep their dedicated official-player embed strategy");
 assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\/reader|HTTP Reader/, "the browser UI no longer replaces the upstream page with an extracted-text reader");
 assert.match(appSource, /if \(isYouTubeUrl\(url\) && youtubeEmbedUrl\(url\)\)[\s\S]{0,280}f\.srcdoc = youtubeFallbackHtml\(url\)/, "only watch URLs use the official YouTube player embed");
-assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*if \(youtubeEmbedUrl\(url\)\) \{[\s\S]{0,220}return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages must use Veyra Chromium while videos use the official player");
+assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*if \(youtubeEmbedUrl\(url\)\) \{[\s\S]{0,320}return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages must use Veyra Chromium while videos use the official player");
+assert.match(appSource, /site-auth\.js\?v=8\.28\.27-site-signin-chromium/, "the app imports the versioned sign-in URL helper");
+assert.match(appSource, /if \(isSignInUrl\(url\)\) return true;/, "recognized sign-in pages are routed to Chromium in auto mode");
+assert.match(appSource, /Sign-in at \$\{hostOf\(url\)\} needs Veyra's Chromium engine, but it's disabled on this server/, "users are told when the server cannot run a sign-in page in Chromium");
+assert.equal(isSignInUrl("https://accounts.google.com/ServiceLogin"), true, "Google Accounts is recognized");
+assert.equal(isSignInUrl("https://example.com/login/oauth2/authorize"), true, "common login and OAuth paths are recognized");
+assert.equal(isSignInUrl("https://example.com/articles/how-to-login"), false, "ordinary article paths are not forced into Chromium");
+assert.equal(isSignInUrl("not a url"), false, "invalid URLs are safely rejected");
 assert.match(appSource, /url = normalizeYouTubeUrl\(url\)/, "m.youtube.com URLs are normalized before they are loaded");
 assert.match(appSource, /t\.youtubeEmbed && doc\?\.documentElement\?\.dataset\.veyraYoutubeFallback === "true" && !doc\.__veyraLinkHandler/, "the parent shell installs its link router only in the local YouTube fallback document");
 assert.match(appSource, /doc\.addEventListener\("click", event =>/);

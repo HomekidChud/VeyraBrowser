@@ -18,9 +18,9 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.27-youtube-link-tabs/);
+assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.27-site-signin-chromium/);
+assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.27-site-signin-chromium/);
+assert.match(bootstrap, /app\.js\?v=8\.28\.27-site-signin-chromium/);
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /server Chromium is unavailable; keeping the FAST_PROXY page/);
 assert.match(app, /t\.requiresBrowser = true/);

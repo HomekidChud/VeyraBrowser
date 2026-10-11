@@ -12,6 +12,7 @@ import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
+import { isSignInUrl } from "./site-auth.js?v=8.28.27-site-signin-chromium";
 
 
 
@@ -1046,6 +1047,7 @@ export function isGoogleSearchUrl(url) {
 function hostNeedsRealBrowser(url) {
   try {
     const h = new URL(url).hostname.toLowerCase();
+    if (isSignInUrl(url)) return true;
     if (/(^|\.)roblox\.com$/.test(h) || /(^|\.)rbxcdn\.com$/.test(h)) return true;
     if (/(^|\.)browser\.lol$/.test(h)) return true;
     if (/(^|\.)now\.gg$/.test(h) || /(^|\.)geforce\.com$/.test(h)) return true;
@@ -1134,6 +1136,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
   if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
     strategy = { ...strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false, auto: false, forceBrowserHost: false };
+    if (isSignInUrl(url)) toast(`Sign-in at ${hostOf(url)} needs Veyra's Chromium engine, but it's disabled on this server. The Fast proxy may reject the page.`, { kind: "warn", ms: 8000 });
     addLog("info", `${hostOf(url)} will use the full FAST_PROXY page because this server has Chromium disabled.`);
   }
   t.loadStrategy = strategy.key;
