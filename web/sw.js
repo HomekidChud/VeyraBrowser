@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.28.24-youtube-fallback";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.24-youtube-fallback", "./src/bootstrap.js?v=8.28.24-youtube-fallback"];
+const CACHE = "veyra-browser-shell-v8.28.25-youtube-routing";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.25-youtube-routing", "./src/bootstrap.js?v=8.28.25-youtube-routing"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

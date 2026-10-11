@@ -11,7 +11,7 @@ import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.23-youtube-fallback";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.25-youtube-routing";
 
 
 
@@ -997,6 +997,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   return navigate(url, { tab, push, activate });
 }
 export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true, displayUrl = "" } = {}) {
+  url = normalizeYouTubeUrl(url);
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
@@ -1091,14 +1092,15 @@ function openCrawl(t, url, session, enabled = true) {
   });
 }
 async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "" } = {}) {
+  url = normalizeYouTubeUrl(url);
   const previousUrl = t.url;
   t.sourceDisplayAliases ||= new Map();
-  const suppliedDisplayUrl = validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
+  const suppliedDisplayUrl = isYouTubeUrl(url) ? "" : validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
   if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
   const resolvedDisplayUrl = suppliedDisplayUrl || t.sourceDisplayAliases.get(url) || (t.url === url ? validateSourceDisplayUrl(t.displayUrl, url, API_ORIGIN) : "");
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
-  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, requiresBrowser: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
+  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, requiresBrowser: false, youtubeEmbed: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
@@ -1150,8 +1152,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     if (!loadFrame) return;
     t.browserMode = "FAST_PROXY";
     const f = getOrCreateFrame(t);
-    if (isYouTubeUrl(url)) {
-      t.youtubeEmbed = !!youtubeEmbedUrl(url);
+    if (isYouTubeUrl(url) && youtubeEmbedUrl(url)) {
+      t.youtubeEmbed = true;
       f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
       f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
       f.removeAttribute("src");
@@ -2262,10 +2264,11 @@ async function handleMessage(e) {
   
   
   
+  const t = tabForSource(e.source); if (!t) return;
   const consoleLabAuthCheck = d.type === "veyra:console-lab:auth-check";
   const trustedConsoleLabOrigin = consoleLabAuthCheck && e.origin === "https://homekidchud.github.io";
-  if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin) return;
-  const t = tabForSource(e.source); if (!t) return;
+  const trustedYouTubeFallbackLink = e.origin === location.origin && t.view === "page" && t.youtubeEmbed === true && isYouTubeUrl(t.url) && ["veyra:open", "veyra:navigate"].includes(d.type);
+  if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin && !trustedYouTubeFallbackLink) return;
   if (d.type === "veyra:console-lab:auth-check") {
     if (t.view !== "page" || !isConsoleLabPageUrl(t.url) || typeof d.requestId !== "string") return;
     const requestId = d.requestId.slice(0, 100);
@@ -2382,7 +2385,7 @@ function escalateBrowserRequired(t, u, key, reason) {
 function canonical(value) {
   let raw = String(value || "").trim();
   for (let i = 0; i < 3; i++) {
-    try { const u = new URL(raw, API); if (u.origin === API_ORIGIN && /^\/api\/(view|resource|download)$/.test(u.pathname)) { const inner = u.searchParams.get("url"); if (inner) { raw = inner; continue; } } return /^https?:$/.test(u.protocol) ? u.href : ""; }
+    try { const u = new URL(raw, API); if (u.origin === API_ORIGIN && /^\/api\/(view|resource|download)$/.test(u.pathname)) { const inner = u.searchParams.get("url"); if (inner) { raw = inner; continue; } } return /^https?:$/.test(u.protocol) ? normalizeYouTubeUrl(u.href) : ""; }
     catch { return ""; }
   }
   return "";

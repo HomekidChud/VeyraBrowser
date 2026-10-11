@@ -2,10 +2,15 @@ function safeYouTubeUrl(raw) {
   try {
     const url = new URL(String(raw));
     if (!/^https?:$/.test(url.protocol) || !isYouTubeUrl(url.href)) return null;
+    if (url.hostname.toLowerCase() === "m.youtube.com") url.hostname = "www.youtube.com";
     return url.href;
   } catch {
     return null;
   }
+}
+
+export function normalizeYouTubeUrl(raw) {
+  return safeYouTubeUrl(raw) || String(raw ?? "");
 }
 
 export function isYouTubeUrl(raw) {
@@ -64,28 +69,26 @@ export function youtubeSignInUrl(raw) {
 
 export function youtubeFallbackHtml(raw, origin = globalThis.location?.origin || "") {
   const target = safeYouTubeUrl(raw);
-  if (!target) return "";
-  const embedUrl = youtubeEmbedUrl(target, origin);
-  const signInUrl = youtubeSignInUrl(target);
-  const hasVideo = !!embedUrl;
-  const title = hasVideo ? "Your YouTube video is ready" : "Open YouTube directly";
-  const message = hasVideo
-    ? "The video player is shown below. If playback is restricted, open the video directly on YouTube."
-    : "YouTube’s interactive home feed cannot run inside Veyra’s Fast Proxy. Open YouTube in a regular browser tab for the full feed.";
-  const video = hasVideo ? `<div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div>` : "";
+  const embedUrl = target && youtubeEmbedUrl(target, origin);
+  const signInUrl = target && youtubeSignInUrl(target);
+  if (!target || !embedUrl || !signInUrl) return "";
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title>
+<title>YouTube video</title>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#0d0f13;color:#f2f4f8}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:clamp(16px,4vw,40px);background:radial-gradient(ellipse at 50% 0%,#182132 0%,#0d0f13 60%)}
-main{width:min(100%,900px)}.card{padding:clamp(20px,4vw,36px);border:1px solid #29303b;border-radius:20px;background:#12161deF;box-shadow:0 22px 70px #0007}.brand{display:flex;align-items:center;gap:10px;color:#f6f7fa;font-weight:750;font-size:18px}.play{display:grid;place-items:center;width:32px;height:23px;border-radius:7px;background:#f22;color:#fff;font-size:14px}.eyebrow{margin:26px 0 8px;color:#aab4c4;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{margin:0;font-size:clamp(25px,5vw,38px);line-height:1.12;letter-spacing:-.035em}p{color:#b7c0ce;line-height:1.6}.player{margin:24px 0 12px;aspect-ratio:16/9;overflow:hidden;border-radius:14px;background:#000}.player iframe{display:block;width:100%;height:100%;border:0}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #3a4352;border-radius:10px;color:#f2f4f8;text-decoration:none;font-weight:650}.button.primary{border-color:#e62117;background:#e62117;color:#fff}.note{margin:16px 0 0;font-size:12px;color:#8994a4}
+main{width:min(100%,1000px)}.card{padding:clamp(20px,4vw,36px);border:1px solid #29303b;border-radius:20px;background:#12161def;box-shadow:0 22px 70px #0007}.brand{display:flex;align-items:center;gap:10px;color:#f6f7fa;font-weight:750;font-size:18px}.play{display:grid;place-items:center;width:32px;height:23px;border-radius:7px;background:#f22;color:#fff;font-size:14px}.eyebrow{margin:26px 0 8px;color:#aab4c4;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{margin:0;font-size:clamp(25px,5vw,38px);line-height:1.12;letter-spacing:-.035em}p{color:#b7c0ce;line-height:1.6}.player{margin:24px 0 12px;aspect-ratio:16/9;overflow:hidden;border-radius:14px;background:#000}.player iframe{display:block;width:100%;height:100%;border:0}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #3a4352;border-radius:10px;color:#f2f4f8;text-decoration:none;font-weight:650}.button.primary{border-color:#e62117;background:#e62117;color:#fff}.note{margin:16px 0 0;font-size:12px;color:#8994a4}
 </style>
 </head>
-<body><main><section class="card"><div class="brand"><span class="play" aria-hidden="true">▶</span><span>YouTube</span></div><p class="eyebrow">Veyra Fast Proxy</p><h1>${title}</h1><p>${message}</p>${video}<div class="actions"><a class="button primary" href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">${hasVideo ? "Watch on YouTube" : "Open YouTube in a new tab"}</a><a class="button" href="${escapeHtml(signInUrl)}" target="_blank" rel="noopener noreferrer">Sign in to YouTube</a></div><p class="note">Sign-in opens directly on Google. Veyra does not receive or store your Google credentials.</p></section></main></body>
+<body><main><section class="card"><div class="brand"><span class="play" aria-hidden="true">▶</span><span>YouTube</span></div><p class="eyebrow">Official YouTube player</p><h1>Watch in Veyra</h1><p>The video is playing in YouTube’s own player below.</p><div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div><div class="actions"><a class="button primary" href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">Open video in a Veyra tab</a><a class="button" href="${escapeHtml(signInUrl)}" target="_blank" rel="noopener noreferrer">Sign in to YouTube</a></div><p class="note">These links open as Veyra tabs. Google handles sign-in; Veyra does not receive or store your Google credentials.</p></section></main>
+<script>
+(function(){document.addEventListener("click",function(event){var node=event.target;if(node&&node.nodeType!==1)node=node.parentElement;var link=node&&node.closest?node.closest("a[href]"):null;if(!link)return;var destination;try{destination=new URL(link.href,location.href)}catch{return}if(!/^https?:$/.test(destination.protocol))return;event.preventDefault();event.stopPropagation();var newTab=String(link.target||"").toLowerCase()==="_blank"||event.ctrlKey||event.metaKey||event.button===1;parent.postMessage({type:newTab?"veyra:open":"veyra:navigate",url:destination.href,source:"document-navigation"},"*")},true)})();
+</script>
+</body>
 </html>`;
 }

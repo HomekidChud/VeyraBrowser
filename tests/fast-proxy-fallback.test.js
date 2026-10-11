@@ -11,7 +11,10 @@ assert.match(appSource, /keeping the FAST_PROXY page/, "when Chromium is unavail
 assert.match(appSource, /t\.requiresBrowser = false/, "a failed or unavailable browser attempt must not prevent proxy fallback");
 assert.match(appSource, /youtubeProxy: true/, "YouTube keeps its dedicated no-Chromium fast-proxy strategy");
 assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\/reader|HTTP Reader/, "the browser UI no longer replaces the upstream page with an extracted-text reader");
-assert.match(appSource, /if \(isYouTubeUrl\(url\)\)\s*\{\s*t\.youtubeEmbed = !!youtubeEmbedUrl\(url\);[\s\S]{0,240}f\.srcdoc = youtubeFallbackHtml\(url\)/, "YouTube pages use a player or a clear direct-open fallback instead of the broken upstream skeleton");
-assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the local YouTube fallback is shown while the nested player initializes");
+assert.match(appSource, /if \(isYouTubeUrl\(url\) && youtubeEmbedUrl\(url\)\)[\s\S]{0,280}f\.srcdoc = youtubeFallbackHtml\(url\)/, "only watch URLs use the official YouTube player embed");
+assert.match(appSource, /t\.youtubeEmbed = false;[\s\S]{0,240}f\.src = proxyUrl\(url, "view", session\.id/, "YouTube home pages use the regular Veyra proxy instead of a link-only fallback");
+assert.match(appSource, /url = normalizeYouTubeUrl\(url\)/, "m.youtube.com URLs are normalized before they are loaded");
+assert.match(appSource, /trustedYouTubeFallbackLink = e\.origin === location\.origin[\s\S]{0,220}t\.youtubeEmbed === true/, "only the same-origin YouTube player fallback can send internal link messages");
+assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the official player is visible while YouTube initializes");
 
 console.log("VeyraBrowser FAST_PROXY fallback checks passed");
