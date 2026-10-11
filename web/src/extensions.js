@@ -1,5 +1,5 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.20-http-reader-fallback";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.21-fast-proxy";
 import { dtCall, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
 
 let B;

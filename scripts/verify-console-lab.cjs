@@ -18,12 +18,13 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.20-http-reader-fallback/);
-assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.20-http-reader-fallback/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.20-http-reader-fallback/);
+assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.21-fast-proxy/);
+assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.21-fast-proxy/);
+assert.match(bootstrap, /app\.js\?v=8\.28\.21-fast-proxy/);
 assert.match(app, /requiresBrowser: false/);
-assert.match(app, /Chromium is required for/);
+assert.match(app, /server Chromium is unavailable; keeping the FAST_PROXY page/);
 assert.match(app, /t\.requiresBrowser = true/);
+assert.doesNotMatch(app, /showHttpReaderFallback|httpReaderFallback|\/api\/reader/);
 assert.doesNotMatch(html, /runner\.js/);
 assert.match(gate, /api\/auth\/config/);
 assert.match(gate, /veyra:console-lab:auth-check/);
