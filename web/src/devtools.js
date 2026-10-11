@@ -1,6 +1,6 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.23-youtube-fallback";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.26-youtube-browser";
 import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
 
 let B, root, openState = false, panel = "elements";

@@ -20,7 +20,7 @@ assert.equal(embedParsed.pathname, "/embed/42TV0hS59OA");
 assert.equal(embedParsed.searchParams.get("start"), "45");
 assert.equal(embedParsed.searchParams.get("origin"), origin);
 assert.equal(embedParsed.searchParams.get("widget_referrer"), origin);
-assert.equal(youtubeEmbedUrl("https://m.youtube.com/", origin), null, "home URLs should use the normal Veyra proxy");
+assert.equal(youtubeEmbedUrl("https://m.youtube.com/", origin), null, "home URLs are not video embeds and should be routed to the browser engine");
 assert.equal(youtubeEmbedUrl("https://www.youtube.com/watch?v=bad!", origin), null, "invalid video IDs must be rejected");
 assert.equal(youtubeEmbedUrl("https://youtube.com.evil.example/watch?v=42TV0hS59OA", origin), null);
 

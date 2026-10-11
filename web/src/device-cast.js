@@ -13,7 +13,7 @@
  *   - Network quality indicator
  */
 
-import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.23-youtube-fallback";
+import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.26-youtube-browser";
 import { qrSvg } from "./qr.js";
 
 let B;

@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.23-youtube-fallback";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.23-youtube-fallback";
+} from "./core.js?v=8.28.26-youtube-browser";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.26-youtube-browser";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.25-youtube-routing";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.26-youtube-browser";
 
 
 
@@ -1041,8 +1041,11 @@ function resolveStrategy(url) {
   
   
   
-  if (isYouTubeUrl(url) && String(settings.runtime || "auto") !== "browser") {
-    return { key: "youtube-proxy", proxy: true, crawler: false, browser: false, race: false, youtubeProxy: true };
+  if (isYouTubeUrl(url)) {
+    if (youtubeEmbedUrl(url)) {
+      return { key: "youtube-proxy", proxy: true, crawler: false, browser: false, race: false, youtubeProxy: true };
+    }
+    return { key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true };
   }
   
   

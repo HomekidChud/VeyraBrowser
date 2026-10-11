@@ -2,7 +2,7 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.23-youtube-fallback";
+} from "./core.js?v=8.28.26-youtube-browser";
 import { initExtensions } from "./extensions.js";
 import { initSettings } from "./settings.js?v=8.28.18-professional-shell";
 
