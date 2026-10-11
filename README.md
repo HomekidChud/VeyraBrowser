@@ -47,6 +47,12 @@ Deploy the matching VeyraServer category endpoint first, then ship the Pages and
 
 The official player is available only after the Veyra API returns `ready` from `GET /api/media/youtube/:id`. Configure `YOUTUBE_DATA_API_KEY` in the server environment (not in this repository or the static client). The [YouTube status lookup](https://developers.google.com/youtube/data/guides/made_for_kids_status) checks whether the selected video is embeddable and not Made for Kids; the watch page links out when eligibility cannot be established. The queue is held in the active tab's memory and is not a recommendation feed.
 
+## Debugging and known issues
+
+For live end-to-end debugging sessions (GeoFS / Cesium through the Fast Proxy, OSM tile-template preload fix, session time-limit config mismatch) see
+[`../VeyraServer/docs/DEBUG_SESSION_2026-10-11_B.md`](https://github.com/HomekidChud/VeyraServer/blob/main/docs/DEBUG_SESSION_2026-10-11_B.md) (also [PR #12](https://github.com/HomekidChud/VeyraServer/pull/12)) and
+[`../VeyraServer/docs/GEOFS_DEBUG_REPORT.md`](https://github.com/HomekidChud/VeyraServer/blob/main/docs/GEOFS_DEBUG_REPORT.md).
+
 ## Structure
 
 See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
