@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.26-youtube-browser";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.26-youtube-browser";
+} from "./core.js?v=8.28.27-youtube-link-tabs";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.26-youtube-browser";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
 
 
 
@@ -571,6 +571,23 @@ function onFrameLoad(t) {
   try {
     const f = frameFor(t);
     const doc = f && f.contentDocument;
+    if (t.youtubeEmbed && doc?.documentElement?.dataset.veyraYoutubeFallback === "true" && !doc.__veyraLinkHandler) {
+      doc.__veyraLinkHandler = true;
+      doc.addEventListener("click", event => {
+        let node = event.target;
+        if (node && node.nodeType !== 1) node = node.parentElement;
+        const link = node?.closest?.("a[href]");
+        if (!link) return;
+        const url = canonical(link.href);
+        if (!url) return;
+        const target = String(link.getAttribute("target") || "").toLowerCase();
+        const openInNewTab = target === "_blank" || event.ctrlKey || event.metaKey || event.button === 1;
+        event.preventDefault();
+        event.stopPropagation();
+        if (openInNewTab) newTab({ url, index: state.tabs.indexOf(t) + 1 });
+        else go(url, { tab: t });
+      }, true);
+    }
     if (doc && doc.querySelector("[data-veyra-fullpage]")) {
       t.fullPage = true;
       t.browserMode = "FAST_PROXY";
@@ -2270,8 +2287,7 @@ async function handleMessage(e) {
   const t = tabForSource(e.source); if (!t) return;
   const consoleLabAuthCheck = d.type === "veyra:console-lab:auth-check";
   const trustedConsoleLabOrigin = consoleLabAuthCheck && e.origin === "https://homekidchud.github.io";
-  const trustedYouTubeFallbackLink = e.origin === location.origin && t.view === "page" && t.youtubeEmbed === true && isYouTubeUrl(t.url) && ["veyra:open", "veyra:navigate"].includes(d.type);
-  if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin && !trustedYouTubeFallbackLink) return;
+  if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin) return;
   if (d.type === "veyra:console-lab:auth-check") {
     if (t.view !== "page" || !isConsoleLabPageUrl(t.url) || typeof d.requestId !== "string") return;
     const requestId = d.requestId.slice(0, 100);

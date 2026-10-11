@@ -29,7 +29,8 @@ assert.match(watchHtml, /youtube-nocookie\.com\/embed\/42TV0hS59OA/);
 assert.match(watchHtml, /referrerpolicy="strict-origin-when-cross-origin"/);
 assert.match(watchHtml, /Official YouTube player/);
 assert.match(watchHtml, /Sign in to YouTube/);
-assert.match(watchHtml, /parent\.postMessage\(\{type:newTab\?"veyra:open":"veyra:navigate"/);
+assert.match(watchHtml, /<html lang="en" data-veyra-youtube-fallback="true">/);
+assert.doesNotMatch(watchHtml, /<script\b/i, "srcdoc inherits the shell CSP; link routing must be handled by the parent app");
 assert.match(watchHtml, /Google handles sign-in; Veyra does not receive or store your Google credentials/);
 assert.match(watchHtml, /target="_blank"/);
 

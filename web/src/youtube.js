@@ -74,7 +74,7 @@ export function youtubeFallbackHtml(raw, origin = globalThis.location?.origin ||
   if (!target || !embedUrl || !signInUrl) return "";
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-veyra-youtube-fallback="true">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -86,9 +86,6 @@ main{width:min(100%,1000px)}.card{padding:clamp(20px,4vw,36px);border:1px solid 
 </style>
 </head>
 <body><main><section class="card"><div class="brand"><span class="play" aria-hidden="true">▶</span><span>YouTube</span></div><p class="eyebrow">Official YouTube player</p><h1>Watch in Veyra</h1><p>The video is playing in YouTube’s own player below.</p><div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div><div class="actions"><a class="button primary" href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">Open video in a Veyra tab</a><a class="button" href="${escapeHtml(signInUrl)}" target="_blank" rel="noopener noreferrer">Sign in to YouTube</a></div><p class="note">These links open as Veyra tabs. Google handles sign-in; Veyra does not receive or store your Google credentials.</p></section></main>
-<script>
-(function(){document.addEventListener("click",function(event){var node=event.target;if(node&&node.nodeType!==1)node=node.parentElement;var link=node&&node.closest?node.closest("a[href]"):null;if(!link)return;var destination;try{destination=new URL(link.href,location.href)}catch{return}if(!/^https?:$/.test(destination.protocol))return;event.preventDefault();event.stopPropagation();var newTab=String(link.target||"").toLowerCase()==="_blank"||event.ctrlKey||event.metaKey||event.button===1;parent.postMessage({type:newTab?"veyra:open":"veyra:navigate",url:destination.href,source:"document-navigation"},"*")},true)})();
-</script>
 </body>
 </html>`;
 }

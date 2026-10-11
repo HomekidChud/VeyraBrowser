@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.26-youtube-browser";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.27-youtube-link-tabs";
 
 const pending = new Map();
 const listeners = new Set();

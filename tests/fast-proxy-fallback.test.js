@@ -14,7 +14,11 @@ assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\
 assert.match(appSource, /if \(isYouTubeUrl\(url\) && youtubeEmbedUrl\(url\)\)[\s\S]{0,280}f\.srcdoc = youtubeFallbackHtml\(url\)/, "only watch URLs use the official YouTube player embed");
 assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*if \(youtubeEmbedUrl\(url\)\) \{[\s\S]{0,220}return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages must use Veyra Chromium while videos use the official player");
 assert.match(appSource, /url = normalizeYouTubeUrl\(url\)/, "m.youtube.com URLs are normalized before they are loaded");
-assert.match(appSource, /trustedYouTubeFallbackLink = e\.origin === location\.origin[\s\S]{0,220}t\.youtubeEmbed === true/, "only the same-origin YouTube player fallback can send internal link messages");
+assert.match(appSource, /t\.youtubeEmbed && doc\?\.documentElement\?\.dataset\.veyraYoutubeFallback === "true" && !doc\.__veyraLinkHandler/, "the parent shell installs its link router only in the local YouTube fallback document");
+assert.match(appSource, /doc\.addEventListener\("click", event =>/);
+assert.match(appSource, /target === "_blank" \|\| event\.ctrlKey \|\| event\.metaKey \|\| event\.button === 1/);
+assert.match(appSource, /newTab\(\{ url, index: state\.tabs\.indexOf\(t\) \+ 1 \}\)/, "YouTube links requesting a new tab must become Veyra tabs");
+assert.doesNotMatch(appSource, /trustedYouTubeFallbackLink/, "YouTube links no longer depend on inline srcdoc postMessage code");
 assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the official player is visible while YouTube initializes");
 
 console.log("VeyraBrowser FAST_PROXY fallback checks passed");
