@@ -8,6 +8,7 @@ assert.match(appSource, /function showHttpReaderFallback\(t, url, key, reason\)/
 assert.match(appSource, /new URL\("\/api\/reader", API_ORIGIN\)/, "reader mode must be served by the Veyra API, not the target site");
 assert.match(appSource, /readerUrl\.searchParams\.set\("url", url\)/, "the original target URL is passed as data to the reader route");
 assert.match(appSource, /if \(strategy\.youtubeProxy\)\s*\{\s*showHttpReaderFallback\(t, url, `\$\{url\}\|youtube-http-reader`/, "YouTube's non-Chromium path must avoid loading its heavyweight proxied page");
+assert.match(appSource, /if \(strategy\.forceBrowserHost && !\(await serverChromiumAvailable\(\)\)\)\s*\{\s*showHttpReaderFallback/, "browser-only hosts must use HTTP reader when the server cannot start Chromium");
 assert.match(appSource, /void routeBrowserRequired\(t, u, key, d\.reason\)/, "browser-required events use the capability-aware fallback");
 assert.match(appSource, /t\.httpReaderFallback = true/, "reader fallback is tracked to prevent blank-page fallback loops");
 assert.match(appSource, /t\.httpReaderFallback\) return/, "reader pages are not reclassified as blank proxied pages");

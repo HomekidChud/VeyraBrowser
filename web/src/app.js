@@ -1166,6 +1166,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     showHttpReaderFallback(t, url, `${url}|youtube-http-reader`, "youtube-http-reader");
     return renderTabs();
   }
+  if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
+    showHttpReaderFallback(t, url, `${url}|chromium-unavailable`, "chromium-unavailable");
+    return renderTabs();
+  }
 
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
