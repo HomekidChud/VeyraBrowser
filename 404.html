@@ -1,13 +1,33 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url=./web/">
   <meta name="robots" content="noindex">
   <title>Veyra Browser</title>
+  <script>
+    // Redirect to the SPA root, using the absolute path derived from this
+    // page's location so we never chain 404 -> 404 -> 404 with a growing
+    // URL. For https://<user>.github.io/<repo>/web/<anything>, the app root
+    // is https://<user>.github.io/<repo>/web/. Same logic works for the
+    // repo root (https://<user>.github.io/<repo>/) and for the repo
+    // subpages that Veyra serves (browse, cast, extensions, etc.).
+    (function () {
+      var path = location.pathname;
+      // Find the '/web/' segment and keep everything before it.
+      var idx = path.indexOf('/web');
+      var base = idx > 0 ? path.slice(0, idx + 1) : '/';
+      // For paths that aren't '/web/...', fall back to the first path segment
+      // (works for the repo root when the app is served at /<repo>/).
+      if (idx === -1) {
+        var parts = path.split('/');
+        base = parts.length > 1 && parts[1] ? '/' + parts[1] + '/' : '/';
+      }
+      location.replace(base);
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0">
 </head>
 <body>
-  <script>location.replace(new URL("./web/", location.href));</script>
-  <a href="./web/">Open Veyra Browser</a>
+  <a href="/VeyraBrowser/web/">Open Veyra Browser</a>
 </body>
 </html>
