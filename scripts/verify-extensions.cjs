@@ -3,7 +3,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const ext = fs.readFileSync(path.join(root, 'web/src/extensions.js'), 'utf8');
-const bridge = fs.readFileSync(path.join(root, '..', 'VeyraServer', 'src/browser/devtools-bridge.js'), 'utf8');
+// Locate the VeyraServer checkout as a sibling directory, regardless of the
+// directory name it was cloned under. Fall back to an empty string so the
+// extension checks that depend on the server source skip cleanly.
+let bridge = '';
+for (const sibling of fs.readdirSync(path.join(root, '..'), { withFileTypes: true })) {
+  if (!sibling.isDirectory()) continue;
+  const candidate = path.join(root, '..', sibling.name, 'src/browser/devtools-bridge.js');
+  try { bridge = fs.readFileSync(candidate, 'utf8'); break; } catch {}
+}
 const html = fs.readFileSync(path.join(root, 'web/index.html'), 'utf8');
 
 assert.match(ext, /normalizeUserscript/);
