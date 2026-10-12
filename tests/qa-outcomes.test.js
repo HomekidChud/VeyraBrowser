@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { classifyOutcome } from "../scripts/qa-outcomes.mjs";
+assert.equal(classifyOutcome("A public landing page. ".repeat(100) + "Protected by reCAPTCHA", 200), "content-rendered");
+assert.equal(classifyOutcome("Please complete CAPTCHA", 200), "site-challenge");
+assert.equal(classifyOutcome("This site requires its own security verification", 200), "site-challenge");
+assert.equal(classifyOutcome("Something went wrong. Sorry about that!", 200), "provider-error-ui");
+assert.equal(classifyOutcome("Unknown Error", 200), "provider-error-ui");
+assert.equal(classifyOutcome("", 200), "empty-or-visual-only");
+assert.equal(classifyOutcome("You've been blocked by network security", 403), "http-error");
+assert.equal(classifyOutcome("Your session has expired", 200), "veyra-error");
+console.log("QA outcomes: 8 footer, provider error, empty and challenge checks passed.");

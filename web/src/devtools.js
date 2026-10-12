@@ -1,7 +1,8 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.27-youtube-link-tabs";
-import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.29-fast-proxy";
+import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.29-fast-proxy";
+import { consoleDiagnostics, sanitizeHar } from "./diagnostics-export.js";
 
 let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
@@ -335,6 +336,14 @@ function buildConsole() {
   $("conPreserve").checked = !!settings.preserveLog; $("conPreserve").onchange = e => { settings.preserveLog = e.target.checked; saveSettings(); };
   $("conClear").onclick = () => { const t = tab(); if (t) t.console = []; renderConsole(); updateCounts(); };
   $("conCopy").onclick = () => copyVisibleConsole(); $("conCopyJson").onclick = () => copyVisibleConsole(true);
+  $("conCopyJson").insertAdjacentHTML("afterend", '<button class="dt-chip" id="conDownload" title="Download diagnostics with URL queries and common secrets redacted">Download diagnostics</button>');
+  $("conDownload").onclick = () => {
+    const t = tab(); if (!t) return;
+    const report = consoleDiagnostics(t, filteredConsoleRows().rows);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+    const anchor = Object.assign(document.createElement("a"), { href: url, download: `${hostOf(t.url) || "veyra"}-console.json` });
+    anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
   $("conFilter").oninput = debounceRaf(renderConsole); $("conGroup").onchange = renderConsole;
   $("conLevels").onclick = e => { const b = e.target.closest("[data-lv]"); if (!b) return; $("conLevels").querySelectorAll(".dt-chip").forEach(x => x.classList.toggle("on", x === b)); renderConsole(); };
   const inp = $("conInput");
@@ -657,7 +666,7 @@ function asFetch(r) { return `fetch(${JSON.stringify(r.url)}, ${JSON.stringify({
 function exportHar() {
   const t = tab(); if (!t) return; const rows = netRows(t);
   const har = { log: { version: "1.2", creator: { name: "Veyra DevTools", version: "8.13" }, pages: [{ id: "page_1", title: t.url, startedDateTime: new Date(rows[0]?.startedAt || Date.now()).toISOString(), pageTimings: {} }], entries: rows.map(r => ({ pageref: "page_1", startedDateTime: new Date(r.startedAt || Date.now()).toISOString(), time: r.duration || 0, request: { method: r.method, url: r.url, httpVersion: r.protocol || "HTTP/1.1", headers: Object.entries(r.requestHeaders || {}).map(([name, value]) => ({ name, value: String(value) })), queryString: [], cookies: [], headersSize: -1, bodySize: r.requestBody ? String(r.requestBody).length : 0, ...(r.requestBody ? { postData: { mimeType: "", text: String(r.requestBody) } } : {}) }, response: { status: r.status || 0, statusText: "", httpVersion: r.protocol || "HTTP/1.1", headers: Object.entries(r.responseHeaders || {}).map(([name, value]) => ({ name, value: String(value) })), cookies: [], content: { size: r.size || 0, mimeType: r.mime || "" }, redirectURL: "", headersSize: -1, bodySize: r.size || -1 }, cache: {}, timings: { send: 0, wait: r.duration || 0, receive: 0 } })) } };
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(har, null, 2)], { type: "application/json" })), download: `${hostOf(t.url) || "veyra"}.har` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(sanitizeHar(har), null, 2)], { type: "application/json" })), download: `${hostOf(t.url) || "veyra"}.har` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 

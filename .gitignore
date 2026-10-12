@@ -1,4 +1,5 @@
 node_modules/
+qa-output/
 android/.gradle/
 android/build/
 android/app/build/

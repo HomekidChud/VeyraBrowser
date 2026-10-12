@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { matchesExtension as match } from '../web/src/extension-patterns.js';
+assert.equal(match({ matches: ['https://EXAMPLE.com/Account/*'] }, 'https://example.com/Account/Profile'), true);
+assert.equal(match({ matches: ['https://example.com/Account/*'] }, 'https://example.com/account/Profile'), false);
+assert.equal(match({ matches: ['https://example.com/*'] }, 'https://www.example.com/'), false);
+assert.equal(match({ matches: ['*://*.example.com/*'] }, 'https://example.com/'), true);
+assert.equal(match({ matches: ['*://*.example.com/*'] }, 'https://badexample.com/'), false);
+assert.equal(match({}, 'file:///secret'), false);
+assert.equal(match({ matches: ['<all_urls>'], excludeMatches: ['https://example.com/private/*'] }, 'https://example.com/private/x'), false);
+assert.equal(match({ matches: ['https://example.com/search?q=*'] }, 'https://example.com/search?q=Test'), true);
+console.log('Extension match patterns: 8 behavioral checks passed.');

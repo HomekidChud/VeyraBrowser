@@ -3,15 +3,16 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
-} from "./core.js?v=8.28.27-youtube-link-tabs";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.18-professional-shell";
-import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
+} from "./core.js?v=8.28.29-fast-proxy";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.29-fast-proxy";
+import { nativeBrowserReason } from "./proxy-compatibility.js?v=8.28.29-fast-proxy";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab, bridgeTargetOrigin } from "./bridge.js?v=8.28.29-fast-proxy";
+import { initUI } from "./ui.js?v=8.28.29-fast-proxy";
+import { initDevtools } from "./devtools.js?v=8.28.29-fast-proxy";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.29-fast-proxy";
 
 
 
@@ -194,7 +195,7 @@ const tabById = id => state.tabs.find(t => t.id === id) || null;
 function tabIconHtml(t) {
   if (t.loading) return `<span class="spin"></span>`;
   if (t.view !== "page") return `<svg><use href="#${INTERNAL[t.view]?.icon || "i-globe"}"/></svg>`;
-  if (t.favicon && state.session) return `<img src="${esc(proxyUrl(t.favicon, "resource", state.session.id))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'${esc(letterIcon(t.url).letter)}'}))">`;
+  if (t.favicon && state.session) return `<img src="${esc(proxyUrl(t.favicon, "resource", state.session.id))}" alt="" data-fallback-letter="${esc(letterIcon(t.url).letter)}">`;
   const li = letterIcon(t.url); return `<b style="display:grid;place-items:center;width:16px;height:16px;border-radius:4px;background:${li.color};color:#fff;font-size:10px">${esc(li.letter)}</b>`;
 }
 export function renderTabs() {
@@ -1223,7 +1224,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
           t.requiresBrowser = false;
           return switchToFastProxy(t, url, session, t.failoverReason);
         }
-        if (!t.renderWinner || t.renderWinner === "proxy") {
+        if (!t.renderWinner) {
           switchToFastProxy(t, url, session, result.reason);
         }
         return;
@@ -1480,6 +1481,7 @@ function releaseInactiveBrowserSlot(exclude) {
 }
 
 async function startBrowserSession(t, url, { background = false } = {}) {
+  if (!(await serverChromiumAvailable())) return { ok: false, reason: "chromium_disabled" };
   const sid = state.session?.id || "";
   
   
@@ -1598,7 +1600,8 @@ export async function stopLoad() {
 export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
 export function pageCommand(type, payload = {}, t = activeTab()) {
   const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false;
-  const targetOrigin = f.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
+  const targetOrigin = bridgeTargetOrigin(f);
+  if (!targetOrigin) return false;
   try { f.contentWindow.postMessage({ type, ...payload }, targetOrigin); return true; } catch { return false; }
 }
 export function printPage() { const t = activeTab(); if (t?.view !== "page" || !t.url) { window.print(); return; } if (isRemote(t)) { window.open(`${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot`, "_blank", "noopener"); return; } if (!pageCommand("veyra:print")) toast("This page can't be printed yet", { kind: "warn" }); }
@@ -2352,7 +2355,23 @@ async function handleMessage(e) {
     if (entry.level === "error") addLog("warn", `[page:${hostOf(d.pageUrl || t.url)}] ${entry.message.slice(0, 400)}`);
     return;
   }
-  if (d.type === "veyra:browser-network") { t.network.push(d); if (t.network.length > 1500) t.network.splice(0, t.network.length - 1500); hooks.dt?.onNetwork(t, d); return; }
+  if (d.type === "veyra:browser-network") {
+    t.network.push(d); if (t.network.length > 1500) t.network.splice(0, t.network.length - 1500);
+    hooks.dt?.onNetwork(t, d);
+    const reason = nativeBrowserReason({ ...d, pageUrl: t.url });
+    if (reason && t.view === "page" && !isRemote(t)) {
+      const key = `${t.url}|signed-feed-denied`;
+      t.compatNotices ||= new Set();
+      if (!t.compatNotices.has(key)) {
+        t.compatNotices.add(key);
+        addLog("warn", reason);
+        if (activeTab() === t) toast(reason, { kind: "warn", ms: 15000,
+          actionLabel: "Open directly", action: () => window.open(t.url, "_blank", "noopener,noreferrer") });
+        void routeBrowserRequired(t, t.url, key, "signed-feed-denied");
+      }
+    }
+    return;
+  }
   if (d.type === "veyra:find-result") { const n = Number(d.matches || 0); $("findCount").textContent = n ? `${n} match${n === 1 ? "" : "es"}` : "No matches"; return; }
   if (d.type === "veyra:unsupported") { toast(d.reason || "That action isn't supported through the proxy", { kind: "warn" }); return; }
   if (d.type === "veyra:open" && d.url) { const u = canonical(d.url); if (u) newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return; }
@@ -2448,6 +2467,11 @@ function wire() {
   $("findInput").oninput = e => findQuery(e.target.value);
   $("findInput").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); findQuery(e.target.value, e.shiftKey ? "backward" : "forward"); } else if (e.key === "Escape") { e.preventDefault(); closeFind(); } };
   $("findNext").onclick = () => findQuery($("findInput").value, "forward"); $("findPrev").onclick = () => findQuery($("findInput").value, "backward"); $("findClose").onclick = closeFind;
+  document.addEventListener("error", e => {
+    const img = e.target;
+    if (img instanceof HTMLImageElement && img.hasAttribute("data-fallback-letter"))
+      img.replaceWith(Object.assign(document.createElement("b"), { textContent: img.dataset.fallbackLetter }));
+  }, true);
   document.addEventListener("click", e => { const a = e.target.closest("[data-go]"); if (a) { e.preventDefault(); $("authDialog").open && $("authDialog").close(); goRoute(a.dataset.go); } const r = e.target.closest("a[data-route]"); if (r) { e.preventDefault(); goRoute(r.dataset.route); } });
   setupCalculator();
   window.addEventListener("error", e => addLog("error", `UI error: ${e.message}`));

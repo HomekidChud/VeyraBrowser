@@ -1,0 +1,16 @@
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const source = readFileSync(new URL('../web/src/core.js', import.meta.url), 'utf8');
+const line = source.split('\n').find(x => x.includes('if (auth.token') && x.includes('headers.set("Authorization"'));
+assert.ok(line, 'Find the actual API authorization implementation, not a copied fixture');
+const apply = new Function('headers', 'auth', line);
+const explicit = new Headers({ Authorization: 'Bearer cast-device' });
+apply(explicit, { token: 'account' });
+assert.equal(explicit.get('Authorization'), 'Bearer cast-device');
+const standard = new Headers();
+apply(standard, { token: 'account' });
+assert.equal(standard.get('Authorization'), 'Bearer account');
+const guest = new Headers();
+apply(guest, { token: '' });
+assert.equal(guest.has('Authorization'), false);
+console.log('API authorization: 3 header behavior checks passed.');

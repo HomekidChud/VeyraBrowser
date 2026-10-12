@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.27";
+export const VERSION = "8.28.29";
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -215,7 +215,7 @@ export async function api(path, options = {}) {
   const start = performance.now();
   const headers = new Headers(options.headers || {});
   headers.set("X-Veyra-Request-ID", requestId);
-  if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
+  if (auth.token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${auth.token}`);
   if (settings.adminToken) headers.set("X-Veyra-Admin-Token", settings.adminToken);
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }

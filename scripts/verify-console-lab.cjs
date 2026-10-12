@@ -18,9 +18,10 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.27-youtube-link-tabs/);
+const build = JSON.parse(fs.readFileSync(path.join(root, "web/config/boot.json"), "utf8")).build;
+assert.ok(browserHtml.includes(`bootstrap.js?v=${build}`));
+assert.ok(browseHtml.includes(`bootstrap.js?v=${build}`));
+assert.ok(bootstrap.includes(`app.js?v=${build}`));
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /server Chromium is unavailable; keeping the FAST_PROXY page/);
 assert.match(app, /t\.requiresBrowser = true/);
@@ -50,9 +51,9 @@ assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme 
 const resolveConsoleLabsTarget = appBase => new URL(`${appBase}/console-lab/`, "https://homekidchud.github.io").href;
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser/web"), "https://homekidchud.github.io/VeyraBrowser/web/console-lab/");
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser"), "https://homekidchud.github.io/VeyraBrowser/console-lab/");
-assert.match(app, /ui\.js\?v=8\.28\.18-professional-shell/);
-assert.match(ui, /settings\.js\?v=8\.28\.18-professional-shell/);
-assert.match(settings, /ui\.js\?v=8\.28\.18-professional-shell/);
+assert.ok(app.includes(`ui.js?v=${build}`));
+assert.ok(ui.includes(`settings.js?v=${build}`));
+assert.ok(settings.includes(`ui.js?v=${build}`));
 
 for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);

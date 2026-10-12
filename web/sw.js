@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.28.27-youtube-link-tabs";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.27-youtube-link-tabs", "./src/bootstrap.js?v=8.28.27-youtube-link-tabs"];
+const CACHE = "veyra-browser-shell-v8.28.29-fast-proxy";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.29-fast-proxy", "./src/bootstrap.js?v=8.28.29-fast-proxy"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -23,13 +23,13 @@ self.addEventListener("fetch", event => {
       const network = fetch(request).then(response => {
         if (response.ok) cache.put(request, response.clone());
         return response;
-      }).catch(() => cached);
+      }).catch(() => cached || Response.error());
       return cached || network;
     }
     try {
       return await fetch(request);
     } catch {
-      return cache.match("./index.html") || Response.error();
+      return (await cache.match("./index.html")) || Response.error();
     }
   })());
 });

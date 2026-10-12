@@ -1,6 +1,7 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.27-youtube-link-tabs";
-import { dtCall, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.29-fast-proxy";
+import { dtCall, isRemote } from "./bridge.js?v=8.28.29-fast-proxy";
+import { matchesExtension } from "./extension-patterns.js";
 
 let B;
 const BUILTIN = [];
@@ -61,17 +62,22 @@ function normalizeUserscript(raw, source = "local") {
   if (/^\s*\/\/\s*@(require|resource|connect|ant-include)\b/im.test(meta)) throw new Error("Remote userscript dependencies and network grants are blocked.");
   const name = get("name") || "Unnamed userscript";
   const slug = (get("namespace") + ":" + name).toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || uid();
-  const matchesList = [...meta.matchAll(/^\s*\/\/\s*@(?:match|include)\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean).slice(0, 30);
+  const matchesList = [...meta.matchAll(/^\s*\/\/\s*@(?:match|include)\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean);
+  const excludeMatches = [...meta.matchAll(/^\s*\/\/\s*@(?:exclude|exclude-match)\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean);
+  if (matchesList.length > 30 || excludeMatches.length > 30) throw new Error("Use at most 30 include and exclude patterns.");
+  if ([...matchesList, ...excludeMatches].some(x => x.startsWith("/"))) throw new Error("Regular-expression URL rules are not supported. Use explicit URL match patterns.");
   if (!text.trim() || text.length > 200000) throw new Error("Userscript is empty or exceeds 200 KB.");
   const grants = [...meta.matchAll(/^\s*\/\/\s*@grant\s+(.+)$/gmi)].map(x => x[1].trim()).filter(Boolean);
   const allowedGrants = new Set(["none", "GM_getValue", "GM_setValue", "GM_deleteValue", "GM_listValues", "GM_addStyle"]);
   if (grants.some(x => !allowedGrants.has(x))) throw new Error("This userscript requests an unsupported privilege.");
-  return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, grants, runAt: get("run-at") || "document-idle", enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
+  return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, excludeMatches, grants, runAt: get("run-at") || "document-idle", enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
 }
 function normalizeBrowserManifest(manifest, files = {}) {
   if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before importing Chrome or Edge extensions.");
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("The extension manifest must be a JSON object.");
   if (manifest.background || manifest.permissions?.some?.(p => /tabs|cookies|webRequest|management|nativeMessaging|clipboard/i.test(p))) throw new Error("Background code and privileged browser APIs are blocked.");
+  if (manifest.content_scripts?.length > 1) throw new Error("Import one content-script group per package so site permissions cannot be broadened by merging groups.");
+  if (manifest.content_scripts?.some(g => g.exclude_matches?.length || g.exclude_globs?.length || g.include_globs?.length || g.all_frames || g.world === "MAIN")) throw new Error("This import uses frame or exclusion rules Veyra cannot safely preserve. Use a Veyra package with explicit site matches instead.");
   const scripts = [], styles = [], matchesList = [];
   for (const group of Array.isArray(manifest.content_scripts) ? manifest.content_scripts : []) {
     for (const pattern of group.matches || []) matchesList.push(String(pattern));
@@ -81,6 +87,8 @@ function normalizeBrowserManifest(manifest, files = {}) {
   if (!scripts.length && !styles.length) throw new Error("This manifest has no supported content scripts or styles.");
   if (scripts.length && /@(?:require|resource|connect)\b/i.test(scripts.join("\n"))) throw new Error("Remote userscript dependencies are blocked.");
   const id = `chrome-${String(manifest.name || "extension").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)}-${uid().slice(-6)}`;
+  if (styles.length) safeCss(styles.join("\n"));
+  if (scripts.join("\n\n").length > 200000) throw new Error("Content scripts exceed the 200 KB limit.");
   return { id, name: String(manifest.name || "Imported browser extension").slice(0, 80), version: String(manifest.version || "1.0.0").slice(0, 20), description: String(manifest.description || "Imported Chrome/Edge content extension").slice(0, 300), css: styles.join("\n"), script: scripts.join("\n\n"), matches: matchesList.slice(0, 30), enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false, publisher: "Local import", author: "" };
 }
 async function fetchStore(force = false) {
@@ -104,21 +112,7 @@ function clearLegacyBuiltins() {
 
 
 function matches(ext, rawUrl) {
-  const list = Array.isArray(ext.matches) && ext.matches.length ? ext.matches : ["<all_urls>"];
-  let url; try { url = new URL(rawUrl); } catch { return false; }
-  return list.some(raw => {
-    const pattern = String(raw || "").trim().toLowerCase();
-    if (pattern === "<all_urls>" || pattern === "*") return /^https?:$/.test(url.protocol);
-    const parsed = pattern.match(/^(?:(\*|https?):\/\/)?([^/]+)(\/.*)?$/);
-    if (!parsed) return false;
-    const [, scheme = "*", host = "", path = "/*"] = parsed;
-    if (scheme !== "*" && url.protocol !== `${scheme}:`) return false;
-    const hostname = url.hostname.toLowerCase();
-    const hostOk = host === "*" ? true : host.startsWith("*.") ? hostname === host.slice(2) || hostname.endsWith(`.${host.slice(2)}`) : hostname === host || hostname === `www.${host}`;
-    if (!hostOk) return false;
-    const re = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
-    return re.test(url.pathname + url.search);
-  });
+  return matchesExtension(ext, rawUrl);
 }
 export function validateManifest(m) {
   if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("The manifest must be a JSON object.");
@@ -140,8 +134,10 @@ export async function applyToTab(t) {
   const calls = [];
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
   for (const d of devExts()) {
-    const active = d.enabled && matches(d, t.url);
-    calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(d.css)});\n` : ""}${d.script}` : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
+    try {
+      const active = d.enabled && matches(d, t.url);
+      calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(safeCss(d.css))});\n` : ""}${d.script}` : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
+    } catch (e) { addLog("warn", "EXTENSIONS", `Extension ${d.id} was skipped: ${e.message}`); }
   }
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
   for (const [m, p] of calls) { try { await dtCall(t, m, p, 4000); } catch (e) { if (!/unsupported|timed out/i.test(e.message)) addLog("warn", `Extension ${p.key || m} failed on ${hostOf(t.url)}: ${e.message}`); } }
@@ -271,7 +267,7 @@ export async function renderExtensions() {
     if (e.target.closest("[data-ext-refresh]")) { await fetchStore(true).catch(() => {}); renderExtensions(); return; }
     const r = e.target.closest("[data-run]"); if (r) { runAction(r.dataset.run, r); return; }
     const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
-    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
+    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js?v=8.28.29-fast-proxy"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
   };
 }
 

@@ -4,6 +4,8 @@ import fs from "node:fs";
 const appSource = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 assert.match(appSource, /async function serverChromiumAvailable\(\)/, "the client checks the server's advertised Chromium capability");
 assert.match(appSource, /status\?\.chromiumEnabled === true/, "missing or disabled Chromium must be treated as unavailable");
+assert.match(appSource, /async function startBrowserSession\([\s\S]{0,140}if \(!\(await serverChromiumAvailable\(\)\)\) return/, "all engine starts, including background probes, honor disabled Chromium");
+assert.doesNotMatch(appSource, /if \(!t\.renderWinner \|\| t\.renderWinner === "proxy"\)/, "failed background engines must not reload an already-rendered proxy page");
 assert.match(appSource, /f\.src = proxyUrl\(url, "view", session\.id/, "normal page loads use the upstream page proxy in the browser frame");
 assert.match(appSource, /if \(strategy\.forceBrowserHost && !\(await serverChromiumAvailable\(\)\)\)\s*\{\s*strategy = \{ \.\.\.strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false/, "special SPA hosts use the full proxy when server Chromium is disabled");
 assert.match(appSource, /async function routeBrowserRequired\(t, url, key, reason\)/, "browser-required events use the capability-aware fallback");
