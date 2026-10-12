@@ -1,6 +1,6 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.28-browser-qa";
-import { dtCall, isRemote } from "./bridge.js?v=8.28.28-browser-qa";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.29-fast-proxy";
+import { dtCall, isRemote } from "./bridge.js?v=8.28.29-fast-proxy";
 import { matchesExtension } from "./extension-patterns.js";
 
 let B;
@@ -267,7 +267,7 @@ export async function renderExtensions() {
     if (e.target.closest("[data-ext-refresh]")) { await fetchStore(true).catch(() => {}); renderExtensions(); return; }
     const r = e.target.closest("[data-run]"); if (r) { runAction(r.dataset.run, r); return; }
     const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
-    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js?v=8.28.28-browser-qa"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
+    const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js?v=8.28.29-fast-proxy"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
   };
 }
 

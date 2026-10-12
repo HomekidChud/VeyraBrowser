@@ -4,6 +4,8 @@ This is a bounded continuation of the previous AI's regression work, not a claim
 
 ## Scope and evidence
 
+The [Fast Proxy continuation](fast-proxy/README.md) supersedes the initial site outcomes below with a final 26-site local sample, additional cookie/SRI/loader fixes and a verified TikTok native-browser handoff. The earlier production baseline and maintenance findings below remain historical evidence, not the latest status.
+
 - **Browser baseline:** `dfb7a2161a2fa093617ebf1a2cd58a8116d0d617`; maintenance client build `8.28.28-browser-qa`.
 - **Server baseline:** `b523a8fd28ad6a1fac37acb56fb3bc2fe2cf1efd`.
 - **Live method:** Chromium, 1440 × 900, one isolated Veyra session per site, sequential navigation through the actual “Open in Veyra” control, console/pageerror and failed-request collection, and bounded waits for the requested document and readable content.

@@ -1,0 +1,1822 @@
+{
+  "base": "http://127.0.0.1:3000/web/?veyra_api=http%3A%2F%2F127.0.0.1%3A10000",
+  "recordedAt": "2026-10-12T01:01:06.214Z",
+  "results": [
+    {
+      "name": "YouTube",
+      "target": "https://www.youtube.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4281,
+      "content": "Skip navigation\nSign in\nTry searching to get started\nStart watching videos to help us build a feed of videos you'll love.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "name": "TikTok",
+      "target": "https://www.tiktok.com/",
+      "outcome": "provider-error-ui",
+      "elapsedMs": 7253,
+      "content": "Something went wrong\n\nSorry about that! Please try again later.\n\nRefresh",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Reflect is already polyfilled.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "loadable: `loadableReady()` requires state, please use `getScriptTags` or `getScriptElements` server-side",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Error: Unable to determine theme from timezone. Falling back to local time-based method. Error: Timezone \"UTC\" not found\n    at E (http://127.0.0.1:10000/api/resource?[redacted]\n    at P (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at lI (http://127.0.0.1:10000/api/resource?[redacted]\n    at uA (http://127.0.0.1:10000/api/resource?[redacted]\n    at u_ (http://127.0.0.1:10000/api/resource?[redacted]\n    at r6 (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at uI (http://127.0.0.1:10000/api/resource?[redacted]\n    at uw (http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "ServiceWorker register failed:  NotSupportedError: This page requires browser service-worker support.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Error: Unable to determine theme from timezone. Falling back to local time-based method. Error: Timezone \"UTC\" not found\n    at E (http://127.0.0.1:10000/api/resource?[redacted]\n    at P (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at lI (http://127.0.0.1:10000/api/resource?[redacted]\n    at uA (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at x (http://127.0.0.1:10000/api/resource?[redacted]\n    at MessagePort.N (http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "AppContext will be overwritten",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "getRecommendList err Response",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "prefetch image SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at Object.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]\n    at C (http://127.0.0.1:10000/api/resource?[redacted]\n    at a (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at new Promise (<anonymous>)\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at sw (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 403
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 403
+        }
+      ],
+      "screenshot": "provider-error-ui-TikTok.png"
+    },
+    {
+      "name": "Wikipedia",
+      "target": "https://en.wikipedia.org/wiki/Web_browser",
+      "outcome": "content-rendered",
+      "elapsedMs": 2201,
+      "content": "Jump to content\nMain menu\nSearch\nDonate\nCreate account\nLog in\nContents hide\n(Top)\nFunction\nHistory\nFeatures\nBrowser market\nToggle Browser market subsection\nMarket share by type of device\nSecurity\nToggle Security subsection\nPrivacy\nSee also\nReferences\nExternal links\nWeb browser\n145 languages\nArticle\nTalk\nRead\nView source\nView history\nTools\nAppearance hide\nFrom Wikipedia, the free encyclopedia\nA web browser (Safari) on a MacBook displaying the Wikipedia web page\n\nA web browser, often abbreviated as browser, is an application for accessing websites. When a user requests a web page from a particular website, the browser retrieves its files from a web server and then displays the page on the user's screen. Browsers can also display content stored locally on the user's device.\n\nBrowsers are used on a range of devices, including desktops, laptops, tablets, smartphones, smartwatches, smart televisions and consoles.[1] As of 2026, the most used browsers worldwide are Google Chrome (~69% market share), Safari (~16%), Edge (~5%), Firefox (~2%), Samsung Browser (~2%), and Opera (~2%).[2][3] As of 2023, an estimated 5.4 billion people had used a browser.[4]\n\nFunction\nNavigating to English Wikipedia using a web browser (Firefox)\n\nThe purpose of a web browser is to fetch content and display it on the user's device.[5] This process begins when the user inputs a Uniform Resource Locator (URL), such as https://en.wikipedia.org/, into the browser's address bar. Virtually all URLs on the Web start with either http: or https: which means they are retrieved with the Hypertext Transfer Protocol (HTTP). For secure mode (HTTPS), the connection between the browser and web server is encrypted, providing a secure and private data transfer.[6] For this reason, a web browser is often referred to as an HTTP client[7][8] or a user agent. Requisite materials, including text, style sheets, images, and other types of multimedia, are downloaded from the server. Once the materials have been downloaded, the web browser's engine (also known as a layout engine or rendering engine) is responsible for converting those resources into an interactive visual representation of the page on the user's device.[9] Modern web browsers also contain separate JavaScript engines which enable more complex interactive applications inside the browser.[10] A web browser that does not render a graphical user interface is known as a headless browser.\n\nWeb pages usually contain hyperlinks to other pages and resources. Each link contains a URL, and when it is clicked or tapped, the browser navigates to the new resource. Most browsers use an internal cache of web page resources to improve loading times for subsequent visits to the same page. The cache can store many items, such as large images, so they do not need to be downloaded from the server again. Cached items are usually only stored for as long as the web server stipulates in its HTTP response messages.[11][12]\n\nA web browser is not the same thing as a search engine, though the two are often confused.[13][14] A search engine is a website that provides links to other websites and allows users to search for specific resources using a textual query. However, web browsers are often used to access search engines, and most modern browsers allow users to access a default search engine directly by typing a query into the address bar.[15]\n\nHistory\nMain article: History of the web browser\n\nThe first web browser, called WorldWideWeb, was created in 1990 by Sir Tim Berners-Lee.[16][17] He then recruited Nicola Pellow to write the Line Mode Browser, which displayed web pages on dumb terminals.[18] The Mosaic web browser was released in April 1993, and was later credited as the first web browser to find mainstream popularity.[19][20] Its innovative graphical user interface made the World Wide Web easy to navigate and thus more accessible to the average person. This, in turn, sparked the Internet boom of the 1990s, when the Web grew at a very rapid rate.[20] The lead developers of Mosaic then founded the Netscape corporation, which released the Mosaic-influenced Netscape Navigator in 1994. Navigator quickly became the most popular browser.[21]\n\nMicrosoft debuted Internet Explorer in 1995, leading to a browser war with Netscape. Within a few years, Microsoft gained a dominant position in the browser market for two reasons: it bundled Internet Explorer with its popular Windows operating system and did so as freeware with no restrictions on usage. The market share of Internet Explorer peaked at over 95% in the early 2000s.[22] In 1998, Netscape launched what would become the Mozilla Foundation to create a new browser using the open-source software model. This work evolved into the Firefox browser, first released by Mozilla in 2004. Firefox's market share peaked at 32% in 2010.[23] Apple released its Safari browser in 2003; it remains the dominant browser on Apple devices, though it did not become popular elsewhere.[24]\n\nGoogle debuted its Chrome browser in 2008, which steadily took market share from Internet Explorer and became the most popular browser in 2012.[25][26] Chrome has remained dominant ever since.[2] In 2015, Microsoft replaced Internet Explorer with Edge [Legacy] for the Windows 10 release.[27] In 2020, this legacy version was replaced by a new Chromium-based version of Edge.\n\nSince the early 2000s, browsers have greatly expanded their HTML, CSS, JavaScript, and multimedia capabilities. One reason has been to enable more sophisticated websites, such as web apps. Another factor is the significant increase of broadband connectivity in many parts of the world, enabling people to access data-intensive content, such as streaming HD video on YouTube, that was not possible during the era of dial-up modems.[28]\n\nStarting in the mid-2020s, browsers with integrated artificial intelligence (AI) capabilities, known as AI browsers, have become increasingly common. This includes both new entrants to the browser m",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "GitHub",
+      "target": "https://github.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 6528,
+      "content": "Skip to content\nNavigation Menu\nPlatform\nSolutions\nResources\nOpen Source\nEnterprise\nPricing\nSearch\n/\nSign in\nSign up\nThe future of building happens together\n\nTools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform.\n\nEnter your email\nSign up for GitHub\nDownload GitHub Copilot app\nGitHub features\nA demonstration animation of a code editor using GitHub Copilot Chat, where the user requests GitHub Copilot to refactor duplicated logic and extract it into a reusable function for a given code snippet.\nCodePlanCollaborateAutomateSecure\n\nWrite, test, and fix code quickly with GitHub Copilot, from simple boilerplate to complex features.\n\nGITHUB CUSTOMERS\nAccelerate your entire workflow\n\nFrom your first line of code to final deployment, GitHub provides AI and automation tools to help you build and ship better software faster.\n\nA Copilot chat window with the 'Ask' mode enabled. The user switches from 'Ask' mode to 'Agent' mode from a dropdown menu, then sends the prompt 'Update the website to allow searching for running races by name.' Copilot analyzes the codebase, then explains the required edits for three files before generating them. Copilot then confirms completion and summarizes the implemented changes for the new functionality allowing users to search races by name and view paginated, filtered results.\nYour AI partner everywhere. Copilot is ready to work with you at each step of the software development lifecycle.\nExplore GitHub Copilot\n\nDuolingo boosts developer speed by 25% with GitHub Copilot\n\nRead customer story\n\n2025 Gartner® Magic Quadrant™ for AI Code Assistants\n\nRead industry report\nAutomate your path to production\n\nShip faster with secure, reliable CI/CD.\n\nExplore GitHub Actions\nCode instantly from anywhere\n\nLaunch a full, cloud-based development environment in seconds.\n\nExplore GitHub Codespaces\nKeep momentum on the go\n\nManage projects and assign tasks to Copilot, all from your mobile device.\n\nExplore GitHub Mobile\nShape your toolchain\n\nExtend your stack with apps, actions, and AI models.\n\nExplore GitHub Marketplace\nBuilt-in application security where found means fixed\n\nUse AI to find and fix vulnerabilities so your team can ship more secure software faster.\n\nApply fixes in seconds. Spend less time debugging and more time building features with Copilot Autofix.\nExplore GitHub Advanced Security\n\nSecurity debt, solved. Leverage security campaigns and Copilot Autofix to reduce application vulnerabilities.\n\nLearn about GitHub Code Security\n\nDependencies you can depend on. Update vulnerable dependencies with supported fixes for breaking changes.\n\nLearn about Dependabot\n\nYour secrets, your business. Detect, prevent, and remediate leaked secrets across your organization.\n\nLearn about GitHub Secret Protection\n\n70% MTTR reduction\nwith Copilot Autofix\n\n8.3M secret leaks stopped\nin the past 12 months with push protection\n\nWork together, achieve more\n\nFrom planning and discussion to code review, GitHub keeps your team’s conversation and context next to your code.\n\nPlan with clarity. Organize everything from high-level roadmaps to everyday tasks.\nExplore GitHub Projects\n“\nIt helps us onboard new software engineers and get them productive right away. We have all our source code, issues, and pull requests in one place... GitHub is a complete platform that frees us from menial tasks and enables us to do our best work.\nFABIAN FAULHABER\nApplication manager at Mercedes-Benz\nKeep track of your tasks\n\nCreate issues and manage projects with tools that adapt to your code.\n\nExplore GitHub Issues\nShare ideas and ask questions\n\nCreate space for open-ended conversations alongside your project.\n\nExplore GitHub Discussions\nReview code changes together\n\nAssign initial reviews to Copilot for greater speed and quality.\n\nExplore code review\nFund open source projects\n\nBecome an open source partner and support the tools and libraries that power your work.\n\nExplore GitHub Sponsors\nFrom startups to enterprises, GitHub scales with teams of any size in any industry.\nBy industryBy sizeBy use case\nTechnology\n\nFigma streamlines development and strengthens security\n\nRead customer story\nAutomotive\n\nMercedes-Benz standardizes source code and automates onboarding\n\nRead customer story\nFinancial services\n\nMercado Libre cuts coding time by 50%\n\nRead customer story\nExplore customer stories\nView all solutions\nMillions of developers and businesses call GitHub home\n\nWhether you’re scaling your development process or just learning how to code, GitHub is where you belong. Join the world’s most widely adopted developer platform to build the technologies that shape what’s next.\n\nEnter your email\nSign up for GitHub\nDownload GitHub Copilot app\nSite-wide Links\nTHE DEVELOPER NEWSLETTER\n\nGet tips, technical guides, and best practices. Twice a month. Right in your inbox.\n\nSubscribe\nPLATFORM\nFeatures\nEnterprise\nCopilot\nAI\nSecurity\nPricing\nTeam\nResources\nRoadmap\nCompare GitHub\nECOSYSTEM\nDeveloper API\nPartners\nEducation\nGitHub CLI\nGitHub Desktop\nGitHub Mobile\nGitHub Marketplace\nMCP Registry\nSUPPORT\nDocs\nCommunity Forum\nProfessional Services\nPremium Support\nSkills\nStatus\nContact GitHub\nWhat is Git?\nSitemap\nCOMPANY\nAbout\nWhy GitHub\nCustomer Stories\nBlog\nThe ReadME Project\nCareers\nInclusion\nSocial Impact\nShop\n© 2026 GITHUB, INC.\nTERMS\nPRIVACY\nMANAGE COOKIES\nDO NOT SHARE MY PERSONAL INFORMATION\nGitHub on LinkedIn\nGitHub on Instagram\nGitHub on YouTube\nGitHub on X\nGitHub on TikTok\nGitHub on Twitch\nGitHub’s organization on GitHub\nEnglish\n",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "Reddit",
+      "target": "https://www.reddit.com/",
+      "outcome": "http-error",
+      "elapsedMs": 796,
+      "content": "You've been blocked by network security.\nTo continue, log in to your Reddit account or use your developer token\n\nIf you think you've been blocked by mistake, file a ticket below and we'll look into it.\nLog in\nFile a ticket",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "status": 403
+        }
+      ],
+      "screenshot": "http-error-Reddit.png"
+    },
+    {
+      "name": "Google",
+      "target": "https://www.google.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 2079,
+      "content": "About\nStore\nGmailImages\nSign in\n \nAdvertising\nBusiness\nHow Search works\nBuild, create, and do more with AI tools from Google\nPrivacy\nTerms\nSettings",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Blocked autofocusing on a <textarea> element in a cross-origin subframe.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "MDN",
+      "target": "https://developer.mozilla.org/en-US/",
+      "outcome": "content-rendered",
+      "elapsedMs": 1544,
+      "content": "Skip to main content\nSkip to search\nHTML\nCSS\nJavaScript\nWeb APIs\nAll\nLearn\nTools\nAbout\nBlog\nMDN\nResources for Developers,\nby Developers \n\nDocumenting CSS, HTML, and JavaScript, since 2005.\n\n   / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /    / / / / / / / / / / / /\n  + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +   + + + + + +\n{ { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }   { { { {  } } } }  \n   ../../    ../../    ../../    ../../    ../../    ../../    ../../\n<> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </> <> </>\nFeatured articles\nBlog\nCelebrating 20 years of MDN\n\nMDN turns 20! Let's look at how we started, how MDN became the most trusted resource for web developers, the impact it's had on the open web, and yes, there's cake, too.\n\nWeb APIs\nNavigation API\n\nThe Navigation API provides the ability to initiate, intercept, and manage browser navigation actions. It can also examine an application's history entries. This is a successor to previous web platform features such as the History API and window.location, which solves their shortcomings and is specifically aimed at the needs of single-page applications (SPAs).\n\nWeb APIs\nTrusted Types API\n\nThe Trusted Types API gives web developers a way to ensure that input has been passed through a user-specified transformation function before being passed to an API that might execute that input. This can help to protect against client-side cross-site scripting (XSS) attacks. Most commonly the transformation function sanitizes the input.\n\nCSS\nUsing CSS anchor positioning\n\nThe CSS anchor positioning module defines features that allow you to tether elements together. Elements can be defined as anchor elements and anchor-positioned elements. Anchor-positioned elements can be bound to anchor elements. The anchor-positioned elements can then have their size and position set relative to the size and location of the anchor elements to which they are bound.\n\nLatest news\ndeveloper.mozilla.org\nIntroducing the MDN MCP server\n4 months ago\n\nMDN's MCP server brings MDN's documentation and browser compatibility data directly into your editor or IDE, giving your LLM or coding agent access to accurate, up-to-date web platform information.\n\ndeveloper.mozilla.org\nUnder the hood of MDN's new frontend\n6 months ago\n\nYou may have spotted that MDN has a new frontend. There's plenty happening under the surface, so let's unpack the technologies we chose, the architectural decisions we made, and why we did a rebuild at all.\n\ndeveloper.mozilla.org\nImage formats: Codecs and compression tools\n11 months ago\n\nImage compression involves countless trade-offs between quality, size, and speed. In this final part of the series, we experiment with codecs, metrics, and tools to find practical ways to balance efficiency and visual fidelity.\n\ndeveloper.mozilla.org\nA beginner-friendly guide to view transitions in CSS\n1 year ago\n\nLearn how to bring smooth, animated navigation to multi-page apps with view transitions. With just one line of CSS, you can enable seamless transitions between pages.\n\nRecent contributions\nmdn/content\n1 day ago\nbuild(deps-dev): bump source-map-js from 1.2.1 to 1.2.2\nmdn/content\n1 day ago\nUpdate Firefox 158 release notes for WebDriver conforming changes\nmdn/content\n1 day ago\nfix(js): correct expected output of three JavaScript examples\nmdn/content\n24 hours ago\nRemove GH polyfill links to baseline features\nmdn/content\n15 hours ago\nUpdate InterfaceData based on WebRef\nmdn/translated-content\n3 hours ago\nchore(fr): update of `Web/API/Window/scrollTo`\nmdn/translated-content\n3 hours ago\nchore(fr): translation of `Web/API/Window/scrollX`\nmdn/translated-content\n3 hours ago\nchore(fr): update of `Web/API/Window/scrollY`\nmdn/translated-content\n3 hours ago\nchore(fr): translation of `Web/API/Window/self`\nmdn/translated-content\n3 hours ago\nchore(fr): update of `Web/JavaScript/Reference/Global_Objects/RegExp/Symbol.split`\nContributor Spotlight\nSHRINIVASS ARUNACHALAM BALASUBRAMANIAN\nMDN closely follows W3C standards which helps me keep up with important topics. It's a complete package as it caters to everything; complex APIs, new browser functionalities, and best practices. MDN serves as a truly valuable resource and continues to assist me in my everyday development.\nGet involved\n\nYour blueprint for a better internet.\n\nMDN\nAbout\nBlog\nMozilla careers\nAdvertise with us\nMDN Plus\nProduct help\nContribute\nMDN Community\nCommunity resources\nWriting guidelines\nMDN Discord\nMDN on GitHub\nDevelopers\nWeb technologies\nLearn web development\nGuides\nTutorials\nGlossary\nHacks blog\nWebsite Privacy Notice\nTelemetry Settings\nLegal\nCommunity Participation Guidelines\n\nPortions of this content are ©1998–2026 by individual mozilla.org contributors. Content available under a Creative Commons license.\n\n      \n    \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n        \n          \n            \n          \n          \n          Exit search\n        \n        \n        \n          \n          \n        \n      \nTheme\nEnglish (US)\nSearch\n\n          \n    \n  \n        \n\n\n\n\n\n      \n      \n    \n\n          \n    \n  \n        ",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Blocked autofocusing on a <input> element in a cross-origin subframe.",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "BBC",
+      "target": "https://www.bbc.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4697,
+      "content": "Skip to content\nWatch Live\nHome\nNews\nSport\nBusiness\nTechnology\nHealth\nCulture\nArts\nTravel\nEarth\nAudio\nVideo\nLive\nDocumentaries\nTrump's 'energy ceasefire' claim welcomed by Zelensky but Russia silent\n\nZelensky says Kyiv would support such a truce. Moscow has yet to comment.\n\n3 hrs ago\nEurope\nTrump faces growing backlash over plans to import diesel from Russia\n\nBoth Republican and Democratic lawmakers have criticised the deal, which was announced weeks before the US midterm elections.\n\n2 hrs ago\nUS & Canada\nWatch: What's behind Trump's energy ceasefire claim?\n\nThe US president made the announcement in a social media post, which was an apparent surprise to Ukraine and Russia is yet to comment.\n\n4 hrs ago\nWorld\nOne killed, 11 injured in second Houthi strike on Riyadh airport in two days\n\nThe Saudi capital has been hit by multiple attacks from the Iran-backed Yemeni group over the weekend.\n\n2 hrs ago\nMiddle East\nPM says it is 'clear' Russia interfered with Brexit vote\n\nHe says voters were not \"sufficiently\" informed about how foreign actors sought to disrupt UK democracy.\n\n7 hrs ago\nPolitics\nWatch: Endangered orangutans released back into the wild after Borneo fires\n\nThe critically endangered apes were rescued from intense wildfires that destroyed their habitat in August and September.\n\n1 hr ago\nAsia\nBuildings swept away as flash floods hit central Nepal\n\nA flash flood at the Budhi Gandaki River has swept away several buildings and bridges, two months after catastrophic floods hit the country.\n\n14 hrs ago\nAsia\nONLY FROM THE BBC\nAI fears are growing – and unsettling new film Artificial puts them centre stage\n\nLuca Guadagnino's new film about Open AI and its co-founders Sam Altman and Ilya Sutskever offers a stark warning. Given recent news, its release couldn't be more provocatively timed.\n\nWhat blood sugar spikes reveal about your health\n\nIt's trendy to be concerned about blood sugar spikes, but these can be a normal response to eating. Here's when you don't need to worry.\n\nRECOMMENDED AUDIO\nGlobal News Podcast\nThe Global Story: Smart glasses or ‘pervert glasses’?\nSave\nThe Global Story\nWhat’s really happening with plague in Russia?\nSave\nThe Climate Question\nAre we ready for a super El Niño?\nSave\nWitness History\nThe boy behind the creation of the Winnie-the-Pooh books\nSave\nWitness History\nHow rats were trained to clear landmines\nSave\nThe Interface\nFacebook whistleblower Frances Haugen on the real Social Reckoning.\nSave\nMore or Less\nIs the UK state pension really the lowest in Europe?\nSave\nWitness History\nThe mirrors that lit up a dark Norwegian town\nSave\nThe Interview\nShami Chakrabarti, human rights lawyer: Healthy democracies need a free media\nSave\nWitness History\nEgypt’s President Sadat is assassinated\nSave\nThe Interview\nOlara Otunnu, diplomat: UN cannot be diplomatic ivory tower\nSave\nThe Climate Question\nThe battery revolution\nSave\nDOCUMENTARIES\nSuez: 24 Hours that Broke the British Empire\nThe Land of Troy\nEgypt’s Great Mummies: Unwrapped with Bettany Hughes\nThe Showjumper Murder\nBill Bailey's Vietnam Adventure\nThe Art of Turkish Tiles\nThe Mystery of Dark Energy\nIn Our Time\nThe Secret Life of Rockpools\nMORE NEWS\nChildren among 139 dead after boat capsizes off Djibouti, UN says\n\nThe boat was travelling from Djibouti to Yemen with 305 people on board, when it capsized near the port town of Obock on Thursday night.\n\n9 hrs ago\nWorld\nJaguars stun Eagles with last-second win in London\n\nCam Little kicks a 57-yard field goal in the final second to seal a 19-17 victory for the Jacksonville Jaguars against the Philadelphia Eagles in an exhilarating NFL London game at Tottenham Hotspur Stadium.\n\n7 hrs ago\nAmerican Football\nWildlife park remains closed after tiger attack\n\nYorkshire Wildlife Park remains closed after a man entered the tiger enclosure and was fatally attacked on Saturday.\n\n12 hrs ago\nSouth Yorkshire\nAmerican ranchers wrestle with soaring costs - and their loyalty to Trump\n\nMany farmers in states that backed the president say they are being hit from all sides, with the crucial midterm elections just weeks away.\n\n2 hrs ago\nUS & Canada\nPoland detains man suspected of planning assassination of PM Tusk\n\nPolice received credible information about possible attacks against Donald Tusk and his defence minister.\n\n8 hrs ago\nEurope\nPope Leo to have surgery after lump found on lung\n\nThe 71-year-old pontiff said the nodule was identified \"at a very early stage\".\n\n11 hrs ago\nWorld\nBurnham to release details of Man City meetings\n\nAndy Burnham has faced criticism for comments he made in the wake of Manchester City being found guilty of all charges related to breaches of the Premier League's financial rules.\n\n7 hrs ago\nMan City\nVerstappen dominates for first Singapore Grand Prix win\n\nRed Bull's Max Verstappen secures his first win in the Singapore Grand Prix, ahead of Charles Leclerc and Kimi Antonelli.\n\n10 hrs ago\nFormula 1\nMUST WATCH\nCould Alberta's vote on independence be Canada's Brexit moment?\n\nWATCH: The BBC's Nadine Yousif meets the separatists who want to quit the country - and the Canadians calling for unity in the face of threats from US President Trump.\n\nUS & Canada\nWatch: 'Time for Ukraine to get a new president', says Trump\n\nThe US president's said President Volodymyr Zelensky \"wants to make problems for the world\".\n\nWorld\nHeavy police presence and barricading at Delhi's Jantar Mantar\n\nTens of thousands of security personnel have been deployed and roads barricaded in Delhi to stop the latest Cockroach Janta Party demonstration.\n\nAsia\nBBC breaks down video of the aftermath of New York City ICE shooting\n\nThe BBC's Nada Tawfik goes through new dramatic body cam footage that shows the tense moments when police arrive on scene.\n\nUS & Canada\nThai Queen makes first solo flight in fighter jet\n\nThailand’s Queen Suthida made her first solo flight in a fighter jet, according to the Thai Royal Household.\n\nAsia\nCan the Fort Hood shooter's execution be livestreamed?\n\nRules on the recording and filming of e",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to read a named property 'search' from 'Location': Blocked a frame with origin \"http://127.0.0.1:10000/\" from accessing a cross-origin frame.",
+          "stack": "SecurityError: Failed to read a named property 'search' from 'Location': Blocked a frame with origin \"http://127.0.0.1:10000/\" from accessing a cross-origin frame.\n    at oe (http://127.0.0.1:10000/api/resource?[redacted]\n    at rn (http://127.0.0.1:10000/api/resource?[redacted]\n    at http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://a4621041136.cdn.optimizely.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/session/[redacted]/script-cookie",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "name": "Amazon",
+      "target": "https://www.amazon.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 2570,
+      "content": "Skip to\nMain content\nDelivering to Ashburn 20149\nUpdate location\nAll\nAll Departments\nAlexa Skills\nAmazon Autos\nAmazon Devices\nAmazon Global Store\nAmazon Haul\nAmazon One Medical\nAmazon Pharmacy\nAmazon Resale\nAppliances\nApps & Games\nArts, Crafts & Sewing\nAudible Books & Originals\nAutomotive Parts & Accessories\nBaby\nBeauty & Personal Care\nBooks\nCDs & Vinyl\nCell Phones & Accessories\nClothing, Shoes & Jewelry\nWomen's Clothing, Shoes & Jewelry\nMen's Clothing, Shoes & Jewelry\nGirl's Clothing, Shoes & Jewelry\nBoy's Clothing, Shoes & Jewelry\nBaby Clothing, Shoes & Jewelry\nCollectibles & Fine Art\nComputers\nCredit and Payment Cards\nDigital Music\nElectronics\nGarden & Outdoor\nGift Cards\nGrocery & Gourmet Food\nHandmade\nHealth, Household & Baby Care\nHome & Business Services\nHome & Kitchen\nIndustrial & Scientific\nJust for Prime\nKindle Store\nLuggage & Travel Gear\nLuxury Stores\nMagazine Subscriptions\nMovies & TV\nMusical Instruments\nOffice Products\nPet Supplies\nPremium Beauty\nPrime Video\nSmart Home\nSoftware\nSports & Outdoors\nSubscribe & Save\nSubscription Boxes\nTools & Home Improvement\nToys & Games\nUnder $10\nVideo Games\nWhole Foods Market\nEN\nHello, sign in\nAccount & Lists\nReturns\n& Orders\n0\nCart\nAll\nPrime\nGroceries\nToday's Deals\nCoupons\nPharmacy\nAudible\nMusic\nWhole Foods\nAmazon Home\nRegistry\nAutomotive\nNew Releases\nVideo Games\nFashion\nBaby\nHandmade\nPet Supplies\nBeauty & Personal Care\nToys & Games\nSports & Outdoors\nSmart Home\nSubscribe & Save\nWorks with Alexa\nGift Shop\nBest Sellers\nAmazon Haul\nCustom Products\nLuxury\nKindle Books\nBooks\nCostumes under $50 for women\n$2 flash finds\nLimit 2 per customer\nSpend less on Halloween\nTrick-or-treat candy under $25\nNew arrivals in electronics\nFresh finds generating buzz\nThe reimagined sneaker shop\nadidas, PUMA & more\n$2 flash finds\nLimit 2 per customer\nBack to top\nGet to Know Us\nCareers\nAmazon Newsletter\nAbout Amazon\nAccessibility\nSustainability\nPress Center\nInvestor Relations\nAmazon Devices\nAmazon Science\n\t\t\nMake Money with Us\nSell on Amazon\nSell apps on Amazon\nSupply to Amazon\nProtect & Build Your Brand\nBecome an Affiliate\nBecome a Delivery Driver\nStart a Package Delivery Business\nAdvertise Your Products\nSelf-Publish with Us\nBecome an Amazon Hub Partner\n›See More Ways to Make Money\n\t\t\nAmazon Payment Products\nAmazon Visa\nAmazon Store Card\nAmazon Secured Card\nAmazon Business Card\nShop with Points\nCredit Card Marketplace\nReload Your Balance\nGift Cards\nAmazon Currency Converter\n\t\t\nLet Us Help You\nYour Account\nYour Orders\nShipping Rates & Policies\nAmazon Prime\nReturns & Replacements\nManage Your Content and Devices\nRecalls and Product Safety Alerts\nRegistry & Gift List\nHelp\n \nEnglish  United States\nAmazon Music\nStream millions\nof songs\nAmazon Ads\nReach customers\nwherever they\nspend their time\n6pm\nScore deals\non fashion brands\nAbeBooks\nBooks, art\n& collectibles\nACX\nAudiobook Publishing\nMade Easy\nSell on Amazon\nStart a Selling Account\nVeeqo\nShipping Software\nInventory Management\nAmazon Business\nEverything For\nYour Business\nAmazon Fresh\nGroceries & More\nRight To Your Door\nAmazonGlobal\nShip Orders\nInternationally\nHome Services\nExperienced Pros\nHappiness Guarantee\nAmazon Web Services\nScalable Cloud\nComputing Services\nAudible\nListen to Books & Original\nAudio Performances\nBox Office Mojo\nFind Movie\nBox Office Data\nGoodreads\nBook reviews\n& recommendations\nIMDb\nMovies, TV\n& Celebrities\nIMDbPro\nGet Info Entertainment\nProfessionals Need\nKindle Direct Publishing\nIndie Digital & Print Publishing\nMade Easy\nAmazon Photos\nUnlimited Photo Storage\nFree With Prime\nPrime Video Direct\nVideo Distribution\nMade Easy\nShopbop\nDesigner\nFashion Brands\nAmazon Resale\nGreat Deals on\nQuality Used Products\nWhole Foods Market\nAmerica’s Healthiest\nGrocery Store\nWoot!\nDeals and\nShenanigans\nZappos\nShoes &\nClothing\nRing\nSmart Home\nSecurity Systems\neero WiFi\nStream 4K Video\nin Every Room\nBlink\nSmart Security\nfor Every Home\n \n \nNeighbors App\nReal-Time Crime\n& Safety Alerts\nPillPack\nPharmacy Simplified\nAmazon Renewed\nRefurbished tech\nyou can trust\n \n \nConditions of Use\nPrivacy Notice\nConsumer Health Data Privacy Disclosure\nYour Ads Privacy Choices\n© 1996-2026, Amazon.com, Inc. or its affiliates",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "name": "Instagram",
+      "target": "https://www.instagram.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4284,
+      "content": "See everyday moments from your close friends.\nLog into Instagram\nMobile number, username or email\nPassword\nLog in\nForgot password?\nLog in with Facebook\nCreate new account\nMeta\nAbout\nBlog\nJobs\nHelp\nAPI\nPrivacy\nConsumer Health Privacy\nTerms\nLocations\nPopular\nInstagram Lite\nMeta AI\nMuse\nThreads\nContact Uploading & Non-Users\nMeta Verified\nEnglish\nAfrikaans\nالعربية\nČeština\nDansk\nDeutsch\nΕλληνικά\nEnglish\nEnglish (UK)\nEspañol (España)\nEspañol\nفارسی\nSuomi\nFrançais\nעברית\nBahasa Indonesia\nItaliano\n日本語\n한국어\nBahasa Melayu\nNorsk\nNederlands\nPolski\nPortuguês (Brasil)\nPortuguês (Portugal)\nРусский\nSvenska\nภาษาไทย\nFilipino\nTürkçe\n中文(简体)\n中文(台灣)\nবাংলা\nગુજરાતી\nहिन्दी\nHrvatski\nMagyar\nಕನ್ನಡ\nമലയാളം\nमराठी\nनेपाली\nਪੰਜਾਬੀ\nසිංහල\nSlovenčina\nதமிழ்\nతెలుగు\nاردو\nTiếng Việt\n中文(香港)\nБългарски\nFrançais (Canada)\nRomână\nСрпски\nУкраїнська\n© 2026 Instagram from Meta",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 429 (Too Many Requests)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 429
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 429
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 429
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 429
+        }
+      ]
+    },
+    {
+      "name": "Twitch",
+      "target": "https://www.twitch.tv/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4310,
+      "content": "Cookies and Advertising Choices\n\n\nWe work with trusted partners to provide relevant advertising based on information about your use of Twitch and third-party websites and applications. If you want to learn more about our advertising practices and your rights to opt-out, click the \"Cookies & Ads Choices\" button to the right or use the navigation menu at the top of the page.\n\nCookies & Ads Choices\nProceed\nSkip to...\nAlt\nP\n\nBrowse\n\nLog In\nSign Up",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "No available adapters.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "00:59:38 - (VideoTransformer) WebGPU adapter unavailable",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "Discord",
+      "target": "https://discord.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4567,
+      "content": "Skip to main content\nDownload\n1 of 9\nNitro\n2 of 9\nDiscover\n3 of 9\nSafety\n4 of 9\nQuests\n5 of 9\nSupport\n6 of 9\nBlog\n7 of 9\nDevelopers \n8 of 9\n \nCareers\n9 of 9\nLog In\nGROUP CHAT THAT’S ALL FUN & GAMES\n\nDiscord is great for playing games and chilling with friends, or even building a worldwide community. Customize your own space to talk, play, and hang out.\n\nDownload for Windows\nOpen Discord in your browser\nMAKE YOUR GROUP CHATS MORE FUN\n\nUse custom emoji, stickers, soundboard effects and more to add your personality to your voice, video, or text chat. Set your avatar and a custom status, and write your own profile to show up in chat your way.\n\nSTREAM LIKE YOU’RE IN THE SAME ROOM\n\nHigh quality and low latency streaming makes it feel like you're hanging out on the couch with friends while playing a game, watching shows, looking at photos, or idk doing homework or something.\n\nHOP IN WHEN YOU'RE FREE, NO NEED TO CALL\n\nEasily hop in and out of voice or text chats without having to call or invite anyone, so your party chat lasts before, during, and after your game session.\n\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nTALK\nPLAY\nCHAT\nHANG OUT\nSEE WHO'S AROUND TO CHILL\n\nSee who's around, playing games, or just hanging out. For supported games, you can see what modes or characters your friends are playing and directly join up.\n\nALWAYS HAVE SOMETHING TO DO TOGETHER\n\nWatch videos, play built-in games, listen to music, or just scroll together and spam memes. Seamlessly text, call, video chat, and play games, all in one group chat.\n\nWHEREVER YOU GAME, HANG OUT HERE\n\nOn your PC, phone, or console, you can still hang out on Discord. Easily switch between devices and use tools to manage multiple group chats with friends.\n\nYOU CAN'T SCROLL ANYMORE.\nBETTER GO CHAT.\nDownload for Linux\nLanguage\nEnglish\nSocial\nProduct\nDownload\nNitro\nStatus\nApp Directory\nGift Cards\nCompany\nAbout\nJobs\nBrand\nNewsroom\nResources\nSupport\nSafety\nBlog\nCreators\nCommunity\nDevelopers\nQuests\nOfficial 3rd Party Merch\nFeedback\nPolicies\nTerms\nPrivacy\nCookie Settings\nGuidelines\nAcknowledgements\nLicenses\nCompany Information",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Failed to read the 'responseText' property from 'XMLHttpRequest': The value is only accessible if the object's 'responseType' is '' or 'text' (was 'json').",
+          "stack": "InvalidStateError: Failed to read the 'responseText' property from 'XMLHttpRequest': The value is only accessible if the object's 'responseType' is '' or 'text' (was 'json').\n    at t (http://127.0.0.1:10000/api/resource?[redacted]\n    at n.onreadystatechange (http://127.0.0.1:10000/api/resource?[redacted]\n    at XMLHttpRequest.o (http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "name": "StackOverflow",
+      "target": "https://stackoverflow.com/",
+      "outcome": "site-challenge",
+      "elapsedMs": 555,
+      "content": "VEYRA BROWSER\nThis site requires its own security verification\n\nVeyra's server proxy detected a security or bot-verification page (security-verification). It was not indexed as site content and Veyra will not attempt to bypass the site's security controls.\n\nVerify in real Chromium\nOpen directly in a new tab\nRetry through Veyra\n\nChromium shows the site's own check so you can complete it. Veyra does not solve, evade, or weaken CAPTCHA/anti-bot checks.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": [],
+      "screenshot": "site-challenge-StackOverflow.png"
+    },
+    {
+      "name": "Microsoft",
+      "target": "https://www.microsoft.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 5694,
+      "content": "Skip to main content\nMicrosoft 365\nAzure\nCopilot\nWindows\nSurface\nXBOX\nDeals\nSmall Business\nSupport\nAll Microsoft\nSearch\nCart\nPRE-ORDER NOW\nSURFACE LAPTOP ULTRA\nThe most powerful Surface laptop ever built, engineered for the frontier of local AI and 3D graphics. Powered by the NVIDIA RTX Spark™ Superchip. Plus, trade in your MacBook Pro and get up to $1,000 cash back. *\nPre-order Surface Laptop Ultra\nPre-order Surface Laptop Ultra for Business\nNew\nSURFACE RTX SPARK DEV BOX\nThe powerhouse for local AI and agent development, powered by NVIDIA RTX Spark™. Designed for frontier developers. Small enough to sit on your desktop. Powerful enough to create the future. \nPre-order now\nWhat will you do with all this power?\nMeet the Windows laptops powered by NVIDIA RTX Spark™—designed for demanding work and serious play.\nLearn more\nMore from Microsoft\nPersonal\nFind what you need faster with AI-powered suggestions\nHelp me choose a PC\nMicrosoft 365 tips\nSign in to my account\nThink big, travel light\n\nOur lightest Surface Laptop with dependable performance and long-lasting battery.*\n\nNew Surface Laptop\nPre-order now\nPC power, tablet portability\n\nOur most portable Surface Pro with tablet flexibility and full Windows laptop capabilities.\n\nNew Surface Pro\nPre-order now\nYour perfect companion\n\nWork smarter with Surface Mouse (2nd Edition)—precision feedback, seamless device switching, and a customizable action button.\n\nNew Surface Mouse\nPre-order now\nGo further with Copilot\n\nWith Microsoft 365, get productivity apps with Copilot, advanced AI features and cloud storage all in one plan.\n\nShop Microsoft 365\nXBOX Wireless Controller\n\nStay on target with textured triggers and bumpers, a hybrid D-pad, customizable button mapping, and more.\n\nShop now\nXBOX Game Pass\n\nPlay hundreds of games from every genre—on XBOX console, PC, and more.\n\nJoin now\nShop Surface\nShop Microsoft 365\nShop XBOX\nFind your next PC\nShop accessories\nShop for your business\nXBOX Series S\nNext-gen performance in the smallest XBOX ever\nShop XBOX Series S\nBusiness\nGet to know AI and Copilot\nAdvancing AI Governance and the Ecosystem\n\nMicrosoft released the 2026 Responsible AI Transparency Report—outlining our commitment to responsibly build, deploy, and govern AI across our products.\n\nRead the report\nWhen global trade gets messy, AI is here to help\n\nLearn how Canadian supply chain leader Kinaxis uses Maestro, an Azure-run AI platform, to help companies stay agile in times of uncertainty.\n\nRead the article\nExploring Theodore Roosevelt’s legacy with help from AI\n\nLearn how the Microsoft AI for Good Lab helped shape a new presidential library featuring a lifelike, AI-powered Roosevelt, ready for conversation.\n\nRead the story\nPowering every play\n\nFor the NFL, greatness starts in the preparation—and Viper on Azure helps everything align weeks before game day.\n\nRead the story\nTake it to the ballot\n\nElection Day is November 3. Make sure you're registered to have your say.\n\nCheck your registration\nPlay/Pause\nFollow Microsoft\nWhat's new\nSurface Laptop Ultra\nSurface Pro\nSurface Laptop\nSurface RTX Spark Dev Box\nExplore Copilot\nExplore Microsoft products\nWindows 11 apps\nMicrosoft Store\nAccount profile\nDownload Center\nMicrosoft Store support\nReturns\nOrder tracking\nCertified Refurbished\nWhy buy from Microsoft Store\nFlexible Payments\nEducation\nMicrosoft in education\nDevices for education\nMicrosoft Teams for Education\nMicrosoft 365 Education\nHow to buy for your school\nEducator training and development\nDeals for students and parents\nAI for education\nBusiness\nMicrosoft AI\nMicrosoft Security\nDynamics 365\nMicrosoft 365\nMicrosoft Power Platform\nMicrosoft Teams\nMicrosoft Copilot\nSmall Business\nDeveloper & IT\nAzure\nMicrosoft Developer\nMicrosoft Learn\nSupport for AI marketplace apps\nMicrosoft Tech Community\nMicrosoft Marketplace\nSoftware companies\nVisual Studio\nCompany\nCareers\nAbout Microsoft\nCompany news\nPrivacy at Microsoft\nInvestors\nDiversity and inclusion\nAccessibility\nSustainability\nEnglish (United States)\nYour Privacy Choices\nConsumer Health Privacy\nSitemap\nContact Microsoft\nPrivacy\nTerms of use\nTrademarks\nSafety & eco\nRecycling\nAbout our ads\n© Microsoft 2026\n\n          \n            \n              \n            \n          \n        \n\n\n\n\n        \n      \n\n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n\n\n\n\n\n\n\n        \n      \n\n\n        \n      \n\n        \n      \n\n\n\n        \n      \n\n\n        \n      \n        \n      \n    \n        \n      \n        \n      \n    \n        \n      \n        \n      \n    \n      \n\n\n\n\n          \n            \n              \n            \n          \n        \n\n\n\n          \n        \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n\n\n        \n      \n\n\n\n\n          \n            \n              \n            \n          \n        \n\n\n\n          \n        \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n\n\n        \n      \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n\n\n          \n            \n              \n            \n          \n        \n\n\n\n\n        \n      \n\n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n\n        \n      \n        \n      \n    \n        \n          \n          \n        \n      \n\n        \n      \n\n        \n      \n\n\n\n        \n      \n\n        \n      \n\n\n        \n      \n\n        \n      \n\n\n        \n      \n\n\n        \n      \nBack to Personal\n\n        \n      \n\n          \n            \n              \n            \n          \n        \n\n          \n        \n\n          \n            \n          \n        \n\n\n        \n   ",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'disconnect')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'disconnect')\n    at http://127.0.0.1:10000/api/resource?[redacted]\n    at NodeList.forEach (<anonymous>)\n    at HTMLDocument.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to initialize ReimagineTelemetry: ReferenceError: ReimagineDynamicSearchResultTelemetry is not defined\n    at G.createTelemetryObject (http://127.0.0.1:10000/api/resource?[redacted]\n    at new G (http://127.0.0.1:10000/api/resource?[redacted]\n    at HTMLDocument.m (http://127.0.0.1:10000/api/resource?[redacted]",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "pageerror",
+          "message": "Cannot read properties of undefined (reading 'querySelectorAllDeep')",
+          "stack": "TypeError: Cannot read properties of undefined (reading 'querySelectorAllDeep')\n    at HTMLDocument.<anonymous> (http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "name": "Apple",
+      "target": "https://www.apple.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 1849,
+      "content": "Apple\nApple\nStore\nMac\niPad\niPhone\nWatch\nVision\nAirPods\nTV & Home\nEntertainment\nAccessories\nSupport\n0\n+\niPhone 18 Pro\n\nPro further.\n\nLearn more\nBuy\niPhone Duo\n\nHello, hello.\n\nPre-order starting 5:00 a.m. PT on 10.16 Available starting 10.23\n\nLearn more\nView pricing\nApple Watch Series 12\n\nThe most accurate heart rate sensing in a wearable.1\n\nLearn more\nBuy\nApple Watch Ultra 4\n\nA battery you can’t outrun.\n\nLearn more\nBuy\nMacBook Air\n\nNow supercharged by M5.\n\nLearn more\nBuy\niPad Air\n\nNow supercharged by M4.\n\nLearn more\nBuy\nAirPods Pro 3\n\nThe world’s best in-ear Active Noise Cancellation.\n\nLearn more\nBuy\nApple Upgrade\n\nLove it. Lease it. Upgrade it.2\n\nLearn more\nApple Card\n\nGet up to 3% Daily Cash back with every purchase.\n\nLearn more\nApply now\nEndless entertainment.\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nItem 9\nF1 on Apple TV\n\nEvery Grand Prix™, live and on demand—all in one place, all year long.\n\nStream now\n\nActionSave the world, bring your friends.\n\nStream now\n\nComedyFriends. And family?\n\nStream now\n\nComedyThe hit comedy is back and Tedder than ever.\n\nMLS on Apple TV\n\nWatch every club, every match, live—all season long.\n\nStream now\n\nThrillerMI5’s most unruly spies are back and under attack.\n\nStream now\n\nDocumentaryStep into the kitchen as expert chefs work to earn—and keep—Michelin Stars.\n\nStream now\n\nActionA friendship with major red flags.\n\nStream now\n\nMystery14 Emmy® Awards Including Best Comedy\n\nPlay now\n\nHello Kitty Island Adventure\n\nMiley: The Zane Lowe Interview\n\nListen now\nWatch now\n\nJoin the Team with “Ted Lasso”\n\nPlay now\n\nPowerWash Simulator\n\nNew Music Daily\n\nListen now\nWatch now\n\nMeditation with Christian\n\nPlay now\n\nMadden NFL 27 Arcade Edition\n\nToday’s Hits\n\nListen now\nWatch now\n\nPrograms\n\nApple Footer\nBased on data from an Apple-conducted study of heart rate accuracy, during July and August 2026, utilizing commercially available best-selling wearables available as of June 2026. For more information, visit apple.com/HRAccuracy.\nApple Upgrade is a device leasing program available in the U.S. (excluding U.S. territories). Leases are provided by Klarna: subject to eligibility and credit approval, including final approval at checkout. To be eligible, you must be a U.S. resident, at least 18 years old (or the legal age in your state), have an accepted credit or debit card, and have an Apple Account. Additional eligibility criteria apply. Device must be in good condition upon return; damage fees may apply. For iPhone only: In order to lease an iPhone, you must select an eligible carrier (but you cannot use a prepaid carrier plan). Upgrades require entering into a new lease and are subject to eligibility and credit approval. Apple Upgrade is not available on refurbished devices or online at the following special stores: Apple Employee Purchase Plan; participating corporate Employee Purchase Programs; Apple at Work for small businesses or enterprises; Government, Education, or Veterans and Military Purchase Programs.\n\nTo access and use all Apple Card features and products available only to Apple Card users, you must add Apple Card to Wallet on an iPhone or iPad that supports and has the latest version of iOS or iPadOS. Apple Card is subject to credit approval, available only for qualifying applicants in the United States, and issued by Goldman Sachs Bank USA, Salt Lake City Branch.\n\nApple Payments Services LLC, a subsidiary of Apple Inc., is a service provider of Goldman Sachs Bank USA for Apple Card and Savings accounts. Neither Apple Inc. nor Apple Payments Services LLC is a bank.\n\nAll communications from Apple and Goldman Sachs Bank USA about Apple Card (including transactional and marketing communications) and customer service support are available in English. Certain communications about Apple Card can be viewed in another language depending on your device language settings. If you reside in the U.S. Virgin Islands, American Samoa, Guam, Northern Mariana Islands, or U.S. Minor Outlying Islands, please call Goldman Sachs at 877-255-5923 with questions about Apple Card.\n\nLearn more about how Apple Card applications are evaluated at support.apple.com/kb/HT209218.\nA subscription is required for Apple Arcade, Apple Fitness+, Apple Music, and Apple TV.\nFeatures are subject to change. Some features, applications, and services may not be available in all regions or all languages.\nShop and Learn\nStore\nMac\niPad\niPhone\nWatch\nVision\nAirPods\nTV & Home\nAirTag\nAccessories\nGift Cards\nApple Wallet\nWallet\nApple Card\nApple Pay\nApple Cash\nAccount\nManage Your Apple Account\nApple Store Account\niCloud.com\nEntertainment\nApple One\nApple TV\nApple Music\nApple Arcade\nApple Fitness+\nApple News+\nApple Podcasts\nApple Books\nApp Store\nApple Store\nFind a Store\nGenius Bar\nToday at Apple\nGroup Reservations\nApple Camp\nApple Store App\nCertified Refurbished\nApple Upgrade\nApple Trade In\nFinancing\nCarrier Deals at Apple\nOrder Status\nShopping Help\nFor Business\nApple and Business\nShop for Business\nFor Education\nApple and Education\nShop for K-12\nShop for College\nFor Healthcare\nApple and Healthcare\nFor Government\nApple and Government\nShop for Veterans and Military\nShop for State and Local Employees\nShop for Federal Employees\nApple Values\nAccessibility\nEducation\nEnvironment\nInclusion and Diversity\nPrivacy\nRacial Equity and Justice\nSupply Chain Innovation\nAbout Apple\nNewsroom\nApple Leadership\nCareer Opportunities\nInvestors\nEthics & Compliance\nEvents\nContact Apple\nMore ways to shop: Find an Apple Store or other retailer near you. Or call 1-800-MY-APPLE (1-800-692-7753).\nCopyright © 2026 Apple Inc. All rights reserved.\nPrivacy Policy Terms of Use Sales and Refunds Legal Site Map\nUnited States",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: net::ERR_INVALID_URL",
+          "location": "data:image/gif;base64"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "InternetArchive",
+      "target": "https://archive.org/",
+      "outcome": "content-rendered",
+      "elapsedMs": 1657,
+      "content": "\nSkip to main content\n\n\n  \n\n\n\n\n\n\n\n UPLOAD\n\nSign up for free\nLog in\nABOUT BLOG EVENTS PROJECTS HELP DONATE  CONTACT JOBS VOLUNTEER\n\n\n SIGN UP | LOG IN\nInternet Archive Audio\n\n        Live Music Archive\n      \n        Librivox Free Audio\n      \n\n        Featured\n        \n          \n        \n          All Audio\n        \n      \n        \n          Grateful Dead\n        \n      \n        \n          Netlabels\n        \n      \n        \n          Old Time Radio\n        \n      \n        \n          78 RPMs and Cylinder Recordings\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Audio Books & Poetry\n        \n      \n        \n          Computers, Technology and Science\n        \n      \n        \n          Music, Arts & Culture\n        \n      \n        \n          News & Public Affairs\n        \n      \n        \n          Spirituality & Religion\n        \n      \n        \n          Podcasts\n        \n      \n        \n          Radio News Archive\n        \n      \n        \n      \nImages\n\n        Metropolitan Museum\n      \n        Cleveland Museum of Art\n      \n\n        Featured\n        \n          \n        \n          All Images\n        \n      \n        \n          Flickr Commons\n        \n      \n        \n          Occupy Wall Street Flickr\n        \n      \n        \n          Cover Art\n        \n      \n        \n          USGS Maps\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          NASA Images\n        \n      \n        \n          Solar System Collection\n        \n      \n        \n          Ames Research Center\n        \n      \n        \n      \nSoftware\n\n        Internet Arcade\n      \n        Console Living Room\n      \n\n        Featured\n        \n          \n        \n          All Software\n        \n      \n        \n          Old School Emulation\n        \n      \n        \n          MS-DOS Games\n        \n      \n        \n          Historical Software\n        \n      \n        \n          Classic PC Games\n        \n      \n        \n          Software Library\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Kodi Archive and Support File\n        \n      \n        \n          Vintage Software\n        \n      \n        \n          APK\n        \n      \n        \n          MS-DOS\n        \n      \n        \n          CD-ROM Software\n        \n      \n        \n          CD-ROM Software Library\n        \n      \n        \n          Software Sites\n        \n      \n        \n          Tucows Software Library\n        \n      \n        \n          Shareware CD-ROMs\n        \n      \n        \n          Software Capsules Compilation\n        \n      \n        \n          CD-ROM Images\n        \n      \n        \n          ZX Spectrum\n        \n      \n        \n          DOOM Level CD\n        \n      \n        \n      \nTexts\n\n        Open Library\n      \n        American Libraries\n      \n\n        Featured\n        \n          \n        \n          All Texts\n        \n      \n        \n          Smithsonian Libraries\n        \n      \n        \n          FEDLINK (US)\n        \n      \n        \n          Genealogy\n        \n      \n        \n          Lincoln Collection\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          American Libraries\n        \n      \n        \n          Canadian Libraries\n        \n      \n        \n          Universal Library\n        \n      \n        \n          Project Gutenberg\n        \n      \n        \n          Children's Library\n        \n      \n        \n          Biodiversity Heritage Library\n        \n      \n        \n          Books by Language\n        \n      \n        \n          Folkscanomy\n        \n      \n        \n          Government Documents\n        \n      \n        \n      \nVideo\n\n        TV News\n      \n        Understanding 9/11\n      \n\n        Featured\n        \n          \n        \n          All Video\n        \n      \n        \n          Prelinger Archives\n        \n      \n        \n          Democracy Now!\n        \n      \n        \n          Occupy Wall Street\n        \n      \n        \n          TV NSA Clip Library\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Animation & Cartoons\n        \n      \n        \n          Arts & Music\n        \n      \n        \n          Computers & Technology\n        \n      \n        \n          Cultural & Academic Films\n        \n      \n        \n          Ephemeral Films\n        \n      \n        \n          Movies\n        \n      \n        \n          News & Public Affairs\n        \n      \n        \n          Spirituality & Religion\n        \n      \n        \n          Sports Videos\n        \n      \n        \n          Television\n        \n      \n        \n          Videogame Videos\n        \n      \n        \n          Vlogs\n        \n      \n        \n          Youth Media\n        \n      \n        \n      \n\n\n      \n\nTEXTS\nVIDEO\nAUDIO\nSOFTWARE\nIMAGES\n\n        \n      \n        \n  \n    Donate icon\n    An illustration of a heart shape\n    \n  \n\n      \n      Donate\n    \n      \n\n        \n      \n        \n  \n    Ellipses icon\n    An illustration of text ellipses.\n    \n  \n\n      \n      More\n    \n      \n\n        \n        \n          \n            Mobile Apps\n            \n              \n          Wayback Machine (iOS)\n        \n          Wayback Machine (Android)\n        \n            \n            Browser Extensions\n            \n              \n          Chrome\n        \n          Firefox\n        \n          Safari\n        \n          Edge\n        \n            \n          \n          \n            Archive-It Subscription\n            \n              \n          Explore the Collections\n        \n          Learn More\n        \n          Build Collections\n        \n            \n          \n        \n        \n      \n\n        \n              About\n            \n              Blog\n            \n              Events\n            \n              Projects\n            \n              Help\n            \n              Donate\n            \n              Contact\n            \n              Jobs\n            \n              Volunteer\n            \n      \n\n        \n          Se",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "Netflix",
+      "target": "https://www.netflix.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 2122,
+      "content": "Netflix\nSelect Language\nEnglish\nEspañol\nSign In\nUnlimited movies, TV shows, and more\n\nStarts at $8.99. Cancel anytime.\n\nReady to watch? Enter your email to create or restart your membership.\nEmail address\nGet Started\nThe Netflix you love for just $8.99.\n\nGet our most affordable, ad-supported plan.\n\nLearn More\nTrending Now\nDoing Life\n1\n1\nA Different World\n2\n2\nWhy Did I Get Married Again?\n3\n3\nMonster: The Lizzie Borden Story\n4\n4\nBeauty in Black\n5\n5\nMojo Brookzz: I Know You Lying\n6\n6\nEast of Eden\n7\n7\nAnimals\n8\n8\nBelow\n9\n9\nDeath of the Pastor's Wife\n10\n10\nMore Reasons to Join\nEnjoy on your TV\n\nWatch on Smart TVs, Playstation, Xbox, Chromecast, Apple TV, Blu-ray players, and more.\n\nDownload your shows to watch offline\n\nSave your favorites easily and always have something to watch.\n\nWatch everywhere\n\nStream unlimited movies and TV shows on your phone, tablet, laptop, and TV.\n\nCreate profiles for kids\n\nSend kids on adventures with their favorite characters in a space made just for them — free with your membership.\n\nFrequently Asked Questions\nWhat is Netflix?\nHow much does Netflix cost?\nWhere can I watch?\nHow do I cancel?\nWhat can I watch on Netflix?\nIs Netflix good for kids?\nReady to watch? Enter your email to create or restart your membership.\nEmail address\nGet Started\n\nQuestions? Call 1-844-569-7700\n\nFAQ\nHelp Center\nAccount\nNetflix House\nMedia Center\nInvestor Relations\nJobs\nNetflix Shop\nRedeem Gift Cards\nBuy Gift Cards\nWays to Watch\nTerms of Use\nPrivacy\nCookie Preferences\nCorporate Information\nContact Us\nSpeed Test\nLegal Notices\nOnly on Netflix\nDo Not Sell or Share My Personal Information\nAd Choices\nSelect Language\nEnglish\nEspañol\n\nThis page is protected by Google reCAPTCHA to ensure you're not a bot.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    },
+    {
+      "name": "Spotify",
+      "target": "https://open.spotify.com/",
+      "outcome": "empty-or-visual-only",
+      "elapsedMs": 20357,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to resolve endpoints via x-resolve. Using fallbacks! TypeError: Failed to fetch",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://open.spotify.com/') does not match the recipient window's origin ('http://127.0.0.1:10000/').",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [],
+      "screenshot": "empty-or-visual-only-Spotify.png"
+    },
+    {
+      "name": "Roblox",
+      "target": "https://www.roblox.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 6439,
+      "content": "One platform.\nMillions of games.\n\nPlay immersive games, watch interactive clips, chat with friends, and build worlds of your own.\n\nCreate account\nGet started with Roblox today\nCreate account\nSign in\nAbout Us\nJobs\nNewsroom\nParents\nBuy Gift Cards\nHelp\nTerms\nAccessibility\nPrivacy\nYour Privacy Choices\nSitemap\n\n©2026 Roblox Corporation. Roblox, the Roblox logo and Powering Imagination are among our registered and unregistered trademarks in the U.S. and other countries.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 ()",
+          "location": "https://o293668.ingest.us.sentry.io/api/4509158985826304/envelope/?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "An error occurred! For more details, see the full error text at https://go.apollo.dev/c/err",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[sdui-core] RegistryCompositionWarning: SDUI registry module \"sdui-common\" provided fallback components \"208\", but the more specific module \"discovery-common\" already defined it; the fallback definition was ignored",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[sdui-core] RegistryCompositionWarning: SDUI registry module \"sdui-common\" provided fallback components \"205\", but the more specific module \"sdui-client\" already defined it; the fallback definition was ignored",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[sdui-core] RegistryCompositionWarning: SDUI registry module \"sdui-common\" provided fallback components \"500\", but the more specific module \"sdui-client\" already defined it; the fallback definition was ignored",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "[sdui-core] RegistryCompositionWarning: SDUI registry module \"sdui-common\" provided fallback actionHandlers \"3\", but the more specific module \"discovery-common\" already defined it; the fallback definition was ignored",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Refused to execute script from 'http://127.0.0.1:10000/api/resource?[redacted]' because its MIME type ('application/json') is not executable, and strict MIME type checking is enabled.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "The namespace Purchasing.PurchaseDialog was not found",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "[2026-10-12T01:00:23.478Z] Error: Failed to start the connection: Error: This page requires browser WebSocket support; switching to Chromium.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 ()",
+          "location": "https://o293668.ingest.us.sentry.io/api/4509158985826304/envelope/?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "https://o293668.ingest.us.sentry.io/api/4509158985826304/envelope/?[redacted]",
+          "status": 403
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 401
+        },
+        {
+          "url": "https://o293668.ingest.us.sentry.io/api/4509158985826304/envelope/?[redacted]",
+          "status": 403
+        }
+      ]
+    },
+    {
+      "name": "CNN",
+      "target": "https://www.cnn.com/",
+      "outcome": "provider-error-ui",
+      "elapsedMs": 15499,
+      "content": "Unknown Error",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "eBay",
+      "target": "https://www.ebay.com/",
+      "outcome": "http-error",
+      "elapsedMs": 853,
+      "content": "SORRY\n\nSomething went wrong on our end\n\n0.91813217.1791766839.ee2f1a22\n\nPlease go back and try again\nor go to eBay Homepage.\n\nGo to homepage\n\nCopyright © 1995-2026 eBay Inc. All Rights Reserved.",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "status": 403
+        }
+      ]
+    },
+    {
+      "name": "Pinterest",
+      "target": "https://www.pinterest.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 4559,
+      "content": "Skip to content\nExplore\nShop\nAbout\n; Opens a new tab\nBusinesses\n; Opens a new tab\nCreate\n; Opens a new tab\nNews\n; Opens a new tab\nLog in\nSign up\nCreate the life you love on Pinterest\nJoin Pinterest for free\nI already have an account\nBring your favorite ideas to life\nWith Pinterest, you can unlock tools that spark your creativity and help you find more inspiration.\nSearch by skin tone\nSearch with skin tone ranges for beauty ideas that represent you\nJoin Pinterest\nCollaborate with group boards\nVisualize your ideas with others, using a Pinterest account\nJoin Pinterest\nSearch visually with images\nSearch objects within an image to find more styles you’ll love\nJoin Pinterest\nSign up to get your ideas\nGet the app\niOS\nAndroid\nQuick links\nExplore\nShop\nHelp Center\nPolicies\nTerms of service\nPrivacy policy\nNon-user notice\n© 2026 Pinterest",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Permissions policy violation: compute-pressure is not allowed in this document.",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "location": "http://127.0.0.1:10000/api/resource?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "name": "Facebook",
+      "target": "https://www.facebook.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 1053,
+      "content": "Explore the things you love.\nLog into Facebook\nLog in\nForgot password?\nCreate new account\nEnglish (US)\nEspañol\nFrançais (France)\n中文(简体)\nالعربية\nPortuguês (Brasil)\nItaliano\nMore languages…\nSign Up\nLog In\nMessenger\nFacebook Lite\nVideo\nMeta Pay\nMeta Store\nMeta Quest\nRay-Ban Meta\nMeta AI\nMuse\nInstagram\nThreads\nPrivacy Policy\nConsumer Health Privacy\nPrivacy Center\nAbout\nCreate ad\nCreate Page\nDevelopers\nCareers\nCookies\nAd choices \nTerms\nHelp\nContact Uploading & Non-Users",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "LinkedIn",
+      "target": "https://www.linkedin.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 883,
+      "content": "Skip to main content\nLinkedIn\nTop Content\nPeople\nLearning\nJobs\nGames\nSign in\nJoin now\nDiscover new opportunities\nSign in with email\n\nBy clicking Continue to join or sign in, you agree to LinkedIn’s User Agreement, Privacy Policy, and Cookie Policy.\n\nNew to LinkedIn? Join now\n\nExplore top LinkedIn content\n\nDiscover relevant posts and expert insights — curated by topic and in one place.\n\nCareer\nProductivity\nFinance\nSoft Skills & Emotional Intelligence\nProject Management\nEducation\nTechnology\nLeadership\nEcommerce\nShow all\nFind the right job or internship for you\nEngineering\nBusiness Development\nFinance\nAdministrative Assistant\nRetail Associate\nCustomer Service\nOperations\nInformation Technology\nMarketing\nHuman Resources\nShow more \nPost your job for millions of people to see\nPost a job\nDiscover the best software tools\n\nConnect with buyers who have first-hand experience to find the best products for you.\n\nE-Commerce Platforms\nCRM Software\nHuman Resources Management Systems\nRecruiting Software\nSales Intelligence Software\nProject Management Software\nHelp Desk Software\nSocial Networking Software\nDesktop Publishing Software\nShow all\nKeep your mind sharp with games\n\nTake a break and reconnect with your network through quick daily games.\n\nPatches\nZip\nMini Sudoku\nQueens\nTango\nPinpoint\nCrossclimb\nLet the right people know you’re open to work\n\nWith the Open To Work feature, you can privately tell recruiters or publicly share with the LinkedIn community that you are looking for new job opportunities.\n\nConversations today could lead to opportunity tomorrow\n\nSending messages to people you know is a great way to strengthen relationships as you take the next step in your career.\n\nStay up to date on your industry\n\nFrom live videos, to stories, to newsletters and more, LinkedIn is full of ways to stay up to date on the latest discussions in your industry.\n\nConnect with people who can help\nFind people you know\nLearn the skills you need to succeed\nChoose a topic to learn about\nWho is LinkedIn for?\n\nAnyone looking to navigate their professional life.\n\nFind a coworker or classmate\nFind a new job\nFind a course or training\nJoin your colleagues, classmates, and friends on LinkedIn\nGet started\nGeneral\nSign Up\nHelp Center\nAbout\nPress\nBlog\nCareers\nDevelopers\nBrowse LinkedIn\nLearning\nJobs\nGames\nMobile\nServices\nProducts\nTop Companies\nTop Startups\nTop Colleges\nBusiness Solutions\nTalent\nMarketing\nSales\nLearning\nDirectories\nMembers\nJobs\nCompanies\nFeatured\nLearning\nPosts\nArticles\nSchools\nNews\nNews Letters\nServices\nProducts\nPeople Search\nLinkedIn\n© 2026\nAbout\nAccessibility\nUser Agreement\nPrivacy Policy\nYour California Privacy Choices\nCookie Policy\nCopyright Policy\nBrand Policy\nGuest Controls\nCommunity Guidelines\nLanguage",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": []
+    },
+    {
+      "name": "NewYorkTimes",
+      "target": "https://www.nytimes.com/",
+      "outcome": "http-error",
+      "elapsedMs": 15590,
+      "content": "",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_BLOCKED_BY_ORB"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "status": 403
+        },
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "status": 403
+        }
+      ]
+    },
+    {
+      "name": "Cloudflare",
+      "target": "https://www.cloudflare.com/",
+      "outcome": "content-rendered",
+      "elapsedMs": 2688,
+      "content": "Products\nSolutions\nResources\nPricing\nUnder attack?\nLogin\nContact sales\nStart building\nConnect 2026 · The Agentic Conference of the Year · Oct 19-21\nEverything we learned from powering 20% of the Internet—yours by default\n\nOne platform for your apps, agents, and workforce.\nBuild, secure, and scale without managing infrastructure.\n\nStart building for free\nRegion: Earth\n\nOne smart network for workloads + security — close to users, close to data.\n\nCompute close to users reduces network latency.\n\nSmart Placement moves your Worker closer to your data for optimized end-to-end latency.\n\n4.5x faster\n\nFaster for 95% of round trips by running Workers near your backend, not you.\n\n95% of the world’s Internet-connected population is reached by Cloudflare within 50ms.\n\n310B\n\nDaily cyber threats blocked.\n\nRun everywhere\n\nSecurity, connectivity, and code run in 335+ cities around the world, within 50ms of 95% of the world's population.\n\nRun anywhere\n\nOur network is close to your users, applications, and sites. It optimizes all your traffic from source to destination for low latency.\n\nRun at massive scale\n\nNo more capacity planning. Ever.\n\nCloudflare powers 45% of the Fortune 500\n\nTrusted by the teams you trust.\n\nShopify\nCharacter.AI\nIntercom\nDoorDash\nDiscord\nZendesk\nLovable\nnpm\nSiteGPT\nLiveblocks\nLeagued\nSeated\nPeople\nShopify\nCharacter.AI\nIntercom\nPause\n“\nFor Shopify, the real challenge is not about how many different pieces of complex technology we can use but the opposite. Cloudflare helps us find a simple way to achieve something very complex that we can scale and maintain.”\n\nDuncan Davidson, VP of Developer Productivity, Shopify\n\nAnd thousands more...\n\nWhy choose Cloudflare\n\nEverything needed to\nbuild\n \nsecure,\n \nperformant\n \napplications\n\nFighting infra with “cloud”\nShipping with\nCloudflare\nPay only\nwhen\n \nyour\n \ncode\n \nruns\n\n(Not to keep servers warm.)\n\nNetwork & CDN\nSASE / Zero Trust\nCompute & Storage\nNetwork & CDN\nSASE / Zero Trust\nCompute & Storage\nPay for clean traffic\n\nOne stack of security and performance for every site — same DDoS mitigation, same global CDN, same network at every tier. You only pay for the depth your site needs.\n\nVisitor traffic\nYour site\nCDN\nDDoS\nSSL\nWAF\nBot\nSame protection at every tier — paid plans add depth\n\nFree\nfor hobby projects\n\n$0\n/month\nUnmetered DDoS\nUniversal SSL\nGlobal CDN\nSee Free plan\n\nPro\nfor pro websites\n\n$20\n/mo billed annually\nor $25/mo billed monthly\nImage optimization\nBot protection\nTicket support\nSee Pro plan\n\nBusiness\nfor small business\n\n$200\n/mo billed annually\nor $250/mo billed monthly\nPCI DSS 4.0\n100% uptime SLA\nChat support\nSee Business plan\n\nContract\nfor mission-critical\n\nCustom\nBilled annually\nNetwork priority\n24/7 support\nCustom contracts\nSee Contract plan\nPay for active employees\n\nConnect and secure users, devices, and data on one Zero Trust platform. The first 50 employees are on us — scale to thousands at a flat per-user rate.\n\n50 users on us\nThen $7 per active user\nBilled monthly · scales to thousands\n\nFree\nfor teams under 50\n\n$0\nforever\nZTNA, SWG & DEX\n24h log retention\nCommunity support\nSee Free plan\n\nPay-as-you-go\nscales with headcount\n\n$7\n/user/month\n100% uptime SLA\n30-day logs\nChat & ticket support\nSee Pay-as-you-go plan\n\nContract\nfor full-featured SASE\n\nCustom\nAnnual price per user\nUnlimited CASB & DLP\nLogpush\n24/7 phone support\nSee Contract plan\nWall Clock vs. CPU Time\n\nNever pay for idle time waiting for slow APIs, LLMs, or humans. Cloudflare charges only for compute, not wall time, even during long agent workflows or hibernating WebSockets.\n\n1ms\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nLLM Call 2500ms\n0.5ms\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nfree\nAPI Call 300ms\n0.75ms\nPaid\nFree\nFree\n\nNo credit card needed\n\nSee more\nWorkers\nDurable Objects\nWorkers KV\n100,000\n\n/ daily requests\n\n1 million\n\n/ KV daily reads\n\n25\n\n/ AI daily requests\n\n10GB\n\n/ R2 Storage\n\n5 GB\n\n/ SQL Stored Data\n\n1 GB\n\n/ Stored Data (KV)\n\n1 GB\n\n/ Stored Data\n\n100,000\n\n/ Read requests\n\n1,000\n\n/ Write/Delete/List requests\n\nPaid\n\nStarts at $5/month\n\nSee more\nWorkers\nDurable Objects\nWorkers KV\n$0.30\n\n/ million requests\n\n$0.02\n\n/ million CPU ms\n\n$0.15\n\n/ million\n\n$12.50\n\n/ million GB-s\n\n$0.001\n\n/ million Read rows\n\n$1.00\n\n/ million Written rows\n\n$0.50\n\n/ GB-month\n\n$0.50\n\n/ million Read requests\n\n$5.00\n\n/ million Write/Delete/List requests\n\nTailored to your team\n\nEasy to use for both startups and the world’s largest enterprises.\n\nFits into your existing workflows\n\nGit, GitHub Actions, VS Code, and any framework. No proprietary tools or vendor lock-in.\n\nOne network for users, apps, and data\n\nWhether you're shipping code, securing employees, or connecting branches, it all runs on the same global network — managed from one dashboard, billed as one platform.\n\nSecure by default\n\nDDoS protection, WAF, bot management, and Zero Trust controls are built into the network and run on every request from day one.\n\nFast path to AI adoption\n\nBuild, deploy, and govern AI agents on the same network. Secure MCP portals, identity-aware access, and built-in inference make production AI a one-step deploy.\n\nLaunching agents to analyze repository…\n3 background agents launched\nreview-agent\nscanning PRs\n179.6k tokens\ntest-agent\nrunning checks\n8k tokens\ndocs-agent\nfixed documentation\n56 tokens\nAgents frontend analysis loading...\n>\nEnter\nBuild without boundaries\n\nJoin thousands of developers who've eliminate",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/view?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": []
+    }
+  ]
+}

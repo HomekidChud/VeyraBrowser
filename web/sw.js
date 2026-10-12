@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.28.28-browser-qa";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.28-browser-qa", "./src/bootstrap.js?v=8.28.28-browser-qa"];
+const CACHE = "veyra-browser-shell-v8.28.29-fast-proxy";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.29-fast-proxy", "./src/bootstrap.js?v=8.28.29-fast-proxy"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

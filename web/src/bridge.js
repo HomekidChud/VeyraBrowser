@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.28-browser-qa";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.29-fast-proxy";
 
 const pending = new Map();
 const listeners = new Set();

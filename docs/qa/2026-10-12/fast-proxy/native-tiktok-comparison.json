@@ -1,0 +1,28 @@
+{
+  "feed": [
+    {
+      "path": "/api/recommend/item_list/",
+      "status": 200
+    },
+    {
+      "path": "/api/recommend/item_list/",
+      "status": 200
+    },
+    {
+      "path": "/api/recommend/item_list/",
+      "status": 403
+    }
+  ],
+  "errors": [
+    "a.init is not a function"
+  ],
+  "settled": true,
+  "text": "",
+  "media": [
+    {
+      "readyState": 4,
+      "paused": false,
+      "currentTime": 0.475918
+    }
+  ]
+}

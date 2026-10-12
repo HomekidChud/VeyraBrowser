@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { nativeBrowserReason } from "../web/src/proxy-compatibility.js";
+const request = { pageUrl: "https://www.tiktok.com/", url: "https://www.tiktok.com/api/recommend/item_list/?private=value", status: 403 };
+assert.match(nativeBrowserReason(request), /cookies stay separate/);
+assert.ok(!nativeBrowserReason(request).includes("private"));
+assert.equal(nativeBrowserReason({ ...request, status: 200 }), "");
+assert.equal(nativeBrowserReason({ ...request, url: "https://www.tiktok.com/favicon.ico" }), "");
+assert.equal(nativeBrowserReason({ ...request, url: "https://tiktok.com.attacker.test/api/recommend/item_list/" }), "");
+assert.equal(nativeBrowserReason({ ...request, pageUrl: "https://other.test/" }), "");
+assert.equal(nativeBrowserReason({ ...request, url: "invalid" }), "");
+console.log("Proxy compatibility: 7 status, host, route and privacy checks passed.");

@@ -1,7 +1,7 @@
 
 
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.28-browser-qa";
-import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.28-browser-qa";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.28.29-fast-proxy";
+import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.28.29-fast-proxy";
 import { consoleDiagnostics, sanitizeHar } from "./diagnostics-export.js";
 
 let B, root, openState = false, panel = "elements";

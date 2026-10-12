@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { classifyOutcome } from './qa-outcomes.mjs';
 import { redactDiagnosticText } from '../web/src/diagnostics-export.js';
 
 export const MAJOR_SITES = [
@@ -59,12 +60,34 @@ export async function runSite(context, name, target, output, base) {
     const frame = await f.contentFrame();
     if (!frame) throw new Error('The Veyra page frame was not attached.');
     await frame.waitForLoadState('domcontentloaded', { timeout: 20000 });
-    await frame.waitForFunction(() => (document.body?.innerText || '').trim().length > 50, null, { timeout: 15000 }).catch(() => {});
-    content = (await frame.locator('body').innerText({ timeout: 10000 })).slice(0, 2500);
-    outcome = response.status() >= 400 ? 'http-error' :
-      /captcha|verify you are human|access denied|blocked by network security|not a robot/i.test(content) ? 'site-challenge' :
-      /browser.*unavailable|session.*expired|could not be displayed|server.*error/i.test(content) ? 'veyra-error' :
-      content.trim().length < 50 ? 'empty-or-visual-only' : 'content-rendered';
+    // Custom-element sites render inside open shadow roots. body.innerText
+    // alone incorrectly reports those pages as blank.
+    await frame.waitForFunction(() => {
+      const roots = [document.body];
+      let text = '';
+      for (let i = 0; i < roots.length && i < 200; i++) {
+        const root = roots[i]; if (!root) continue;
+        if (root instanceof ShadowRoot) {
+          for (const el of root.children) if (!/^(SCRIPT|STYLE)$/.test(el.tagName)) text += el.innerText || '';
+        } else text += root.innerText || '';
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) roots.push(el.shadowRoot);
+      }
+      return text.trim().length > 50;
+    }, null, { timeout: 15000 }).catch(() => {});
+    content = await frame.evaluate(() => {
+      const roots = [document.body], pieces = [];
+      for (let i = 0; i < roots.length && i < 200; i++) {
+        const root = roots[i]; if (!root) continue;
+        // Do not count script/JSON payloads as rendered text.
+        if (root instanceof ShadowRoot) {
+          for (const el of root.children) if (!/^(SCRIPT|STYLE)$/.test(el.tagName))
+            pieces.push(el.innerText || '');
+        } else pieces.push(root.innerText || '');
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) roots.push(el.shadowRoot);
+      }
+      return pieces.join('\n').slice(0, 6000);
+    });
+    outcome = classifyOutcome(content, response.status());
   } catch (e) { error = redact(e.message); outcome = 'timeout-or-navigation-error'; }
   // One screenshot per distinct failure class, never every navigation.
   if (context.qaCaptureScreenshots !== false && outcome !== 'content-rendered' && !context.qaScreenshots.has(outcome) && context.qaScreenshots.size < 5) {
@@ -73,7 +96,7 @@ export async function runSite(context, name, target, output, base) {
     await page.screenshot({ path: `${output}/${screenshot}` });
   }
   const result = { name, target, outcome, elapsedMs: Date.now() - started, content, error,
-    consoleEntries, failedRequests, httpErrors: responses, screenshot };
+    consoleEntries: [...consoleEntries], failedRequests: [...failedRequests], httpErrors: [...responses], screenshot };
   // End the owned disposable session; do not leave test sessions running.
   await page.evaluate(async () => {
     const script = [...document.querySelectorAll('script[type="module"][src]')]

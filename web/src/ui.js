@@ -2,9 +2,9 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.28-browser-qa";
+} from "./core.js?v=8.28.29-fast-proxy";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.28-browser-qa";
+import { initSettings } from "./settings.js?v=8.28.29-fast-proxy";
 
 let B;
 
@@ -402,7 +402,7 @@ function renderBookmarksBar() {
   bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) B.go(B.state.bookmarks[Number(b.dataset.i)].url, { newTab: e.ctrlKey || e.metaKey }); };
   bar.onauxclick = e => { const b = e.target.closest("[data-i]"); if (b && e.button === 1) B.newTab({ url: B.state.bookmarks[Number(b.dataset.i)].url, background: true }); };
   bar.oncontextmenu = e => { const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
-    import("./core.js?v=8.28.28-browser-qa").then(({ ctxMenu }) => ctxMenu(e.clientX, e.clientY, [
+    import("./core.js?v=8.28.29-fast-proxy").then(({ ctxMenu }) => ctxMenu(e.clientX, e.clientY, [
       { label: "Open in new tab", action: () => B.newTab({ url: bm.url }) },
       { label: "Edit…", action: async () => { const r = await promptDialog({ title: "Edit bookmark", fields: [{ name: "title", label: "Name", value: bm.title }, { name: "url", label: "URL", value: bm.url }] }); if (r) { bm.title = r.title; bm.url = r.url; B.saveBookmarks(); renderBookmarksBar(); } } },
       { label: "Copy link", action: () => copyText(bm.url) }, "-",

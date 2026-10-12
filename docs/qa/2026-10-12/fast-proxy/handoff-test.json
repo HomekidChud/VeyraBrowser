@@ -1,0 +1,5 @@
+{
+  "notice": "TikTok rejected its feed request through Fast Proxy. Try a normal browser; its cookies stay separate.\nOpen directly",
+  "nativeDestination": "https://www.tiktok.com/",
+  "containsVeyraToken": false
+}

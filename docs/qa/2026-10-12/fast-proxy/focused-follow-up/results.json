@@ -1,0 +1,95 @@
+{
+  "base": "http://127.0.0.1:3000/web/?veyra_api=http%3A%2F%2F127.0.0.1%3A10000",
+  "recordedAt": "2026-10-12T00:51:57.235Z",
+  "results": [
+    {
+      "name": "Twitch",
+      "target": "https://www.twitch.tv/",
+      "outcome": "content-rendered",
+      "elapsedMs": 5426,
+      "content": "Cookies and Advertising Choices\n\n\nWe work with trusted partners to provide relevant advertising based on information about your use of Twitch and third-party websites and applications. If you want to learn more about our advertising practices and your rights to opt-out, click the \"Cookies & Ads Choices\" button to the right or use the navigation menu at the top of the page.\n\nCookies & Ads Choices\nProceed\nSkip to...\nAlt\nP\n\nBrowse\n\nLog In\nSign Up",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "http://127.0.0.1:10000/api/resource?[redacted]",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        }
+      ]
+    },
+    {
+      "name": "InternetArchive",
+      "target": "https://archive.org/",
+      "outcome": "content-rendered",
+      "elapsedMs": 1386,
+      "content": "\nSkip to main content\n\n\n  \n\n\n\n\n\n\n\n UPLOAD\n\nSign up for free\nLog in\nABOUT BLOG EVENTS PROJECTS HELP DONATE  CONTACT JOBS VOLUNTEER\n\n\n SIGN UP | LOG IN\nInternet Archive Audio\n\n        Live Music Archive\n      \n        Librivox Free Audio\n      \n\n        Featured\n        \n          \n        \n          All Audio\n        \n      \n        \n          Grateful Dead\n        \n      \n        \n          Netlabels\n        \n      \n        \n          Old Time Radio\n        \n      \n        \n          78 RPMs and Cylinder Recordings\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Audio Books & Poetry\n        \n      \n        \n          Computers, Technology and Science\n        \n      \n        \n          Music, Arts & Culture\n        \n      \n        \n          News & Public Affairs\n        \n      \n        \n          Spirituality & Religion\n        \n      \n        \n          Podcasts\n        \n      \n        \n          Radio News Archive\n        \n      \n        \n      \nImages\n\n        Metropolitan Museum\n      \n        Cleveland Museum of Art\n      \n\n        Featured\n        \n          \n        \n          All Images\n        \n      \n        \n          Flickr Commons\n        \n      \n        \n          Occupy Wall Street Flickr\n        \n      \n        \n          Cover Art\n        \n      \n        \n          USGS Maps\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          NASA Images\n        \n      \n        \n          Solar System Collection\n        \n      \n        \n          Ames Research Center\n        \n      \n        \n      \nSoftware\n\n        Internet Arcade\n      \n        Console Living Room\n      \n\n        Featured\n        \n          \n        \n          All Software\n        \n      \n        \n          Old School Emulation\n        \n      \n        \n          MS-DOS Games\n        \n      \n        \n          Historical Software\n        \n      \n        \n          Classic PC Games\n        \n      \n        \n          Software Library\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Kodi Archive and Support File\n        \n      \n        \n          Vintage Software\n        \n      \n        \n          APK\n        \n      \n        \n          MS-DOS\n        \n      \n        \n          CD-ROM Software\n        \n      \n        \n          CD-ROM Software Library\n        \n      \n        \n          Software Sites\n        \n      \n        \n          Tucows Software Library\n        \n      \n        \n          Shareware CD-ROMs\n        \n      \n        \n          Software Capsules Compilation\n        \n      \n        \n          CD-ROM Images\n        \n      \n        \n          ZX Spectrum\n        \n      \n        \n          DOOM Level CD\n        \n      \n        \n      \nTexts\n\n        Open Library\n      \n        American Libraries\n      \n\n        Featured\n        \n          \n        \n          All Texts\n        \n      \n        \n          Smithsonian Libraries\n        \n      \n        \n          FEDLINK (US)\n        \n      \n        \n          Genealogy\n        \n      \n        \n          Lincoln Collection\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          American Libraries\n        \n      \n        \n          Canadian Libraries\n        \n      \n        \n          Universal Library\n        \n      \n        \n          Project Gutenberg\n        \n      \n        \n          Children's Library\n        \n      \n        \n          Biodiversity Heritage Library\n        \n      \n        \n          Books by Language\n        \n      \n        \n          Folkscanomy\n        \n      \n        \n          Government Documents\n        \n      \n        \n      \nVideo\n\n        TV News\n      \n        Understanding 9/11\n      \n\n        Featured\n        \n          \n        \n          All Video\n        \n      \n        \n          Prelinger Archives\n        \n      \n        \n          Democracy Now!\n        \n      \n        \n          Occupy Wall Street\n        \n      \n        \n          TV NSA Clip Library\n        \n      \n        \n      \n\n        Top\n        \n          \n        \n          Animation & Cartoons\n        \n      \n        \n          Arts & Music\n        \n      \n        \n          Computers & Technology\n        \n      \n        \n          Cultural & Academic Films\n        \n      \n        \n          Ephemeral Films\n        \n      \n        \n          Movies\n        \n      \n        \n          News & Public Affairs\n        \n      \n        \n          Spirituality & Religion\n        \n      \n        \n          Sports Videos\n        \n      \n        \n          Television\n        \n      \n        \n          Videogame Videos\n        \n      \n        \n          Vlogs\n        \n      \n        \n          Youth Media\n        \n      \n        \n      \n\n\n      \n\nTEXTS\nVIDEO\nAUDIO\nSOFTWARE\nIMAGES\n\n        \n      \n        \n  \n    Donate icon\n    An illustration of a heart shape\n    \n  \n\n      \n      Donate\n    \n      \n\n        \n      \n        \n  \n    Ellipses icon\n    An illustration of text ellipses.\n    \n  \n\n      \n      More\n    \n      \n\n        \n        \n          \n            Mobile Apps\n            \n              \n          Wayback Machine (iOS)\n        \n          Wayback Machine (Android)\n        \n            \n            Browser Extensions\n            \n              \n          Chrome\n        \n          Firefox\n        \n          Safari\n        \n          Edge\n        \n            \n          \n          \n            Archive-It Subscription\n            \n              \n          Explore the Collections\n        \n          Learn More\n        \n          Build Collections\n        \n            \n          \n        \n        \n      \n\n        \n              About\n            \n              Blog\n            \n              Events\n            \n              Projects\n            \n              Help\n            \n              Donate\n            \n              Contact\n            \n              Jobs\n            \n              Volunteer\n            \n      \n\n        \n          Se",
+      "error": "",
+      "consoleEntries": [
+        {
+          "type": "warning",
+          "message": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.",
+          "location": "http://127.0.0.1:3000/web/src/app.js?[redacted]"
+        },
+        {
+          "type": "error",
+          "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+          "location": "http://127.0.0.1:10000/api/browser/session"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        },
+        {
+          "type": "warning",
+          "message": "A preload for 'http://127.0.0.1:10000/api/resource?[redacted]' is found, but is not used because the request credentials mode does not match. Consider taking a look at crossorigin attribute.",
+          "location": "http://127.0.0.1:10000/api/view?[redacted]"
+        }
+      ],
+      "failedRequests": [],
+      "httpErrors": [
+        {
+          "url": "http://127.0.0.1:10000/api/browser/session",
+          "status": 503
+        }
+      ]
+    }
+  ]
+}

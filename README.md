@@ -4,7 +4,7 @@ Veyra Browser is a static JavaScript client for the Veyra Browser API and a Capa
 
 ## Maintenance and QA
 
-The 8.28.28 maintenance work continues the earlier test suites rather than replacing them. See the [12 October QA report](docs/qa/2026-10-12/README.md) for the 16-site live run, defect ledger, selected screenshots, verified fixes and unresolved limitations.
+The 8.28.29 Fast Proxy follow-up continues the earlier test suites rather than replacing them. See the [26-site Fast Proxy report](docs/qa/2026-10-12/fast-proxy/README.md) for the latest findings, selected screenshots, cookie/SRI tests and native-browser handoff limitations. The [earlier maintenance report](docs/qa/2026-10-12/README.md) retains the production baseline and casting/extension/DevTools findings.
 
 Run `npm ci && npm run check` for regression coverage. For a bounded live run, install Chromium with `npx playwright install chromium`, then run `npm run test:live`; results go to the ignored `qa-output/` directory.
 
