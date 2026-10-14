@@ -557,6 +557,13 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 .vpn-hero p{margin:0}
 .vpn-hero .spacer{flex:1}
 .vpn-list{display:grid;gap:8px}
+.vpn-country{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);overflow:hidden;margin-bottom:8px}
+.vpn-country summary{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none;list-style:none}
+.vpn-country summary::-webkit-details-marker{display:none}
+.vpn-country summary:hover{background:color-mix(in oklab,var(--accent) 6%,transparent)}
+.vpn-country summary small{color:var(--muted);font-size:.7rem}
+.vpn-country[open] summary{border-bottom:1px solid var(--line)}
+.vpn-country .vpn-list{padding:8px;background:var(--bg-2);border-radius:0}
 .vpn-row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line)}
 .vpn-row.on{border-color:var(--ok)}
 .vpn-row .n{flex:1;min-width:0}.vpn-row .n small{display:block;color:var(--muted)}
