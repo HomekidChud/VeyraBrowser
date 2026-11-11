@@ -7,7 +7,7 @@
   <title>Veyra Browser</title>
 </head>
 <body>
-  <script>location.replace(new URL("./web/", location.href));</script>
+  <script>location.replace("./web/" + location.search + location.hash);</script>
   <a href="./web/">Open Veyra Browser</a>
 </body>
 </html>
