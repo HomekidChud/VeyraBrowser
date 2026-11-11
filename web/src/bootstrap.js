@@ -22,10 +22,19 @@
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
-  window.addEventListener("DOMContentLoaded", () => {
+  // Veyra Access Gate: block the whole app behind the invite waitlist.
+  const gateScript = document.createElement("script");
+  gateScript.src = `${base}src/gate.js?v=8.28.27-youtube-link-tabs`;
+  gateScript.onload = async () => {
+    const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
+    if (!unlocked) return;
     const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.27-youtube-link-tabs`; document.body.appendChild(app);
-  }, { once: true });
-  if (location.protocol === "https:" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
-  }
+    if (location.protocol === "https:" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
+    }
+  };
+  gateScript.onerror = () => {
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.27-youtube-link-tabs`; document.body.appendChild(app);
+  };
+  document.head.appendChild(gateScript);
 })();
