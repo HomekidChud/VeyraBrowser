@@ -183,7 +183,7 @@ function renderSplitScreen() {
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
-    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", requiresBrowser: false, combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(),
+    jobId: null, done: true, poll: null, loading: false, browserMode: "FAST_PROXY", browserSessionId: "", browserPoll: null, browserStatus: "", requiresBrowser: false, combinedGraceTimer: null, loadStrategy: "auto", renderWinner: "", loadGuard: null, crawlerStartTimer: null, sessionId: "", compatFallbackTried: new Set(), challengeTried: new Set(), challengeEscalated: false, wasVerifying: false, challengeReturned: false,
     resources: [], links: [], selectedResource: -1, console: [], network: [], zoom: settings.zoomDefault || 1, pinned: false,
     searchQuery: "", searchData: null, searchCorrection: null, calcExpression: "", sourceTabId: null, remoteLogIds: new Set(), openedAt: Date.now(), ...extra
   };
@@ -1120,7 +1120,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const resolvedDisplayUrl = suppliedDisplayUrl || t.sourceDisplayAliases.get(url) || (t.url === url ? validateSourceDisplayUrl(t.displayUrl, url, API_ORIGIN) : "");
   if (settings.autoStopPrevious && t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.crawlerStartTimer); clearTimeout(t.combinedGraceTimer); t.crawlerStartTimer = null; t.combinedGraceTimer = null;
-  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, requiresBrowser: false, youtubeEmbed: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "" });
+  Object.assign(t, { url, displayUrl: resolvedDisplayUrl, view: "page", title: t.title && t.url && hostOf(t.url) === hostOf(url) ? t.title : hostOf(url), jobId: null, done: false, resources: [], links: [], selectedResource: -1, remoteLogIds: new Set(), readerOpen: false, requiresBrowser: false, youtubeEmbed: false, loading: true, browserStatus: "", loadStrategy: settings.runtime || "auto", renderWinner: "", challengeEscalated: false, wasVerifying: false, challengeReturned: false });
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
@@ -1432,6 +1432,28 @@ async function refreshRemote(t, loop = false) {
     if (!t.youtubeEmbed) t.url = s.canonicalUrl || t.url;
     t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
     if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
+    // Security check finished in real Chromium: the clearance cookies are
+    // already synced into the fast-proxy session server-side. Close the
+    // Chromium view and reload the page through the fast proxy so the user
+    // keeps browsing there — the verify screen never comes back for that
+    // site (the clearance cookie carries over).
+    if (t.challengeEscalated && s.status === "VERIFICATION_REQUIRED") t.wasVerifying = true;
+    else if (t.wasVerifying && s.status === "NORMAL" && !t.challengeReturned) {
+      if (hostOf(s.canonicalUrl || t.url) !== hostOf(t.url)) {
+        t.wasVerifying = false; // user navigated elsewhere in Chromium; stay there
+      } else {
+        t.challengeReturned = true;
+        const backUrl = t.url;
+        addLog("info", `Security check completed on ${hostOf(backUrl)}; returning the tab to the fast proxy.`);
+        toast("Verification complete — back on the fast proxy", { ms: 4000 });
+        void (async () => {
+          await stopBrowserSession(t);
+          t.challengeEscalated = false; t.wasVerifying = false;
+          if (state.tabs.includes(t) && t.view === "page") await loadInTab(t, backUrl);
+        })();
+        return;
+      }
+    }
     if (activeTab() === t && t.view === "page") {
       const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
       const ld = $("remoteLoading"); if (ld && !img?.complete) ld.style.display = "grid";
@@ -2385,6 +2407,9 @@ async function handleMessage(e) {
     t.challengeTried ||= new Set();
     if (!d.manual && (!d.auto || settings.challengeHandoff === false || t.challengeTried.has(u))) { if (!d.manual) toast("This site wants a security check. Use \u201cVerify in real Chromium\u201d to complete it", { kind: "warn", ms: 5000 }); return; }
     t.challengeTried.add(u);
+    // The tab is about to hand off to real Chromium for the check; once the
+    // user finishes it there, refreshRemote returns it to the fast proxy.
+    t.challengeEscalated = true; t.wasVerifying = false; t.challengeReturned = false;
     void routeBrowserRequired(t, u, `${u}|security-challenge`, "security-challenge");
     return;
   }
