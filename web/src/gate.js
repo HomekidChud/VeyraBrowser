@@ -7,6 +7,21 @@
   const GATE_KEY = "veyra-gate";
   const apiFromMeta = () => {
     try {
+      // Mirror core.js: on a loopback page the ?veyra_api= hint overrides the
+      // fixed deployment metadata, so local development can exercise the gate.
+      const localPage = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+      let hinted = "";
+      if (localPage) {
+        try {
+          const params = new URLSearchParams(location.search);
+          const hintedRaw = params.get("veyra_api") || "";
+          if (hintedRaw) {
+            const u = new URL(hintedRaw);
+            if (/^https?:$/.test(u.protocol) && !u.username && !u.password && !u.search && !u.hash && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) hinted = u.origin;
+          }
+        } catch {}
+      }
+      if (hinted) return hinted;
       const raw = document.querySelector('meta[name="veyra-api"]')?.content || "https://veyraserver-xscy.onrender.com";
       return new URL(raw).origin;
     } catch { return "https://veyraserver-xscy.onrender.com"; }
