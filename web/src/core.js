@@ -25,6 +25,11 @@ function deploymentApi() {
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
 export const VERSION = "8.28.27";
+// TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
+// tries Chromium (the "Retry full browser" status button, the security-check
+// handoff, and the Chromium runtime option in Settings) is hidden. Flip this
+// back to false once Chromium fully works to restore all of them at once.
+export const CHROMIUM_TRY_DISABLED = true;
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];

@@ -2,7 +2,7 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED
 } from "./core.js?v=8.28.27-youtube-link-tabs";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
@@ -12,6 +12,7 @@ import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
+
 
 
 
@@ -523,7 +524,9 @@ export function updateIdentity() {
   
   const sc = $("statusCenter");
   if (sc) {
-    if (t.failoverReason && t.view === "page" && !t.loading) {
+    // TEMPORARY: the "Retry full browser" (Chromium) button is hidden until
+    // streamed Chromium fully works (see CHROMIUM_TRY_DISABLED above).
+    if (!CHROMIUM_TRY_DISABLED && t.failoverReason && t.view === "page" && !t.loading) {
       sc.innerHTML = `<button class="retry-browser-btn" id="retryBrowserBtn" title="Reset the circuit breaker and retry Chromium">Retry full browser</button>`;
       const btn = $("retryBrowserBtn");
       if (btn) btn.onclick = () => { import('./app.js').then(m => m.retryFullBrowser?.()).catch(() => {}); };
@@ -1026,12 +1029,20 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
 async function capability(url) {
   if (settings.runtime === "proxy") return "FAST_PROXY";
   if (settings.runtime === "crawler") return "FAST_PROXY";
-  if (settings.runtime === "browser" || settings.runtime === "combined") return "BROWSER_ENGINE";
+  // TEMPORARY: the "browser" and "combined" runtimes depend on streamed
+  // Chromium, so while Chromium is not fully working they degrade to the
+  // fast proxy (see CHROMIUM_TRY_DISABLED in core.js).
+  if (settings.runtime === "browser" || settings.runtime === "combined") return CHROMIUM_TRY_DISABLED ? "FAST_PROXY" : "BROWSER_ENGINE";
   const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
   try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; if (typeof r?.lean === "boolean") state.server.leanMode = r.lean; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
 }
 function desiredStrategy(url) {
   const r = String(settings.runtime || "auto");
+  // TEMPORARY: the Chromium-only "browser" runtime and the Chromium-racing
+  // "combined" runtime degrade to Automatic while streamed Chromium is not
+  // fully working (see CHROMIUM_TRY_DISABLED in core.js).
+  const degraded = CHROMIUM_TRY_DISABLED && (r === "browser" || r === "combined");
+  if (degraded) return { key: "auto", proxy: true, crawler: true, browser: false, race: false, auto: true };
   if (r === "proxy") return { key: "proxy", proxy: true, crawler: false, browser: false, race: false };
   if (r === "crawler") return { key: "crawler", proxy: true, crawler: true, browser: false, race: false };
   if (r === "browser") return { key: "browser", proxy: false, crawler: false, browser: true, race: false };
@@ -2402,9 +2413,11 @@ async function handleMessage(e) {
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
   if (d.type === "veyra:challenge" && d.url) {
     
-    
     const u = canonical(d.url); if (!u || t.view !== "page") return;
     t.challengeTried ||= new Set();
+    // TEMPORARY: the Chromium handoff for security checks is disabled until
+    // streamed Chromium fully works (see CHROMIUM_TRY_DISABLED above).
+    if (CHROMIUM_TRY_DISABLED) { toast("This site wants a security check, which Veyra can't complete through the fast proxy yet. Open it directly or retry through Veyra.", { kind: "warn", ms: 6000 }); return; }
     if (!d.manual && (!d.auto || settings.challengeHandoff === false || t.challengeTried.has(u))) { if (!d.manual) toast("This site wants a security check. Use \u201cVerify in real Chromium\u201d to complete it", { kind: "warn", ms: 5000 }); return; }
     t.challengeTried.add(u);
     // The tab is about to hand off to real Chromium for the check; once the

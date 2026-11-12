@@ -1,5 +1,5 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.27-youtube-link-tabs";
 import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.18-professional-shell";
 
 let B;
@@ -154,8 +154,8 @@ function vpnSection() {
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
-    ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. The crawler accelerates the current page only: the proxy paints first, critical assets start early, then bounded discovery warms additional required assets without crawling the whole site during your session.", [["auto", "Automatic"], ["proxy", "Fast proxy"], ["crawler", "Fast proxy + page accelerator"], ["browser", "Chromium"], ["combined", "All combined (fastest adaptive)"]])}
-    ${toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
+    ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. Fast proxy is the recommended default: it renders most sites quickly without a heavyweight browser. The crawler accelerates the current page only: the proxy paints first, critical assets start early, then bounded discovery warms additional required assets without crawling the whole site during your session.", [["proxy", "Fast proxy (recommended)"], ["crawler", "Fast proxy + page accelerator"], ["combined", "All combined (fastest adaptive)"], ["auto", "Automatic"]])}
+    ${CHROMIUM_TRY_DISABLED ? "" : toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
     ${toggle("autoStopPrevious", "Stop the previous crawl when navigating", "Saves server resources.")}
     ${toggle("confirmCloseWithCrawl", "Confirm before closing a tab that is still crawling", "")}
     ${number("requestTimeoutMs", "Request timeout (ms)", "", 3000, 120000, 1000)}`);
