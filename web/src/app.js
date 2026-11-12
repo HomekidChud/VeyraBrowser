@@ -2551,6 +2551,20 @@ async function boot() {
     await revisitSavedSession();
     applyRoute();
     applyStartup(params);
+    // Direct-login handoff return: the site's login page sent the user back
+    // here with their target URL — pick the tab up where it left off.
+    const handoff = params.get("veyra_handoff");
+    if (handoff) {
+      params.delete("veyra_handoff");
+      try { history.replaceState({}, "", `${location.pathname}${params.toString() ? "?" + params.toString() : ""}`); } catch {}
+      try {
+        const u = new URL(handoff);
+        if (/^https?:$/.test(u.protocol)) {
+          const t = activeTab();
+          if (t) void navigate(u.href, { tab: t, push: false });
+        }
+      } catch {}
+    }
     api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
