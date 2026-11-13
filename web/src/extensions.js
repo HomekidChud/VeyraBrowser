@@ -1,6 +1,7 @@
 
 import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.29-handoff-auto-return";
 import { dtCall, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
+import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl } from "./extension-manifest.js";
 
 let B;
 const BUILTIN = [];
@@ -68,20 +69,98 @@ function normalizeUserscript(raw, source = "local") {
   if (grants.some(x => !allowedGrants.has(x))) throw new Error("This userscript requests an unsupported privilege.");
   return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, grants, runAt: get("run-at") || "document-idle", enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
 }
+// Import a real Chrome (MV2/MV3) manifest. Parsing lives in the pure
+// extension-manifest.js module so the node test suite can cover it; this
+// wrapper keeps the Developer-mode gate and stores the original manifest +
+// file map as the source of truth (derived code is rebuilt on demand and
+// cached, so nothing is duplicated in localStorage).
 function normalizeBrowserManifest(manifest, files = {}) {
   if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before importing Chrome or Edge extensions.");
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("The extension manifest must be a JSON object.");
-  if (manifest.background || manifest.permissions?.some?.(p => /tabs|cookies|webRequest|management|nativeMessaging|clipboard/i.test(p))) throw new Error("Background code and privileged browser APIs are blocked.");
-  const scripts = [], styles = [], matchesList = [];
-  for (const group of Array.isArray(manifest.content_scripts) ? manifest.content_scripts : []) {
-    for (const pattern of group.matches || []) matchesList.push(String(pattern));
-    for (const file of group.js || []) { const code = files[file]; if (typeof code !== "string") throw new Error(`Missing content script: ${file}`); scripts.push(code); }
-    for (const file of group.css || []) { const css = files[file]; if (typeof css !== "string") throw new Error(`Missing stylesheet: ${file}`); styles.push(css); }
+  const filesMap = files && typeof files === "object" && !Array.isArray(files) ? files : {};
+  const rec = parseChromeManifest(manifest, filesMap);
+  const total = Object.values(filesMap).reduce((n, v) => n + (typeof v === "string" ? v.length : 0), 0);
+  if (total > 600000) throw new Error("The Chrome extension bundle is too large (600 KB max).");
+  return {
+    id: rec.id, kind: "chrome", manifestVersion: rec.manifestVersion,
+    name: rec.name, version: rec.version, description: rec.description,
+    matches: rec.matches, excludeMatches: rec.excludeMatches,
+    permissions: rec.permissions, hostPermissions: rec.hostPermissions,
+    warnings: rec.warnings, backgroundKind: rec.background?.kind || null,
+    minimumChromeVersion: rec.minimumChromeVersion,
+    enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false,
+    publisher: "Local import", author: rec.author,
+    manifest, files: filesMap
+  };
+}
+// Re-derive the full parsed record (content scripts + background code) for a
+// stored Chrome extension, cached per install generation.
+const chromeCache = new Map();
+function chromeRecord(d) {
+  if (d?.kind !== "chrome" || !d.manifest) return d;
+  const key = `${d.id}:${d.installedAt || 0}`;
+  if (!chromeCache.has(key)) {
+    try { chromeCache.set(key, parseChromeManifest(d.manifest, d.files || {})); }
+    catch (e) { addLog("warn", `Extension ${d.name} failed to load: ${e.message}`); chromeCache.set(key, d); }
   }
-  if (!scripts.length && !styles.length) throw new Error("This manifest has no supported content scripts or styles.");
-  if (scripts.length && /@(?:require|resource|connect)\b/i.test(scripts.join("\n"))) throw new Error("Remote userscript dependencies are blocked.");
-  const id = `chrome-${String(manifest.name || "extension").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)}-${uid().slice(-6)}`;
-  return { id, name: String(manifest.name || "Imported browser extension").slice(0, 80), version: String(manifest.version || "1.0.0").slice(0, 20), description: String(manifest.description || "Imported Chrome/Edge content extension").slice(0, 300), css: styles.join("\n"), script: scripts.join("\n\n"), matches: matchesList.slice(0, 30), enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false, publisher: "Local import", author: "" };
+  return chromeCache.get(key);
+}
+
+// --- Chrome extension backgrounds: inline Web Worker + chrome.* shim ------
+// The worker talks to this host over postMessage RPC. Storage is persisted
+// under a per-extension namespace (never Veyra's own storage keys), and
+// runtime.sendMessage is delivered to registered host listeners (Chrome
+// answers with a "receiving end does not exist" error when nobody listens).
+const bgWorkers = new Map();
+const EXT_STORAGE_KEY = "veyra-ext-storage";
+const extMessageListeners = new Set();
+function extStorageAll() { return load(EXT_STORAGE_KEY, {}); }
+function extStoreArea(id, area) { return extStorageAll()[id]?.[area] || {}; }
+function extSaveArea(id, area, value) { const all = extStorageAll(); all[id] = all[id] || {}; all[id][area] = value; save(EXT_STORAGE_KEY, all); hooks.scheduleSync?.(); }
+function backgroundStatusOf(id) { return bgWorkers.get(id)?.status || "off"; }
+async function deliverExtMessage(d, msg) {
+  if (!extMessageListeners.size) return { response: undefined, lastError: { message: "Could not establish connection. Receiving end does not exist." } };
+  for (const fn of extMessageListeners) { try { const r = await fn(msg, { id: d.id, name: d.name }); if (r !== undefined) return { response: r }; } catch (e) {} }
+  return { response: undefined };
+}
+function startBackground(d) {
+  const rec = chromeRecord(d);
+  if (d.kind !== "chrome" || !rec.background || bgWorkers.has(d.id)) return;
+  let worker, url;
+  try {
+    const src = buildBackgroundWorkerSource(rec);
+    url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    worker = new Worker(url, rec.background.type === "module" ? { type: "module" } : undefined);
+  } catch (e) { bgWorkers.set(d.id, { status: "error", error: e.message }); return; }
+  const entry = { worker, url, status: "running", error: "" };
+  worker.onmessage = async ev => {
+    const m = ev.data; if (!m || !m.__veyraRpc) return;
+    let result, error;
+    try {
+      if (String(m.kind || "").startsWith("storage.")) {
+        const area = String(m.kind).startsWith("storage.sync") ? "sync" : "local";
+        if (m.kind.endsWith(".get")) result = extStoreArea(d.id, area);
+        else if (m.kind.endsWith(".set")) { extSaveArea(d.id, area, { ...extStoreArea(d.id, area), ...(m.payload || {}) }); result = true; }
+        else if (m.kind.endsWith(".remove")) { const store = extStoreArea(d.id, area); for (const k of m.payload || []) delete store[k]; extSaveArea(d.id, area, store); result = true; }
+        else if (m.kind.endsWith(".clear")) { extSaveArea(d.id, area, {}); result = true; }
+        else result = null;
+      } else if (m.kind === "sendMessage") result = await deliverExtMessage(d, m.payload);
+      else result = null;
+    } catch (e) { error = e.message; }
+    try { worker.postMessage({ __veyraRpcReply: m.__veyraRpc, result, error }); } catch (e) {}
+  };
+  worker.onerror = e => {
+    entry.status = "error"; entry.error = e.message || "background worker crashed";
+    addLog("warn", `Extension ${d.name} background failed: ${entry.error}`);
+    renderExtensions();
+  };
+  bgWorkers.set(d.id, entry);
+}
+function stopBackground(id) {
+  const e = bgWorkers.get(id); if (!e) return;
+  try { e.worker.terminate(); } catch {}
+  try { URL.revokeObjectURL(e.url); } catch {}
+  bgWorkers.delete(id);
 }
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
@@ -104,21 +183,7 @@ function clearLegacyBuiltins() {
 
 
 function matches(ext, rawUrl) {
-  const list = Array.isArray(ext.matches) && ext.matches.length ? ext.matches : ["<all_urls>"];
-  let url; try { url = new URL(rawUrl); } catch { return false; }
-  return list.some(raw => {
-    const pattern = String(raw || "").trim().toLowerCase();
-    if (pattern === "<all_urls>" || pattern === "*") return /^https?:$/.test(url.protocol);
-    const parsed = pattern.match(/^(?:(\*|https?):\/\/)?([^/]+)(\/.*)?$/);
-    if (!parsed) return false;
-    const [, scheme = "*", host = "", path = "/*"] = parsed;
-    if (scheme !== "*" && url.protocol !== `${scheme}:`) return false;
-    const hostname = url.hostname.toLowerCase();
-    const hostOk = host === "*" ? true : host.startsWith("*.") ? hostname === host.slice(2) || hostname.endsWith(`.${host.slice(2)}`) : hostname === host || hostname === `www.${host}`;
-    if (!hostOk) return false;
-    const re = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
-    return re.test(url.pathname + url.search);
-  });
+  return matchesUrl(ext.matches, rawUrl, ext.excludeMatches);
 }
 export function validateManifest(m) {
   if (!m || typeof m !== "object" || Array.isArray(m)) throw new Error("The manifest must be a JSON object.");
@@ -141,6 +206,15 @@ export async function applyToTab(t) {
   for (const e of BUILTIN) if (e.feature) { calls.push(["ext.feature", { name: e.feature, on: !!s[e.id] }]); for (const a of e.also || []) if (s[e.id]) calls.push(["ext.feature", { name: a, on: true }]); }
   for (const d of devExts()) {
     const active = d.enabled && matches(d, t.url);
+    if (d.kind === "chrome") {
+      // Chrome extension: the shim + run_at-gated content scripts (plus CSS
+      // through GM_addStyle, since Chrome CSS isn't sandbox-safe) is rebuilt
+      // from the stored manifest and pushed through the script channel.
+      const rec = chromeRecord(d);
+      const script = active ? buildContentScriptSource(rec) : "";
+      calls.push(["ext.script", { key: d.id, script }]);
+      continue;
+    }
     calls.push([d.script ? "ext.script" : "ext.css", d.script ? { key: d.id, script: active ? `${d.css ? `GM_addStyle(${JSON.stringify(d.css)});\n` : ""}${d.script}` : "" } : { key: d.id, css: active ? safeCss(d.css) : "" }]);
   }
   if (s.zoom && settings.zoomDefault && settings.zoomDefault !== 1 && t.zoom === 1) { t.zoom = settings.zoomDefault; calls.push(["ext.zoom", { zoom: t.zoom }]); }
@@ -208,11 +282,25 @@ function renderSidePanel(t) {
 hooks.renderSidePanel = renderSidePanel;
 
 
+// Chrome-extension extras for the dev card: version/MV line, permission chips,
+// background-worker status, and a visible warning badge when dangerous
+// permissions were disabled at install.
+function chromeCardMeta(e) {
+  const perm = e.permissions || {};
+  const denied = perm.denied || [];
+  const chip = (label, kind) => `<span class="ext-tag" ${kind === "ok" ? `style="color:var(--ok)"` : kind === "warn" ? `style="color:#e5484d"` : ""}>${esc(label)}</span>`;
+  const chips = [...(perm.granted || []).map(p => chip(p, "ok")), ...(perm.unsupported || []).map(p => chip(p)), ...denied.map(p => chip(`${p} (off)`, "warn"))].join("");
+  const bgState = backgroundStatusOf(e.id);
+  const bg = e.backgroundKind ? chip(`${e.backgroundKind === "service_worker" ? "service worker" : "background"}: ${bgState}`, bgState === "error" ? "warn" : "ok") : chip("no background");
+  const warnText = [denied.length ? `${denied.length} permission${denied.length === 1 ? "" : "s"} disabled: ${denied.join(", ")}.` : "", e.warnings?.length ? `${e.warnings[0]}${e.warnings.length > 1 ? ` (+${e.warnings.length - 1} more)` : ""}` : ""].filter(Boolean).join(" ");
+  return `<div class="ext-tags">${chips}${bg}</div>${warnText ? `<p class="small" style="margin:0;color:#e5484d">${esc(warnText)}</p>` : ""}`;
+}
 function card(e, on, dev = false) {
-  return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico"><svg><use href="#${e.icon || "i-puzzle"}"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
+  return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico"><svg><use href="#${e.icon || "i-puzzle"}"/></svg></span><div><h3>${esc(e.name)}${e.kind === "chrome" && e.permissions?.denied?.length ? ` <span class="ext-tag" style="color:#e5484d">${e.permissions.denied.length} disabled</span>` : ""}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
     ${e.zoom ? `<label class="field" style="margin:0"><span>Zoom for new pages: <b id="zoomVal">${Math.round((settings.zoomDefault || 1) * 100)}%</b></span><input type="range" min="50" max="200" step="10" value="${Math.round((settings.zoomDefault || 1) * 100)}" id="zoomRange"></label>` : ""}
-    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
-    <div class="ext-foot">${dev ? `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button><button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
+    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.kind === "chrome" ? `Chrome MV${e.manifestVersion}` : e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
+    ${dev && e.kind === "chrome" ? chromeCardMeta(e) : ""}
+    <div class="ext-foot">${dev ? `${e.kind === "chrome" ? "" : `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button>`}<button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
       <span class="spacer"></span><input type="checkbox" class="switch" data-toggle="${esc(e.id)}" ${dev ? "data-dev" : ""} ${on ? "checked" : ""} aria-label="Enable ${esc(e.name)}"></div></article>`;
 }
 export async function renderExtensions() {
@@ -261,7 +349,7 @@ export async function renderExtensions() {
   grid.innerHTML = nav + (dev.length ? dev.map(d => card({ ...d, icon: "i-code" }, d.enabled, true)).join("") : `<div class="empty"><b>No installed extensions</b><span>Open the Store to install verified CSS extensions, or enable Developer mode to load your own package.</span></div>`);
   grid.onchange = e => {
     const sw = e.target.closest("[data-toggle]");
-    if (sw) { const list = devExts(); const d = list.find(x => x.id === sw.dataset.toggle); if (d) { d.enabled = sw.checked; save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); } return; }
+    if (sw) { const list = devExts(); const d = list.find(x => x.id === sw.dataset.toggle); if (d) { d.enabled = sw.checked; save("veyra-dev-extensions", list); hooks.scheduleSync?.(); if (d.kind === "chrome") { sw.checked ? startBackground(d) : stopBackground(d.id); } applyAll(); renderExtensions(); } return; }
     if (e.target.id === "zoomRange") { settings.zoomDefault = Number(e.target.value) / 100; saveSettings(); }
   };
   grid.oninput = e => { if (e.target.id === "zoomRange") $("zoomVal").textContent = e.target.value + "%"; };
@@ -270,7 +358,7 @@ export async function renderExtensions() {
     const inst = e.target.closest("[data-install-store]"); if (inst) { try { const list = await fetchStore(); const pkg = list.find(x => x.id === inst.dataset.installStore); if (!pkg) throw new Error("Extension is no longer published."); const checked = await api("/api/extensions/verify", { method: "POST", json: { ...pkg } }); if (!checked?.safe) throw new Error(checked?.reason || "Extension package failed security validation."); installExtension(pkg); } catch (err) { toast(err.message, { kind: "err", ms: 6000 }); } return; }
     if (e.target.closest("[data-ext-refresh]")) { await fetchStore(true).catch(() => {}); renderExtensions(); return; }
     const r = e.target.closest("[data-run]"); if (r) { runAction(r.dataset.run, r); return; }
-    const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
+    const rm = e.target.closest("[data-remove]"); if (rm) { const old = devExts().find(x => x.id === rm.dataset.remove); const list = devExts().filter(x => x.id !== rm.dataset.remove); save("veyra-dev-extensions", list); hooks.scheduleSync?.(); if (old?.kind === "chrome") { stopBackground(old.id); const all = extStorageAll(); delete all[old.id]; save(EXT_STORAGE_KEY, all); hooks.scheduleSync?.(); } B.state.tabs.forEach(t => t.view === "page" && dtCall(t, old?.script || old?.kind === "chrome" ? "ext.script" : "ext.css", { key: rm.dataset.remove, ...(old?.script || old?.kind === "chrome" ? { script: "" } : { css: "" }) }).catch(() => {})); renderExtensions(); return; }
     const ed = e.target.closest("[data-edit]"); if (ed) { const list = devExts(); const d = list.find(x => x.id === ed.dataset.edit); const { promptDialog } = await import("./core.js"); const res = await promptDialog({ title: `Edit ${d.name}`, fields: [{ name: d.script ? "script" : "css", label: d.script ? "Userscript" : "CSS", type: "textarea", value: d.script || d.css || "" }, { name: "matches", label: "Sites (comma separated, blank for all)", value: (d.matches || []).join(", ") }] }); if (!res) return; try { if (d.script) { const v = normalizeUserscript(res.script); Object.assign(d, v, { id: d.id, enabled: d.enabled }); } else { const v = normalizePackage({ ...d, css: res.css, matches: res.matches.split(",").map(x => x.trim()).filter(Boolean) }, d.source || "local"); Object.assign(d, v); } save("veyra-dev-extensions", list); hooks.scheduleSync?.(); applyAll(); renderExtensions(); toast("Extension updated"); } catch (err) { toast(err.message, { kind: "err" }); } }
   };
 }
@@ -289,7 +377,7 @@ function openPuzzle() {
 }
 async function loadManifestFile(file) {
   try {
-    if (file.size > 180000) throw new Error("That package is too large.");
+    if (file.size > 600000) throw new Error("That package is too large.");
     const text = await file.text();
     if (/==UserScript==/i.test(text) || /\.user\.js$/i.test(file.name)) {
       if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before installing userscripts.");
@@ -298,7 +386,10 @@ async function loadManifestFile(file) {
     }
     const raw = JSON.parse(text); const list = Array.isArray(raw) ? raw : [raw];
     if (raw.manifest?.manifest_version || raw.manifest_version === 2 || raw.manifest_version === 3) {
-      const v = normalizeBrowserManifest(raw.manifest || raw, raw.files || {}); const cur = devExts(); cur.unshift(v); save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); renderExtensions(); return toast(`${v.name} imported`);
+      const v = normalizeBrowserManifest(raw.manifest || raw, raw.files || {});
+      const cur = devExts(); const i = cur.findIndex(x => x.id === v.id); if (i >= 0) cur[i] = v; else cur.unshift(v);
+      save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); startBackground(v); renderExtensions();
+      return toast(`${v.name} imported${v.warnings?.length ? ` (${v.warnings.length} warning${v.warnings.length === 1 ? "" : "s"})` : ""}`);
     }
     const checked = [];
     for (const x of list) { const v = normalizePackage(x, "local"); const r = await api("/api/extensions/verify", { method: "POST", json: x }); if (!r?.safe) throw new Error(r?.reason || `Extension ${v.id} failed security validation.`); checked.push(v); }
@@ -313,7 +404,9 @@ export function initExtensions(b) {
   $("extDevMode").onchange = e => { settings.extensionDeveloperMode = e.target.checked; saveSettings(); renderExtensions(); };
   $("loadExtensionBtn").onclick = () => $("extensionFile").click();
   $("extensionFile").onchange = e => { const f = e.target.files?.[0]; if (f) loadManifestFile(f); e.target.value = ""; };
-  $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => x.script ? x.script : ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+  $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => x.script ? x.script : x.kind === "chrome" ? { manifest: x.manifest, files: x.files } : ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
   renderExtensions();
+  // Start background workers for every enabled Chrome extension on boot.
+  devExts().forEach(d => d.kind === "chrome" && d.enabled && startBackground(d));
 }
 export { BUILTIN };
