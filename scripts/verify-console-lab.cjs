@@ -18,9 +18,12 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
 assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.27-youtube-link-tabs/);
+const bust = (version) => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const appBust = bootstrap.match(/app\.js\?v=([\w.-]+)/)?.[1];
+assert.ok(appBust, "bootstrap.js must load app.js with a cache-bust version");
+assert.match(browserHtml, new RegExp(`bootstrap\\.js\\?v=${bust(appBust)}`), "web/index.html must reference bootstrap.js with the current cache-bust version");
+assert.match(browseHtml, new RegExp(`bootstrap\\.js\\?v=${bust(appBust)}`), "web/browse/index.html must reference bootstrap.js with the current cache-bust version");
+assert.match(bootstrap, new RegExp(`app\\.js\\?v=${bust(appBust)}`), "bootstrap.js must load app.js with the current cache-bust version");
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /server Chromium is unavailable; keeping the FAST_PROXY page/);
 assert.match(app, /t\.requiresBrowser = true/);
@@ -50,9 +53,11 @@ assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme 
 const resolveConsoleLabsTarget = appBase => new URL(`${appBase}/console-lab/`, "https://homekidchud.github.io").href;
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser/web"), "https://homekidchud.github.io/VeyraBrowser/web/console-lab/");
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser"), "https://homekidchud.github.io/VeyraBrowser/console-lab/");
-assert.match(app, /ui\.js\?v=8\.28\.18-professional-shell/);
-assert.match(ui, /settings\.js\?v=8\.28\.18-professional-shell/);
-assert.match(settings, /ui\.js\?v=8\.28\.18-professional-shell/);
+const uiBust = app.match(/["']\.\/ui\.js\?v=([\w.-]+)/)?.[1];
+assert.ok(uiBust, "app.js must import ui.js with a cache-bust version");
+assert.match(app, new RegExp(`ui\\.js\\?v=${bust(uiBust)}`), "app.js must import ui.js with the current cache-bust version");
+assert.match(ui, new RegExp(`settings\\.js\\?v=${bust(uiBust)}`), "ui.js must import settings.js with the same cache-bust version as app.js's ui.js import");
+assert.match(settings, new RegExp(`ui\\.js\\?v=${bust(uiBust)}`), "settings.js must import ui.js with the same cache-bust version as app.js's ui.js import");
 
 for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);

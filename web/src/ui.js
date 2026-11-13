@@ -420,7 +420,7 @@ function openMainMenu() {
     menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
     ...(INCOGNITO ? [menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
-    menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.()),
+    menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
     menuItem("i-grid", "Tab groups", "", () => { const t = B.activeTab(); if (t) B.createTabGroup?.(t.title || "Group"); }),
     "-",
     menuItem("i-history", "History", "history", () => B.openInternal("history")),

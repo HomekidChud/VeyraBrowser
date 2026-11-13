@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const appSource = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
+const swSource = fs.readFileSync(new URL("../web/sw.js", import.meta.url), "utf8");
 assert.match(appSource, /async function serverChromiumAvailable\(\)/, "the client checks the server's advertised Chromium capability");
 assert.match(appSource, /status\?\.chromiumEnabled === true/, "missing or disabled Chromium must be treated as unavailable");
 assert.match(appSource, /f\.src = proxyUrl\(url, "view", session\.id/, "normal page loads use the upstream page proxy in the browser frame");
@@ -20,5 +21,11 @@ assert.match(appSource, /target === "_blank" \|\| event\.ctrlKey \|\| event\.met
 assert.match(appSource, /newTab\(\{ url, index: state\.tabs\.indexOf\(t\) \+ 1 \}\)/, "YouTube links requesting a new tab must become Veyra tabs");
 assert.doesNotMatch(appSource, /trustedYouTubeFallbackLink/, "YouTube links no longer depend on inline srcdoc postMessage code");
 assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the official player is visible while YouTube initializes");
+
+// Service worker: a failed static-asset fetch with no cached copy must answer
+// with a network-error Response, never undefined (respondWith(undefined)
+// throws), and cache writes must not leak unhandled rejections.
+assert.match(swSource, /cache\.put\(request, response\.clone\(\)\)\.catch\(\(\) => \{\}\)/, "cache writes must be failure-safe");
+assert.match(swSource, /return cached \|\| Response\.error\(\);/, "a network failure with no cached copy must return a network-error response");
 
 console.log("VeyraBrowser FAST_PROXY fallback checks passed");

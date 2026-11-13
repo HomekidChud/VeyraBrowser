@@ -8,9 +8,20 @@ import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./so
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
-import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
-import { renderAdmin } from "./admin.js";
+// Lazy modules: Device Cast and the admin console are rare destinations, so
+// their code is only fetched when first used instead of joining the critical
+// boot path. Each module registers its render hooks as soon as it loads.
+let castModulePromise = null;
+function ensureCastModule() {
+  castModulePromise ||= import("./device-cast.js").then(m => { m.initCast(B); return m; });
+  return castModulePromise;
+}
+let adminModulePromise = null;
+function ensureAdminModule() {
+  adminModulePromise ||= import("./admin.js");
+  return adminModulePromise;
+}
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.29-handoff-auto-return";
 
 
@@ -57,6 +68,56 @@ const saveHistory = () => save("veyra-history", state.history.slice(0, settings.
 const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
 const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
 const saveTabGroups = () => save("veyra-tab-groups", state.tabGroups);
+// Tab-group membership lives on the tab objects, so persisting the group list
+// is not enough: every membership change must refresh a per-tab snapshot too,
+// otherwise a reload (or a reload-style handoff) forgets which tab was in
+// which group. saveTabGroups stays as the groups-only writer for sync code.
+function persistTabGroups() {
+  saveTabGroups();
+  persistTabState();
+}
+// Snapshot of the tab strip (id, url/title, group, pin state) so a reload can
+// put the exact same tabs back into the exact same groups. Incognito never
+// writes; internal views are cheap to recreate so only page tabs are kept,
+// and the new-tab view is only kept when it is the single tab (so the first
+// boot after install still looks like a first boot).
+function persistTabState() {
+  if (INCOGNITO) return;
+  const pageTabs = state.tabs.filter(t => t.view === "page" && t.url);
+  const keepNewTab = state.tabs.length === 1 && state.tabs[0].view === "newtab";
+  const tabs = (keepNewTab ? [state.tabs[0]] : pageTabs).map(t => ({
+    id: t.id, url: t.url, title: t.title, view: t.view, groupId: t.groupId || null, pinned: !!t.pinned
+  }));
+  save("veyra-tab-state", { tabs, activeId: state.activeId, seq: state.seq, savedAt: Date.now() });
+}
+function restoreTabState() {
+  if (INCOGNITO) return false;
+  const snap = load("veyra-tab-state", null);
+  if (!snap || !Array.isArray(snap.tabs) || !snap.tabs.length) return false;
+  if (snap.tabs.length === 1 && snap.tabs[0].view === "newtab") return false;
+  const pageTabs = state.tabs.filter(t => t.view === "page" && t.url);
+  if (pageTabs.length) return false;
+  const validGroupIds = new Set(state.tabGroups.map(g => g.id));
+  let seq = state.seq;
+  let restored = 0;
+  for (const s of snap.tabs) {
+    if (!s || typeof s.url !== "string" || !/^https?:\/\//i.test(s.url)) continue;
+    if (s.groupId && !validGroupIds.has(s.groupId)) s.groupId = null;
+    const t = makeTab({ id: s.id, url: s.url, view: "page", pinned: !!s.pinned, groupId: s.groupId || undefined, title: s.title || hostOf(s.url) || "New tab" });
+    const n = Number(String(s.id || "").replace(/^t/, "")) || 0;
+    if (n > seq) seq = n;
+    state.tabs.push(t);
+    restored++;
+  }
+  if (!restored) return false;
+  // The snapshot replaces the strip, so drop the empty newtab boot() seeded.
+  // (restoreTabState only runs at boot when the strip holds no page tabs,
+  // so any newtab here is the throwaway one boot() created.)
+  state.tabs = state.tabs.filter(t => t.view !== "newtab");
+  state.seq = seq;
+  state.activeId = tabById(snap.activeId)?.id || state.tabs[state.tabs.length - 1].id;
+  return true;
+}
 function cleanupUnfinishedSessionHistory() {
   const previous = load("veyra-live-session", null);
   if (previous?.id && settings.clearHistoryOnSessionEnd) {
@@ -78,11 +139,11 @@ export function createTabGroup(name = "New Group") {
 }
 export function assignTabToGroup(tabId, groupId) {
   const t = tabById(tabId); if (!t) return;
-  t.groupId = groupId; renderTabs();
+  t.groupId = groupId; persistTabGroups(); renderTabs();
 }
 export function removeTabFromGroup(tabId) {
   const t = tabById(tabId); if (!t) return;
-  delete t.groupId; renderTabs();
+  delete t.groupId; persistTabGroups(); renderTabs();
 }
 export function deleteTabGroup(groupId) {
   state.tabGroups = state.tabGroups.filter(g => g.id !== groupId);
@@ -99,27 +160,39 @@ export function renameTabGroup(groupId, name) {
 }
 
 
-export function toggleSplitScreen() {
+export function toggleSplitScreen(partnerId = null) {
   const ss = state.splitScreen;
-  if (ss.active) {
-    
-    const wrap = $("frameWrap");
-    qsa("#splitContainer .tab-frame").forEach(frame => wrap?.insertBefore(frame, $("frameLoader")));
-    ss.active = false; ss.leftTabId = null; ss.rightTabId = null;
-    
-    qsa(".split-pane").forEach(el => el.remove());
-    document.getElementById("viewport")?.classList.remove("split-active");
-  } else {
-    
-    const t = activeTab();
-    if (!t || t.view !== "page") return;
-    if (isRemote(t)) return toast("Split view currently supports Fast proxy tabs only. Streamed Chromium tabs use one secure surface.", { kind: "warn", ms: 5000 });
-    
+  if (ss.active) { teardownSplitScreen(); renderActive({ push: false, replace: true }); return; }
+
+  const t = activeTab();
+  if (!t || t.view !== "page") return;
+  if (isRemote(t)) return toast("Split view currently supports Fast proxy tabs only. Streamed Chromium tabs use one secure surface.", { kind: "warn", ms: 5000 });
+
+  // Prefer the tab the user asked to split with (right-click → "Split screen
+  // with this tab"); otherwise fall back to another proxy page tab, or a
+  // background duplicate of the current tab.
+  let rightTab = null;
+  const partner = partnerId ? tabById(partnerId) : null;
+  if (partner && partner.id !== t.id && partner.view === "page" && !isRemote(partner)) rightTab = partner;
+  if (!rightTab) {
     const otherTabs = state.tabs.filter(x => x.id !== t.id && x.view === "page" && !isRemote(x));
-    const rightTab = otherTabs[0] || newTab({ url: t.url, background: true });
-    ss.active = true; ss.leftTabId = t.id; ss.rightTabId = rightTab.id;
-    renderSplitScreen();
+    rightTab = otherTabs[0] || newTab({ url: t.url, background: true });
   }
+  ss.active = true; ss.leftTabId = t.id; ss.rightTabId = rightTab.id;
+  renderSplitScreen();
+  renderTabs();
+}
+let splitDragCleanup = null;
+function teardownSplitScreen() {
+  const ss = state.splitScreen;
+  const wrap = $("frameWrap");
+  if (wrap) qsa("#splitContainer .tab-frame").forEach(frame => wrap.insertBefore(frame, $("frameLoader")));
+  ss.active = false; ss.leftTabId = null; ss.rightTabId = null;
+  splitDragCleanup?.(); splitDragCleanup = null;
+  // Remove the whole container: it is an absolute, full-viewport, z-indexed
+  // overlay, so leaving it (or only its panes) behind blocks the page below.
+  document.getElementById("splitContainer")?.remove();
+  document.getElementById("viewport")?.classList.remove("split-active");
   renderTabs();
 }
 function renderSplitScreen() {
@@ -167,16 +240,31 @@ function renderSplitScreen() {
   
   const divider = document.getElementById("splitDivider");
   if (divider) {
-    let dragging = false;
-    divider.addEventListener("mousedown", e => { dragging = true; e.preventDefault(); });
-    document.addEventListener("mousemove", e => {
-      if (!dragging) return;
-      const rect = splitContainer.getBoundingClientRect();
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.max(20, Math.min(80, pct));
-      splitContainer.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
+    // Pointer events on the divider itself (with capture) — no document-level
+    // listeners are leaked between re-renders, and touch dragging works.
+    // On the <=768px layout the panes stack in rows, so drag vertically.
+    divider.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      const mobile = window.matchMedia("(max-width:768px)").matches;
+      const move = ev => {
+        const rect = splitContainer.getBoundingClientRect();
+        const pct = mobile ? ((ev.clientY - rect.top) / rect.height) * 100 : ((ev.clientX - rect.left) / rect.width) * 100;
+        const clamped = Math.max(20, Math.min(80, pct));
+        if (mobile) splitContainer.style.gridTemplateRows = `${clamped}fr 6px ${100 - clamped}fr`;
+        else splitContainer.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
+      };
+      const up = () => {
+        splitDragCleanup = null;
+        divider.removeEventListener("pointermove", move);
+        divider.removeEventListener("pointerup", up);
+        divider.removeEventListener("pointercancel", up);
+      };
+      splitDragCleanup = up;
+      try { divider.setPointerCapture(e.pointerId); } catch {}
+      divider.addEventListener("pointermove", move);
+      divider.addEventListener("pointerup", up);
+      divider.addEventListener("pointercancel", up);
     });
-    document.addEventListener("mouseup", () => { dragging = false; });
   }
 }
 
@@ -243,6 +331,7 @@ export function renderTabs() {
     }
   }
   list.innerHTML = html;
+  persistTabState();
   list.querySelectorAll(".tab").forEach(el => {
     el.onmousedown = e => { if (e.button === 1) { e.preventDefault(); closeTab(el.dataset.tab); } };
     el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); };
@@ -299,7 +388,7 @@ function tabContextMenu(id, x, y) {
     { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; renderTabs(); } },
     "-",
     ...groupItems,
-    { label: "Split screen with this tab", action: () => { switchTab(id); toggleSplitScreen(); } },
+    { label: "Split screen with this tab", action: () => { const prev = state.activeId; switchTab(id); toggleSplitScreen(prev && prev !== id ? prev : null); } },
     "-",
     { label: "Copy address", disabled: !t.url, action: () => copyText(t.url) },
     "-",
@@ -311,6 +400,10 @@ function tabContextMenu(id, x, y) {
 }
 export function switchTab(id) {
   const t = tabById(id); if (!t) return;
+  // Split view only makes sense while one of its panes is active; switching
+  // to any other tab leaves the split overlay hiding that tab, so exit split.
+  const ss = state.splitScreen;
+  if (ss.active && id !== ss.leftTabId && id !== ss.rightTabId) teardownSplitScreen();
   state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
 }
 export function newTab({ url = "", view = "", index = -1, background = false, section = "", displayUrl = "" } = {}) {
@@ -342,6 +435,9 @@ export function closeTab(id, { silent = false } = {}) {
   state.tabs.splice(idx, 1);
   if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
   else if (state.activeId === id) state.activeId = state.tabs[Math.min(idx, state.tabs.length - 1)].id;
+  // A pane tab was closed: its frame is already gone, so exit split view
+  // instead of leaving a blank pane behind a full-viewport overlay.
+  if (state.splitScreen.active && (state.splitScreen.leftTabId === id || state.splitScreen.rightTabId === id)) teardownSplitScreen();
   renderTabs(); renderActive({ push: true, replace: true });
 }
 export function reopenClosedTab() { const c = state.closed.pop(); if (!c) return toast("No recently closed tabs"); if (c.url) newTab({ url: c.url, index: Math.min(c.index, state.tabs.length) }); else newTab({ view: c.view, section: c.section, index: Math.min(c.index, state.tabs.length) }); }
@@ -444,7 +540,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
   const existing = state.tabs.find(x => x.view === view && !["resources", "links", "calculator"].includes(view));
   if (!tab && existing && existing !== t) { t = existing; state.activeId = t.id; }
   else if (!tab && t && t.view === "page" && t.url) {
-    const src = t; t = makeTab({ sourceTabId: src.id }); state.tabs.splice(state.tabs.indexOf(src) + 1, 0, t); state.activeId = t.id;
+    const src = t; t = makeTab({ sourceTabId: src.id, groupId: src.groupId }); state.tabs.splice(state.tabs.indexOf(src) + 1, 0, t); state.activeId = t.id;
   }
   if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
   if (t.view === "page") teardownTab(t);
@@ -458,14 +554,19 @@ function pushTabHistory(t, entry) { if (t.history[t.histIndex] === entry) return
 
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
+  // Split view overlays the whole viewport; if the active pane tab stops
+  // being a proxy page (home, internal view, remote Chromium), exit split
+  // so the new view is actually visible.
+  const ss = state.splitScreen;
+  if (ss.active && (t.view !== "page" || isRemote(t) || (t.id !== ss.leftTabId && t.id !== ss.rightTabId))) teardownSplitScreen();
   qsa(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + t.view));
   if (t.view === "page") showFrameForTab(t); else setLoading(false);
   updateAddress(); updateNavButtons(); updateIdentity();
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdmin(t.section),
-    cast: () => hooks.renderCast?.(), internet: () => hooks.renderInternet?.()
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => ensureAdminModule().then(m => m.renderAdmin(t.section)),
+    cast: () => ensureCastModule().then(() => hooks.renderCast?.()), internet: () => ensureCastModule().then(() => hooks.renderInternet?.())
   }[t.view]; r?.();
   if (t.view !== "dev") clearInterval(state.devTimer);
   if (t.view !== "admin") clearInterval(state.adminTimer);
@@ -562,7 +663,14 @@ function getOrCreateFrame(t) {
   f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
   f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
-  $("frameWrap").insertBefore(f, $("frameLoader"));
+  // While split view is active, a pane tab's frame must live inside its pane —
+  // #frameWrap is hidden behind the split overlay, so a frame created there
+  // (e.g. the background duplicate opened when split starts) would never show.
+  const ss = state.splitScreen;
+  const pane = ss.active && (t.id === ss.leftTabId || t.id === ss.rightTabId)
+    ? document.getElementById(t.id === ss.leftTabId ? "splitLeftContent" : "splitRightContent")
+    : null;
+  if (pane) pane.appendChild(f); else $("frameWrap").insertBefore(f, $("frameLoader"));
   return f;
 }
 function onFrameLoad(t) {
@@ -2585,7 +2693,7 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen
 };
 hooks.B = B;
 
@@ -2616,7 +2724,11 @@ async function boot() {
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
     if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
-    initUI(B); initDevtools(B); initCast(B);
+    initUI(B); initDevtools(B);
+    // Rebuild the tab strip from the last snapshot (URLs, groups, pin state)
+    // so a reload keeps grouped tabs grouped. The fresh newtab from above is
+    // replaced unless the snapshot says the strip was a single empty newtab.
+    restoreTabState();
     renderTabs(); tickSession();
     await revisitSavedSession();
     applyRoute();

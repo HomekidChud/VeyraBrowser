@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="veyra-api" content="https://veyraserver-xscy.onrender.com">
+  <!-- Warm the API origin (DNS + TCP + TLS) while the user is still reading
+       the page, so the first proxied navigation and every API call reuse an
+       already-open connection instead of paying the handshake. -->
+  <link rel="preconnect" href="https://veyraserver-xscy.onrender.com">
+  <link rel="preconnect" href="https://veyraserver-xscy.onrender.com" crossorigin>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com; img-src 'self' data: blob: https://veyraserver-xscy.onrender.com http://127.0.0.1:10000 http://localhost:10000 https://icons.duckduckgo.com; connect-src 'self' https://veyraserver-xscy.onrender.com wss://veyraserver-xscy.onrender.com http://127.0.0.1:10000 http://localhost:10000; frame-src https://veyraserver-xscy.onrender.com http://127.0.0.1:10000 http://localhost:10000 https://www.youtube-nocookie.com; font-src 'self' data: https://api.fontshare.com https://fonts.gstatic.com; media-src 'self' blob: https://veyraserver-xscy.onrender.com http://127.0.0.1:10000 http://localhost:10000; form-action 'self' https://veyraserver-xscy.onrender.com http://127.0.0.1:10000 http://localhost:10000; worker-src 'self' blob:">
   <meta name="theme-color" content="#0d0f13">
   <link rel="manifest" href="./manifest.webmanifest">

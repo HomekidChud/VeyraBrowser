@@ -200,6 +200,10 @@ export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin")
 
 export class ApiError extends Error { constructor(message, status = 0, code = "API_ERROR", requestId = "", body = null) { super(message); this.status = status; this.code = code; this.requestId = requestId; this.body = body; } }
 export const netLog = [];
+// Timestamp of the last successful API round-trip. Any recent success proves
+// the Render instance is awake, so navigations can skip the /api/health
+// warm-up probe instead of adding a serial round-trip to the critical path.
+let apiLastSuccessAt = 0;
 export async function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
   const requestId = uid();
@@ -226,6 +230,7 @@ export async function api(path, options = {}) {
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
   try {
     const response = await rawFetch(API + path, { method, headers, body, signal: controller.signal, credentials: "omit" });
+    apiLastSuccessAt = Date.now();
     const rid = response.headers.get("X-Veyra-Request-ID") || requestId;
     const text = await response.text();
     const ct = response.headers.get("content-type") || "";
@@ -271,6 +276,10 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
 let apiAwakePromise = null;
 let apiAwakeAt = 0;
 export function ensureApiAwake(onStatus = null) {
+  // A successful API call within the last two minutes is proof the server is
+  // awake — skip the health probe entirely (e.g. the session POST that just
+  // ran before this navigation). Cold boots still probe as before.
+  if (Date.now() - apiLastSuccessAt < 120000) return Promise.resolve(true);
   if (apiAwakePromise && Date.now() - apiAwakeAt < 180000) return apiAwakePromise;
   const probe = (async () => {
     const started = Date.now();

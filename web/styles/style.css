@@ -997,7 +997,7 @@ body.incognito{--bg:#15121c;--bg-2:#1a1623;--surface:#211c2c;--surface-2:#282233
 .split-content{flex:1;min-height:0;position:relative;overflow:auto;display:flex;justify-content:center}
 .split-content .tab-frame{width:100%;height:100%;display:block}
 .split-content .browser-surface{width:100%;height:100%;display:block}
-.split-divider{width:6px;cursor:col-resize;background:var(--line);flex:none;position:relative}
+.split-divider{width:6px;cursor:col-resize;background:var(--line);flex:none;position:relative;touch-action:none}
 .split-divider:hover{background:var(--accent)}
 .split-divider::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:4px;height:40px;border-radius:2px;background:var(--muted)}
 .viewport.split-active .view{display:none!important}
