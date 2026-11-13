@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.27-youtube-link-tabs";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
+} from "./core.js?v=8.28.28-handoff-direct-open";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.28-handoff-direct-open";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.27-youtube-link-tabs";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.28-handoff-direct-open";
 
 
 
@@ -2337,6 +2337,18 @@ function pageConsoleEntry(d, t) {
 }
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
+  // The challenge card asks the app to open the handoff because a popup
+  // opened by the sandboxed iframe inherits the sandbox, and sites that send
+  // Cross-Origin-Opener-Policy (chess.com, Google, Twitter, …) then fail with
+  // ERR_BLOCKED_BY_RESPONSE. A popup opened by the top-level app is a normal
+  // tab and always works.
+  if (d.type === "veyra:open-direct-ping" || d.type === "veyra:open-direct") {
+    if (e.origin !== API_ORIGIN) return;
+    if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
+    const url = String(d.url || "");
+    if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Handoff opened directly: ${hostOf(url)}`); }
+    return;
+  }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   
   

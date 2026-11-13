@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.28-handoff-direct-open";
 
 const pending = new Map();
 const listeners = new Set();
