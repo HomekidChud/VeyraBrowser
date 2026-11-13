@@ -262,6 +262,36 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
 }
 
 
+// Render's free tier spins the API server down after ~15 minutes without
+// traffic. While it spins back up, the platform's own loading page carries a
+// framing policy, so a Veyra iframe that loads during a cold start renders
+// Chrome's "refused to connect (ERR_BLOCKED_BY_RESPONSE)" screen instead of
+// the page. Warm the API before any iframe navigation: ping /api/health
+// until it answers quickly, and share the warm promise with every tab.
+let apiAwakePromise = null;
+let apiAwakeAt = 0;
+export function ensureApiAwake(onStatus = null) {
+  if (apiAwakePromise && Date.now() - apiAwakeAt < 180000) return apiAwakePromise;
+  const probe = (async () => {
+    const started = Date.now();
+    while (Date.now() - started < 75000) {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 4000);
+        const t0 = performance.now();
+        try { await rawFetch(`${API}/api/health`, { cache: "no-store", signal: ctl.signal }); } finally { clearTimeout(timer); }
+        if (performance.now() - t0 < 2500) return true;
+      } catch {}
+      onStatus?.("Veyra's server is waking up — the first page can take a minute…");
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    return false;
+  })();
+  apiAwakePromise = probe.then(ok => { apiAwakeAt = Date.now(); return ok; });
+  return apiAwakePromise;
+}
+
+
 export async function sendNeuralFeedback(url, positive, weight = 1.0) {
   if (INCOGNITO || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
   try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}

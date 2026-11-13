@@ -2,7 +2,7 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
 } from "./core.js?v=8.28.27-youtube-link-tabs";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.27-youtube-link-tabs";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
@@ -1139,6 +1139,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   let session;
   try { session = await ensureSession(); }
   catch (e) { t.loading = false; if (activeTab() === t) setLoading(false); return renderError(t, "server", e); }
+  // Cold Render instances serve a platform loading page that Chrome refuses
+  // to frame (ERR_BLOCKED_BY_RESPONSE). Wait until the API answers quickly
+  // before any iframe navigation so users see a wake-up note instead.
+  if (loadFrame) await ensureApiAwake(msg => { if (activeTab() === t) setLoading(true, 18, msg); });
   if (!state.tabs.includes(t) || t.url !== url) return;
   t.sessionId = session.id;
   recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
@@ -2539,6 +2543,9 @@ setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs",
 async function boot() {
   try {
     wire();
+    // Warm the Render instance in the background so the first page the user
+    // opens never lands on the platform's unframeable loading page.
+    void ensureApiAwake();
     startIncognitoAddressRotation();
     cleanupUnfinishedSessionHistory();
     const params = new URLSearchParams(location.search);
