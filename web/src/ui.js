@@ -476,10 +476,18 @@ async function openSiteInfo() {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popDirect").onclick = () => { window.open(t.url, "_blank", "noopener"); closeFloating(); };
-    p.querySelector("#popHandoff")?.addEventListener("click", () => {
+    p.querySelector("#popHandoff")?.addEventListener("click", async () => {
       if (!s) return;
       closeFloating();
-      window.open(`${API}/api/handoff/login?sid=${encodeURIComponent(s.id)}&url=${encodeURIComponent(t.url)}`, "_blank", "noopener");
+      // Ask the server where the handoff should land, then open the real
+      // site directly — the popup never navigates through the API origin,
+      // so a blocked or asleep server can't break the sign-in.
+      let dest = t.url;
+      try {
+        const r = await api(`/api/handoff/login?sid=${encodeURIComponent(s.id)}&url=${encodeURIComponent(t.url)}`, { headers: { accept: "application/json" }, timeoutMs: 8000 });
+        if (r && typeof r.dest === "string" && /^https?:\/\//i.test(r.dest)) dest = r.dest;
+      } catch (err) { addLog("warn", `Handoff destination unavailable, opening the page directly: ${err.message}`); }
+      window.open(dest, "_blank", "noopener");
       toast("Sign in (or finish the check) on the real site, then come back to this tab — your session comes with you.", { ms: 7000 });
     });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };

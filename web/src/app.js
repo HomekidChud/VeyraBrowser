@@ -559,7 +559,7 @@ function getOrCreateFrame(t) {
   // the sandbox gives them an opaque origin, which makes rewritten CSS, fonts,
   // images and resource requests fail even though the HTML itself renders.
   // The API origin remains cross-origin from the GitHub Pages shell.
-  f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads");
+  f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
   f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
   $("frameWrap").insertBefore(f, $("frameLoader"));
