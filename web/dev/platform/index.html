@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="veyra-api" content="https://veyraserver-xscy.onrender.com">
+  <link rel="preconnect" href="https://veyraserver-xscy.onrender.com" crossorigin>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://veyraserver-xscy.onrender.com; font-src 'self' data:">
+  <meta name="robots" content="noindex">
+  <meta name="description" content="Veyra Developer Platform — manage workspaces, API keys and usage for the Veyra API.">
+  <title>Veyra Developer Platform</title>
+  <link rel="stylesheet" href="./styles.css?v=1">
+  <script type="module" src="./app.js?v=1"></script>
+</head>
+<body>
+  <!-- Sign-in: reuses the Veyra account session token (same origin as the main app). -->
+  <div class="auth-shell" id="authShell" hidden>
+    <div class="auth-card">
+      <p class="eyebrow">Veyra · developer platform</p>
+      <h1>Sign in to the platform</h1>
+      <p class="lead">Use your Veyra account. If you are signed in to Veyra in this browser, the session is picked up automatically.</p>
+      <form id="loginForm">
+        <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>
+        <div class="actions"><button class="btn primary" type="submit" id="loginButton">Sign in</button></div>
+        <p class="status-line" id="loginStatus" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+
+  <main id="portal" hidden>
+    <div class="topbar">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 8.5l9 16 9-16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="25" cy="8.5" r="2.4" fill="var(--accent)"/></svg>
+        <span>Veyra Developer Platform</span>
+      </div>
+      <div class="account">
+        <span id="accountEmail" class="mono"></span>
+        <button class="btn" id="signOutButton" type="button">Sign out</button>
+      </div>
+    </div>
+    <p class="eyebrow">API · workspaces · keys</p>
+    <h1>Build on Veyra</h1>
+    <p class="lead">Create workspaces, issue API keys, watch request usage, and read the API docs. Key secrets are shown once at creation — store them somewhere safe.</p>
+
+    <nav class="tabs" aria-label="Platform sections" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="workspaces">Workspaces</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="keys">API keys</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="usage">Usage</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="plans">Plans & waitlist</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="docs">API docs</button>
+    </nav>
+
+    <!-- Overview -->
+    <section class="view active" id="view-overview" role="tabpanel">
+      <div class="metrics">
+        <article class="metric"><span>Workspaces</span><b id="metricWorkspaces">—</b><small id="metricWorkspaceLimit">—</small></article>
+        <article class="metric"><span>Active API keys</span><b id="metricKeys">—</b><small>Across all workspaces</small></article>
+        <article class="metric"><span>Requests (24h)</span><b id="metricRequests24h">—</b><small>Key-authenticated API calls</small></article>
+        <article class="metric"><span>Total requests</span><b id="metricRequestsTotal">—</b><small>All time</small></article>
+      </div>
+      <div class="grid2">
+        <section class="panel">
+          <div class="panel-head"><h2>Account</h2><span class="pill" id="planPill">—</span></div>
+          <div class="small muted" id="accountDetails">Loading…</div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Billing</h2></div>
+          <div class="small muted" id="billingDetails">Loading…</div>
+          <form id="billingForm" hidden>
+            <div class="field"><label for="billingEmail">Billing email</label><input id="billingEmail" type="email" required></div>
+            <div class="field"><label for="billingCompany">Company (optional)</label><input id="billingCompany" maxlength="100"></div>
+            <div class="actions"><button class="btn primary" type="submit">Save billing profile</button></div>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <!-- Workspaces -->
+    <section class="view" id="view-workspaces" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head"><div><h2>Create a workspace</h2><p class="small muted">Names become URL-safe slugs, e.g. “My Dev Workspace” → my-dev-workspace.</p></div></div>
+        <form id="workspaceForm">
+          <div class="field-row">
+            <div class="field"><label for="workspaceName">Name</label><input id="workspaceName" maxlength="80" placeholder="My Dev Workspace" required></div>
+            <div class="field"><label for="workspaceDescription">Description (optional)</label><input id="workspaceDescription" maxlength="240" placeholder="What is this workspace for?"></div>
+          </div>
+          <div class="actions"><button class="btn primary" type="submit">Create workspace</button></div>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Your workspaces</h2><span class="pill" id="workspaceCount">0</span></div>
+        <div class="card-list" id="workspaceList"><div class="empty">Loading workspaces…</div></div>
+      </section>
+    </section>
+
+    <!-- API keys -->
+    <section class="view" id="view-keys" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head"><div><h2>Create an API key</h2><p class="small muted">The secret is shown once and stored only as a hash — Veyra cannot recover it later.</p></div></div>
+        <div class="field"><label for="keyWorkspace">Workspace</label><select id="keyWorkspace"></select></div>
+        <form id="keyForm">
+          <div class="field-row">
+            <div class="field"><label for="keyName">Key name</label><input id="keyName" maxlength="80" placeholder="Production key" required></div>
+            <div class="field"><label for="keySubmit">&nbsp;</label><button class="btn primary" id="keySubmit" type="submit">Create key</button></div>
+          </div>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Keys in this workspace</h2><span class="pill" id="keyCount">0</span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Key</th><th>Requests</th><th>24h</th><th>Last used</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="keyRows"><tr><td colspan="7" class="muted">Loading keys…</td></tr></tbody>
+        </table></div>
+      </section>
+    </section>
+
+    <!-- Usage -->
+    <section class="view" id="view-usage" role="tabpanel">
+      <div class="metrics">
+        <article class="metric"><span>Total requests</span><b id="usageTotal">—</b><small>All keys, all time</small></article>
+        <article class="metric"><span>Requests (24h)</span><b id="usage24h">—</b><small>Rolling window</small></article>
+        <article class="metric"><span>Active keys</span><b id="usageKeys">—</b><small>Not revoked</small></article>
+        <article class="metric"><span>Busiest key</span><b id="usageTop">—</b><small id="usageTopNote">—</small></article>
+      </div>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Per-key usage</h2><p class="small muted">Counts come from key-authenticated calls to the public API (<span class="mono">/api/v1/*</span>).</p></div><button class="btn" id="usageRefresh" type="button">Refresh</button></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Workspace</th><th>Key</th><th>Requests</th><th>Share</th><th>24h</th><th>Last used</th></tr></thead>
+          <tbody id="usageRows"><tr><td colspan="6" class="muted">Loading usage…</td></tr></tbody>
+        </table></div>
+      </section>
+    </section>
+
+    <!-- Plans & waitlist -->
+    <section class="view" id="view-plans" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head"><h2>Plans</h2></div>
+        <div class="plan-grid" id="planGrid"><div class="empty">Loading plans…</div></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><div><h2>Early access waitlist</h2><p class="small muted">The platform opens in waves. Join the waitlist for priority placement ($2.99/month early access) or the free Developer beta.</p></div></div>
+        <form id="waitlistForm">
+          <div class="field-row">
+            <div class="field"><label for="waitlistEmail">Email</label><input id="waitlistEmail" type="email" required></div>
+            <div class="field"><label for="waitlistName">Name (optional)</label><input id="waitlistName" maxlength="100"></div>
+          </div>
+          <div class="field"><label for="waitlistPlan">Plan</label><select id="waitlistPlan"><option value="developer">Developer — free during beta</option><option value="early_access">Early access — $2.99/month priority</option></select></div>
+          <div class="actions"><button class="btn primary" type="submit">Join the waitlist</button></div>
+        </form>
+        <div id="waitlistStatus" class="small muted">Check your position with the email you joined with.</div>
+      </section>
+    </section>
+
+    <!-- API docs -->
+    <section class="view" id="view-docs" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head"><h2>Authentication</h2></div>
+        <p class="small muted">Two token types: your <b>Veyra account session</b> (from <span class="mono">POST /api/auth/login</span>) manages workspaces and keys; an <b>API key</b> (<span class="mono">vyr_live_…</span>) calls the public API. Both travel as <span class="mono">Authorization: Bearer <token></span>.</p>
+        <pre class="docs"><span class="c"># 1. Sign in to get a session token (management API)</span>
+curl -s -X POST $API/api/auth/login \
+  -H <b>'content-type: application/json'</b> \
+  -d '{"email":"you@example.com","password":"•••"}'
+<span class="c"># → {"ok":true,"token":"v1.…","user":{…}}</span>
+
+<span class="c"># 2. Create a workspace with that session token</span>
+curl -s -X POST $API/api/platform/workspaces \
+  -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
+  -d '{"name":"My Dev Workspace","description":"docs crawler"}'
+<span class="c"># → {"ok":true,"workspace":{"id":"…","slug":"my-dev-workspace",…}}</span>
+
+<span class="c"># 3. Create an API key — the secret is returned exactly once</span>
+curl -s -X POST $API/api/platform/workspaces/$WS_ID/keys \
+  -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
+  -d '{"name":"Production key"}'
+<span class="c"># → {"ok":true,"key":"vyr_live_•••","keyInfo":{"id":"…","last4":"abcd"},…}</span>
+
+<span class="c"># 4. Call the public API with the key</span>
+curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c"># → {"ok":true,"workspace":{…},"key":{…},"usage":{"requests":1,…}}</span></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Management endpoints</h2><span class="pill">session token</span></div>
+        <div class="table-wrap docs-table"><table>
+          <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/platform/overview</code></td><td>Account snapshot: workspaces, keys, billing, limits, pricing.</td></tr>
+            <tr><td><code>GET /api/platform/pricing</code></td><td>Public plan catalogue (owner, developer, early access, team).</td></tr>
+            <tr><td><code>POST /api/platform/workspaces</code></td><td>Create a workspace (<span class="mono">name</span>, optional <span class="mono">description</span>). Errors: WORKSPACE_NAME_INVALID, PLATFORM_PLAN_LIMIT.</td></tr>
+            <tr><td><code>PATCH /api/platform/workspaces/:id</code></td><td>Rename or edit the description.</td></tr>
+            <tr><td><code>DELETE /api/platform/workspaces/:id</code></td><td>Delete a workspace and orphan its keys.</td></tr>
+            <tr><td><code>GET /api/platform/workspaces/:id/keys</code></td><td>List active keys (no secrets — hash and last-4 only at rest).</td></tr>
+            <tr><td><code>POST /api/platform/workspaces/:id/keys</code></td><td>Create a key; the raw secret is returned once. Errors: BILLING_REQUIRED, PLATFORM_KEY_LIMIT, API_KEY_NAME_INVALID.</td></tr>
+            <tr><td><code>PATCH /api/platform/workspaces/:ws/keys/:key</code></td><td>Rename a key.</td></tr>
+            <tr><td><code>POST /api/platform/workspaces/:ws/keys/:key/rotate</code></td><td>Revoke the old secret and mint a new one (shown once).</td></tr>
+            <tr><td><code>DELETE /api/platform/workspaces/:ws/keys/:key</code></td><td>Revoke a key immediately.</td></tr>
+            <tr><td><code>POST /api/platform/billing/setup</code></td><td>Save a billing profile (required before issuing keys on the Developer plan).</td></tr>
+            <tr><td><code>POST /api/platform/waitlist</code></td><td>Join the early-access waitlist. Errors: WAITLIST_EMAIL_INVALID, PLATFORM_RATE_LIMITED.</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Public API</h2><span class="pill">api key</span></div>
+        <div class="table-wrap docs-table"><table>
+          <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/v1/me</code></td><td>Identity of the key: workspace, key metadata and usage counters.</td></tr>
+            <tr><td><code>GET /api/v1/usage</code></td><td>Usage for the key: totals, rolling 24h window and per-hour buckets.</td></tr>
+          </tbody>
+        </table></div>
+        <pre class="docs"><span class="c"># Usage with hourly buckets (requires the key)</span>
+curl -s $API/api/v1/usage -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c"># → {"ok":true,"keyId":"…","usage":{"requests":12,"last24h":3,…},"byHour":{"2026-11-13T20:00:00Z":2,…}}</span>
+
+<span class="c"># Errors use a consistent envelope: {"error":"…","code":"…"}</span>
+<span class="c"># 401 PLATFORM_KEY_REQUIRED / PLATFORM_KEY_INVALID · 429 PLATFORM_RATE_LIMITED</span></pre>
+        <p class="small muted">All platform routes are rate limited (120 requests/minute per IP; the waitlist form allows 5 per hour). Key-authenticated calls count towards that key’s usage.</p>
+      </section>
+    </section>
+  </main>
+
+  <!-- Secret modal: shown after create/rotate; the secret is displayed exactly once. -->
+  <div class="overlay" id="secretOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="secretTitle">
+      <h2 id="secretTitle">Your API key</h2>
+      <p class="small muted" id="secretNote">Copy this secret now. Veyra stores only a hash — it will never be shown again.</p>
+      <div class="secret-box"><code id="secretValue" class="mono"></code><button class="btn" id="secretCopy" type="button">Copy</button></div>
+      <div class="actions"><button class="btn primary" id="secretDone" type="button">I saved it somewhere safe</button></div>
+    </div>
+  </div>
+</body>
+</html>
