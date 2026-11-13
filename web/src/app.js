@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.28-handoff-direct-open";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.28-handoff-direct-open";
+} from "./core.js?v=8.28.29-handoff-auto-return";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.29-handoff-auto-return";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { initCast } from "./device-cast.js";
 import { maybeOfferRenew } from "./renew.js";
 import { renderAdmin } from "./admin.js";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.28-handoff-direct-open";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.29-handoff-auto-return";
 
 
 
@@ -2335,6 +2335,57 @@ function pageConsoleEntry(d, t) {
     kind: isException ? "exception" : "console"
   };
 }
+// ---------- Handoff auto-return ----------
+// While a handoff popup is open, the app watches the session's cookie jar for
+// that host. The moment the user's session arrives — the "Bring session back"
+// bookmarklet, the paste form, any cookie import — the challenged tab reloads
+// through the fast proxy, signed in. No manual "come back and reload" step.
+const handoffPolls = new Map();
+function stopHandoffPoll(tabId) {
+  const poll = handoffPolls.get(tabId);
+  if (!poll) return;
+  handoffPolls.delete(tabId);
+  try { clearInterval(poll.timer); } catch {}
+  try { clearTimeout(poll.stopTimer); } catch {}
+}
+function startHandoffPoll(tab, url) {
+  const s = state.session;
+  if (!tab || !s || !/^https?:\/\//i.test(String(url || ""))) return;
+  let host = "";
+  try { host = new URL(url).hostname.toLowerCase(); } catch { return; }
+  stopHandoffPoll(tab.id);
+  const poll = { host, baseline: -1, sid: s.id, timer: 0, stopTimer: 0 };
+  const check = async () => {
+    try {
+      const r = await api(`/api/session/${poll.sid}/cookies?host=${encodeURIComponent(poll.host)}`, { timeoutMs: 6000 });
+      if (!state.session || state.session.id !== poll.sid) return stopHandoffPoll(tab.id);
+      const n = Array.isArray(r?.cookies) ? r.cookies.length : -1;
+      if (n < 0) return; // transient error — keep watching
+      if (poll.baseline < 0) { poll.baseline = n; return; }
+      if (n > poll.baseline) {
+        stopHandoffPoll(tab.id);
+        const t = state.tabs.find(x => x.id === tab.id);
+        if (t && t.view === "page" && t.url) {
+          addLog("info", `Handoff session for ${poll.host} arrived; reloading ${hostOf(t.url)} through the fast proxy.`);
+          toast("Session imported — reloading the page signed in.", { ms: 6000 });
+          void navigate(t.url, { tab: t, push: false });
+        }
+      }
+    } catch { /* transient — keep watching */ }
+  };
+  void check();
+  poll.timer = setInterval(() => { if (!state.tabs.find(x => x.id === tab.id)) return stopHandoffPoll(tab.id); void check(); }, 2000);
+  poll.stopTimer = setTimeout(() => stopHandoffPoll(tab.id), 20 * 60 * 1000);
+  handoffPolls.set(tab.id, poll);
+}
+// The handoff popup is opened here (never by the sandboxed proxy iframe) and
+// this tab is watched for the session to arrive.
+function openHandoffWindow(dest, tab) {
+  const win = window.open(dest, "_blank", "noopener");
+  startHandoffPoll(tab, dest);
+  return win;
+}
+hooks.openHandoff = openHandoffWindow;
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
   // The challenge card asks the app to open the handoff because a popup
@@ -2346,7 +2397,7 @@ async function handleMessage(e) {
     if (e.origin !== API_ORIGIN) return;
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
     const url = String(d.url || "");
-    if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Handoff opened directly: ${hostOf(url)}`); }
+    if (/^https?:\/\//i.test(url)) { openHandoffWindow(url, activeTab()); addLog("info", `Handoff opened directly: ${hostOf(url)}`); }
     return;
   }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }

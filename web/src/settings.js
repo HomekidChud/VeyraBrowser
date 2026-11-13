@@ -1,5 +1,5 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.28-handoff-direct-open";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.29-handoff-auto-return";
 import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.18-professional-shell";
 
 let B;

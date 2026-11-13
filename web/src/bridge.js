@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.28-handoff-direct-open";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.29-handoff-auto-return";
 
 const pending = new Map();
 const listeners = new Set();

@@ -2,7 +2,7 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.28-handoff-direct-open";
+} from "./core.js?v=8.28.29-handoff-auto-return";
 import { initExtensions } from "./extensions.js";
 import { initSettings } from "./settings.js?v=8.28.18-professional-shell";
 
@@ -487,8 +487,12 @@ async function openSiteInfo() {
         const r = await api(`/api/handoff/login?sid=${encodeURIComponent(s.id)}&url=${encodeURIComponent(t.url)}`, { headers: { accept: "application/json" }, timeoutMs: 8000 });
         if (r && typeof r.dest === "string" && /^https?:\/\//i.test(r.dest)) dest = r.dest;
       } catch (err) { addLog("warn", `Handoff destination unavailable, opening the page directly: ${err.message}`); }
-      window.open(dest, "_blank", "noopener");
-      toast("Sign in (or finish the check) on the real site, then come back to this tab — your session comes with you.", { ms: 7000 });
+      // Opened through the app so the tab is watched: when the session
+      // arrives (bookmarklet or paste), this page reloads signed in.
+      let opened = null;
+      try { opened = hooks.openHandoff?.(dest, t); } catch (err) { opened = null; }
+      if (!opened) window.open(dest, "_blank", "noopener");
+      toast("Sign in (or finish the check) on the real site. When you're done there, click the “Bring session back” bookmarklet — Veyra picks up your session and this page reloads automatically.", { ms: 9000 });
     });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });

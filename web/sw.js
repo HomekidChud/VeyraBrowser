@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.28.28-handoff-direct-open";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.28-handoff-direct-open", "./src/bootstrap.js?v=8.28.28-handoff-direct-open"];
+const CACHE = "veyra-browser-shell-v8.28.29-handoff-auto-return";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.29-handoff-auto-return", "./src/bootstrap.js?v=8.28.29-handoff-auto-return"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
