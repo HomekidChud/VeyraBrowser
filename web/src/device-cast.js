@@ -73,7 +73,21 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
             try { handleMessage(msg); } catch {}
           }
         }
-      } catch {} finally { castPollInFlight = false; }
+      } catch (e) {
+        if (generation === castConnectionGeneration && (e?.status === 404 || e?.code === "CAST_SESSION_NOT_FOUND")) {
+          // The server no longer knows this session (reaped or closed) — stop
+          // polling the dead session and return to the start view instead of
+          // spinning silently forever.
+          castPollInFlight = false;
+          stopPollingFallback();
+          castFallbackStarted = false;
+          castSession = null;
+          castSessionId = null;
+          renderCastView();
+          toast("Cast session ended", { kind: "err" });
+          return;
+        }
+      } finally { castPollInFlight = false; }
     }, 500);
   }).catch(e => {
     if (generation !== castConnectionGeneration) return;
