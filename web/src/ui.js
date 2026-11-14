@@ -4,7 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.28.31-in-app-popups";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.33-handoff-wait";
+import { initSettings } from "./settings.js?v=8.28.34-handoff-csp";
 
 let B;
 
@@ -467,10 +467,14 @@ function menuKeys(e) {
 function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; openFloating(p, anchor, { align: anchor.getBoundingClientRect().left < innerWidth / 2 ? "left" : "right" }); wire?.(p); }
 // The "Bring session back" bookmarklet: clicked on the real site after a
 // sign-in handoff, it sends that site's readable cookies straight into the
-// Veyra session — the tab picks them up and reloads signed in.
+// Veyra session — the tab picks them up and reloads signed in. Strict-CSP
+// sites (github.com, …) block the cross-origin fetch from the page entirely
+// (connect-src), so on failure it finishes by NAVIGATING to the API —
+// top-level navigations are not subject to connect-src, and the GET endpoint
+// answers with a self-closing page.
 export function handoffBookmarklet(sid, url) {
   const safeSid = String(sid || "").replace(/[^A-Za-z0-9_-]/g, "");
-  const js = `(function(){fetch('${API}/api/handoff/cookies',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sid:'${safeSid}',url:location.href,cookies:document.cookie||'',userAgent:navigator.userAgent})}).then(function(r){return r.json()}).then(function(j){if(j&&j.ok){alert('Veyra imported '+(j.imported||0)+' cookie(s) from '+location.hostname+'. The Veyra tab picks them up automatically — this tab will close itself.');setTimeout(function(){try{window.close()}catch(e){}},600)}else{alert('Veyra could not import cookies ('+((j&&(j.error||j.message))||('HTTP '+r.status))+'). Sign in on this site first, then click again.')}}).catch(function(e){alert('Veyra import failed: '+e)})})()`;
+  const js = `(function(){var api='${API}/api/handoff/cookies',sid='${safeSid}';var d={sid:sid,url:location.href,cookies:document.cookie||'',userAgent:navigator.userAgent};var q='?sid='+encodeURIComponent(sid)+'&url='+encodeURIComponent(d.url)+'&cookies='+encodeURIComponent(d.cookies)+'&ua='+encodeURIComponent(d.userAgent);fetch(api,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(j){if(j&&j.ok){alert('Veyra imported '+(j.imported||0)+' cookie(s) from '+location.hostname+'. The Veyra tab picks them up automatically — this tab will close itself.');setTimeout(function(){try{window.close()}catch(e){}},600)}else{alert('Veyra could not import cookies ('+((j&&(j.error||j.message))||('unknown'))+'). Sign in on this site first, then click again.')}}).catch(function(e){window.open(api+q,'_blank')})})()`;
   return `javascript:${encodeURIComponent(js)}`;
 }
 async function openSiteInfo() {
