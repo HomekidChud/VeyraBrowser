@@ -29,7 +29,7 @@ export const VERSION = "8.28.29";
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
 // back to false once Chromium fully works to restore all of them at once.
-export const CHROMIUM_TRY_DISABLED = true;
+export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
