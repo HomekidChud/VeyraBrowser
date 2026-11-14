@@ -699,9 +699,39 @@ function getOrCreateFrame(t) {
   if (pane) pane.appendChild(f); else $("frameWrap").insertBefore(f, $("frameLoader"));
   return f;
 }
+// Escape watchdog: when a proxied page's own scripts navigate the frame to a
+// real site (e.g. MSN's auth page bouncing window.location to
+// https://www.msn.com/, which the sandboxed iframe cannot show — Chrome
+// blocks it with "This content is blocked"), the frame no longer runs the
+// Veyra runtime. Probe it after load; silence means it escaped, so reload
+// the tab's virtual URL back inside the proxy. Capped to avoid loops.
+function probeFrameForEscape(t) {
+  try {
+    const f = frameFor(t);
+    if (!f || isRemote(t) || t.youtubeEmbed) return;
+    let origin = ""; try { origin = new URL(f.src, location.href).origin; } catch { return; }
+    if (origin !== API_ORIGIN) return; // only proxy frames carry the runtime
+    const loadedAt = Date.now();
+    try { f.contentWindow?.postMessage?.({ type: "veyra:embed-probe" }, API_ORIGIN); } catch {}
+    setTimeout(() => {
+      try {
+        if (!state.tabs.includes(t) || t.view !== "page" || frameFor(t) !== f) return;
+        if ((t.lastRuntimeAckAt || 0) > loadedAt) return; // runtime answered — still proxied
+        t.escapeRecoveries = (t.escapeRecoveries || 0) + 1;
+        if (t.escapeRecoveries > 3) {
+          if (t.escapeRecoveries === 4) toast(`${hostOf(t.url)} keeps leaving the proxy, so it can't be shown here. Open it directly outside Veyra.`, { kind: "warn", ms: 7000 });
+          return;
+        }
+        addLog("info", `${hostOf(t.url)} navigated out of the proxy; bringing it back inside Veyra.`);
+        void navigate(t.url, { tab: t, push: false });
+      } catch { /* frame gone — ignore */ }
+    }, 2500);
+  } catch { /* not a probeable frame — ignore */ }
+}
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page") return;
-  
+  probeFrameForEscape(t);
+
   
   
   
@@ -2612,6 +2642,10 @@ async function handleMessage(e) {
   
   
   const t = tabForSource(e.source); if (!t) return;
+  // Answer from a frame still running the Veyra runtime (escape watchdog
+  // handshake): confirms the loaded frame is a proxied page, not a real
+  // site that jumped out of the proxy.
+  if (d.type === "veyra:embed-probe-ack") { t.lastRuntimeAckAt = Date.now(); t.escapeRecoveries = 0; return; }
   const consoleLabAuthCheck = d.type === "veyra:console-lab:auth-check";
   const trustedConsoleLabOrigin = consoleLabAuthCheck && e.origin === "https://homekidchud.github.io";
   if (e.origin !== API_ORIGIN && e.origin !== "null" && !trustedConsoleLabOrigin) return;
@@ -2712,7 +2746,13 @@ async function handleMessage(e) {
     const target = canonical(d.url); if (!target) return;
     const sourceDisplayUrl = validateSourceDisplayUrl(d.veyraSourceUri, target, API_ORIGIN);
     if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
-    if (String(d.source).startsWith("history.")) { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
+    if (String(d.source).startsWith("history.")) {
+      // Same rule as below: only the tab's own root frame drives the tab URL —
+      // nested frames' history/heal events must not hijack the address bar.
+      const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
+      if (!fromRootFrame) return;
+      t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target;
+    }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
       // Only the tab's own root frame drives the tab: a nested proxied frame
@@ -2738,7 +2778,17 @@ async function handleMessage(e) {
       if (!same && !fromRootFrame) return;
       t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
       const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); }
-    } else { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); }
+    } else {
+      // Only the tab's own root frame drives the tab URL. Nested proxied
+      // frames emit location.assign/replace and history events too — e.g.
+      // MSN's MSAL silent-auth hidden iframes navigating to the OAuth
+      // authorize URL. Adopting those here hijacked the address bar and broke
+      // the post-handoff reload (it reloaded the hijacked auth URL instead of
+      // the page the user was on).
+      const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
+      if (!fromRootFrame) return;
+      t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
+    }
     
     
     if (d.source === "document-navigation" && t.loading) { t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false); }
