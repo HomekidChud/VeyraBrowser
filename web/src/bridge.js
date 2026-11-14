@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.30-escaped-nav-tab-groups";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.31-in-app-popups";
 
 const pending = new Map();
 const listeners = new Set();
