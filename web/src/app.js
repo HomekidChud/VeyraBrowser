@@ -291,45 +291,50 @@ export function renderTabs() {
   const ordered = [...state.tabs.filter(t => t.pinned), ...state.tabs.filter(t => !t.pinned)];
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
   let html = "";
-  
-  const renderedGroupIds = new Set();
-  for (const t of state.tabs) {
-    
-    if (t.groupId && !renderedGroupIds.has(t.groupId)) {
-      const g = state.tabGroups.find(g => g.id === t.groupId);
-      if (g) {
-        renderedGroupIds.add(t.groupId);
-        const groupTabs = state.tabs.filter(x => x.groupId === g.id);
-        html += `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${g.color}">
+  // Groups are rendered as contiguous blocks that always open and close with
+  // their run of tabs. The old renderer never closed a collapsed group's
+  // container and left foreign tabs nested inside group blocks when a group's
+  // tabs were not contiguous (drag reorder, pinned tabs), which swallowed
+  // every tab after it.
+  let openGroupId = null;
+  const renderedCollapsed = new Set();
+  const headerFor = g => {
+    const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+    return `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${g.color}">
           <div class="tab-group-header" data-group="${g.id}" title="Click to collapse/expand">
             <span class="tab-group-dot" style="background:${g.color}"></span>
             <span class="tab-group-name">${esc(g.name)}</span>
             <span class="tab-group-count">${groupTabs.length}</span>
             <button class="tab-group-close" data-group-close="${g.id}" title="Remove group"><svg><use href="#i-x"/></svg></button>
           </div>`;
-        if (g.collapsed) {
-          
-          html += `<div class="tab-group-collapsed">`;
-          for (const gt of groupTabs) {
-            html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
-          }
-          html += `</div>`;
+  };
+  const groupFor = t => (t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null) || null;
+  for (const t of state.tabs) {
+    const g = groupFor(t);
+    const gid = g?.id || null;
+    if (gid !== openGroupId && openGroupId) { html += "</div>"; openGroupId = null; }
+    if (g && gid !== openGroupId && !(g.collapsed && renderedCollapsed.has(gid))) {
+      const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+      html += headerFor(g);
+      if (g.collapsed) {
+        renderedCollapsed.add(gid);
+        html += `<div class="tab-group-collapsed">`;
+        for (const gt of groupTabs) {
+          html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
         }
-      }
+        html += `</div></div>`;
+      } else openGroupId = gid;
     }
-    
-    const group = t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null;
-    if (group && group.collapsed) continue;
-    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${t.groupId ? "grouped" : ""}" style="${t.groupId ? `--group-color:${state.tabGroups.find(g => g.id === t.groupId)?.color || "#888"}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
+    if (g && g.collapsed) continue;
+    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${g ? "grouped" : ""}" style="${g ? `--group-color:${g.color}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
       <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
       <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
-    
-    if (t.groupId) {
-      const groupTabs = state.tabs.filter(x => x.groupId === t.groupId);
-      const lastInGroup = groupTabs[groupTabs.length - 1];
-      if (lastInGroup && lastInGroup.id === t.id) html += `</div>`;
-    }
   }
+  if (openGroupId) html += "</div>";
+  // A group whose last tab closed is dead — drop it so the strip (and the
+  // persisted state) does not keep collecting empty groups.
+  const emptyGroups = state.tabGroups.filter(g => !state.tabs.some(t => t.groupId === g.id));
+  if (emptyGroups.length) { state.tabGroups = state.tabGroups.filter(g => !emptyGroups.includes(g)); saveTabGroups(); }
   list.innerHTML = html;
   persistTabState();
   list.querySelectorAll(".tab").forEach(el => {
@@ -349,12 +354,32 @@ export function renderTabs() {
   });
   list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
   
-  list.querySelectorAll("[data-group]").forEach(el => { el.onclick = e => { if (!e.target.closest("[data-group-close]")) toggleGroupCollapse(el.dataset.group); }; });
+  list.querySelectorAll("[data-group]").forEach(el => {
+    el.onclick = e => { if (!e.target.closest("[data-group-close]")) toggleGroupCollapse(el.dataset.group); };
+    // Drop a tab onto a group header to add it to that group.
+    el.ondragover = e => e.preventDefault();
+    el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); if (from) assignTabToGroup(from, el.dataset.group); };
+  });
   list.querySelectorAll("[data-group-close]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteTabGroup(b.dataset.groupClose); });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   document.title = "/web";
 }
-function moveTab(fromId, toId) { if (!fromId || fromId === toId) return; const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId); if (a < 0 || b < 0) return; const [t] = state.tabs.splice(a, 1); state.tabs.splice(b, 0, t); renderTabs(); }
+function moveTab(fromId, toId) {
+  if (!fromId || fromId === toId) return;
+  const a = state.tabs.findIndex(t => t.id === fromId), b = state.tabs.findIndex(t => t.id === toId);
+  if (a < 0 || b < 0) return;
+  const [t] = state.tabs.splice(a, 1);
+  state.tabs.splice(b, 0, t);
+  // Dropping a tab onto a grouped tab joins that group; dropping it on an
+  // ungrouped tab leaves the group. This is the only way tabs could be
+  // placed inside a group — the old drop handler silently ignored groups.
+  const anchor = tabById(toId);
+  if (anchor) {
+    if (anchor.groupId && anchor.groupId !== t.groupId) { t.groupId = anchor.groupId; persistTabGroups(); }
+    else if (!anchor.groupId && t.groupId) { delete t.groupId; persistTabGroups(); }
+  }
+  renderTabs();
+}
 function tabContextMenu(id, x, y) {
   const t = tabById(id); if (!t) return; const i = state.tabs.indexOf(t);
   const groupItems = state.tabGroups.length ? [
