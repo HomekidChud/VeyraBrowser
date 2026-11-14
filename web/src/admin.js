@@ -17,7 +17,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.29-handoff-auto-return";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin } from "./core.js?v=8.28.30-escaped-nav-tab-groups";
 
 let refreshTimer = null;
 let currentTab = "overview";

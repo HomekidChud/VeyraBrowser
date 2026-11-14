@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.29-handoff-auto-return";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.30-escaped-nav-tab-groups";
 
 const pending = new Map();
 const listeners = new Set();
