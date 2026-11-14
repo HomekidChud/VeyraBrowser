@@ -875,8 +875,8 @@ function ensureRemoteSurface() {
   
   
   const send = async (payload, { delay = 250 } = {}) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); setTimeout(() => refreshRemote(t, true), delay); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
-  img.addEventListener("load", () => { img.style.visibility = "visible"; const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "none"; if (er) er.style.display = "none"; });
-  img.addEventListener("error", () => { img.style.visibility = "hidden"; const ld = $("remoteLoading"); if (ld) ld.style.display = "grid"; });
+  img.addEventListener("load", () => { img.dataset.frames = String((Number(img.dataset.frames) || 0) + 1); img.style.visibility = "visible"; const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "none"; if (er) er.style.display = "none"; });
+  img.addEventListener("error", () => { if (Number(img.dataset.frames) > 0) return; img.style.visibility = "hidden"; const ld = $("remoteLoading"); if (ld) ld.style.display = "grid"; });
   v.addEventListener("click", e => { if (e.target.id === "remoteRetryBtn" || e.target.closest("#remoteRetryBtn")) { const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "grid"; if (er) er.style.display = "none"; const t = activeTab(); if (t?.browserSessionId) refreshRemote(t, true); } });
   const modifiers = e => ({ altKey: !!e.altKey, ctrlKey: !!e.ctrlKey, metaKey: !!e.metaKey, shiftKey: !!e.shiftKey });
   let activePointer = null, dragged = false;
@@ -1578,8 +1578,16 @@ async function refreshRemote(t, loop = false) {
       }
     }
     if (activeTab() === t && t.view === "page") {
-      const img = $("remoteImg"); if (img) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
-      const ld = $("remoteLoading"); if (ld && !img?.complete) ld.style.display = "grid";
+      // Server-side screenshots take seconds to capture. Swapping src every
+      // poll cancels the in-flight load before it ever completes, leaving the
+      // stream stuck on the spinner — so only request the next frame once the
+      // current one has finished (the poll timer keeps the cadence).
+      const img = $("remoteImg"); if (img && img.complete) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
+      // Only show "Starting Chromium…" before the first frame arrives. While
+      // a later frame loads the element keeps painting the previous one, but
+      // img.complete/naturalWidth reset mid-load — a live-frame counter is
+      // the only reliable "stream is up" signal.
+      const ld = $("remoteLoading"); if (ld && !img?.complete && !(Number(img?.dataset.frames) > 0)) ld.style.display = "grid";
       setLoading(false); updateAddress(); updateIdentity();
       if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site robot check detected. Complete it in the page, or use Reload to start a clean Chromium session.";
       else if (s.status === "BROWSER_ERROR" || s.status === "CRASHED") {
@@ -1833,7 +1841,7 @@ async function fetchAIAnswer(t, query, results, source = "web") {
   ai.classList.remove("hidden");
   ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Reading ${source === "index" ? "Veyra Index sources" : "the top sources"}…</span></div><div class="ai-answer-body"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div></div></div>`;
   try {
-    const r = await api("/api/search/answer", { json: { query, source, results: results.slice(0, 8).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 20000 });
+    const r = await api("/api/search/answer", { json: { query, source, results: results.slice(0, 12).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 20000 });
     if (activeTab() !== t || t.searchQuery !== query) return;
     if (r.hasAnswer && !unsafeAiText(r.answer)) {
       const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
@@ -1894,7 +1902,7 @@ function renderSearch() {
   if (!d) return;
   $("searchStat").textContent = web ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
   $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${d.query?.intent ? ` · ${d.query.intent} search` : ""}${d.ranking?.method ? ` · ranked by ${d.ranking.method}` : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
-  $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
+  $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : r.relevance != null && web ? ` <span class="result-relevance">${Math.round(r.relevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
     || (web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Veyra will retry with alternate providers.</span><button class="btn primary sm" id="searchRetryVeyra">Retry with Veyra</button></div>`
       : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
   $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); sendNeuralFeedback(a.dataset.open, true, 1.0); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
