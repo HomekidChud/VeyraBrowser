@@ -3,8 +3,8 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.30-escaped-nav-tab-groups";
-import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.30-escaped-nav-tab-groups";
+} from "./core.js?v=8.28.31-in-app-popups";
+import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
 import { initUI } from "./ui.js?v=8.28.18-professional-shell";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
@@ -22,7 +22,7 @@ function ensureAdminModule() {
   adminModulePromise ||= import("./admin.js");
   return adminModulePromise;
 }
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.30-escaped-nav-tab-groups";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
 
 
 
@@ -362,7 +362,6 @@ export function renderTabs() {
   });
   list.querySelectorAll("[data-group-close]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteTabGroup(b.dataset.groupClose); });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  document.title = "/web";
 }
 function moveTab(fromId, toId) {
   if (!fromId || fromId === toId) return;
@@ -507,7 +506,7 @@ function syncRoute({ replace = false } = {}) {
 export function showLanding(on) {
   $("landing").classList.toggle("hidden", !on); $("app").classList.toggle("hidden", on);
   document.body.style.overflow = on ? "" : "hidden";
-  if (on) { closeFloating(); hooks.renderLanding?.(); document.title = "/web"; }
+  if (on) { closeFloating(); hooks.renderLanding?.(); document.title = "Veyra"; }
 }
 export function goRoute(path, { push = true } = {}) {
   const url = new URL(path, location.origin + APP_BASE + "/");
@@ -647,6 +646,8 @@ export function updateIdentity() {
   $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
   $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
   $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  // Window title: the active page's title (like every browser), not a debug path.
+  document.title = t.view === "page" && t.title && t.title !== "New tab" ? `${t.title} — Veyra` : "Veyra";
   
   const sc = $("statusCenter");
   if (sc) {
@@ -2541,6 +2542,11 @@ async function handleMessage(e) {
     if (/^https?:\/\//i.test(url)) { openHandoffWindow(url, activeTab()); addLog("info", `Handoff opened directly: ${hostOf(url)}`); }
     return;
   }
+  // A proxied page asks whether it is embedded in the app (its parent is
+  // cross-origin, so it cannot tell on its own). The ack switches its popup
+  // guards on: window.open()/target=_blank become Veyra tabs instead of
+  // raw browser tabs at path-based proxy URLs.
+  if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {} return; }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   
   
