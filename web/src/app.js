@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.28.31-in-app-popups";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.18-professional-shell";
+import { initUI } from "./ui.js?v=8.28.32-redirect-signin";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { maybeOfferRenew } from "./renew.js";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
@@ -2528,6 +2528,29 @@ function openHandoffWindow(dest, tab) {
   return win;
 }
 hooks.openHandoff = openHandoffWindow;
+// A detected sign-in button on a proxied page hands off to the site's real
+// sign-in in the user's own browser. The tab keeps watching the session jar:
+// the moment the user's session arrives (bookmarklet, paste, return trip),
+// the page reloads signed in through the fast proxy.
+async function handleSigninHandoff(t, url) {
+  if (!state.tabs.includes(t)) return;
+  let session = state.session;
+  if (!session) {
+    try { session = await ensureSession(); } catch (e) { toast(`Couldn't start a session for the sign-in handoff: ${e.message}`, { kind: "err" }); return; }
+  }
+  if (!state.tabs.includes(t)) return;
+  let dest = url;
+  try {
+    const r = await api(`/api/handoff/login?sid=${encodeURIComponent(session.id)}&url=${encodeURIComponent(url)}`, { headers: { accept: "application/json" }, timeoutMs: 8000 });
+    if (r && typeof r.dest === "string" && /^https?:\/\//i.test(r.dest)) dest = r.dest;
+  } catch (err) { addLog("warn", `Sign-in handoff destination unavailable, opening the page directly: ${err.message}`); }
+  if (!state.tabs.includes(t)) return;
+  addLog("info", `Sign-in on ${hostOf(url)} handed off to the real site in your browser.`);
+  toast(`Veyra opened ${hostOf(url)}'s real sign-in in your browser. Finish signing in there, then click the “Bring session back” bookmarklet — this page reloads signed in automatically. Hold Shift while clicking a sign-in button to sign in inside Veyra instead.`, { ms: 10000 });
+  let opened = null;
+  try { opened = hooks.openHandoff?.(dest, t); } catch (err) { opened = null; }
+  if (!opened) window.open(dest, "_blank", "noopener");
+}
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
   // The challenge card asks the app to open the handoff because a popup
@@ -2625,6 +2648,14 @@ async function handleMessage(e) {
   if (d.type === "veyra:open" && d.url) { const u = canonical(d.url); if (u) newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return; }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
+  // The page's own sign-in button was clicked: hand the user to the site's
+  // real sign-in in their own browser (the "auto sign-in" handoff) instead of
+  // rendering the site's OAuth/login wall through the fast proxy.
+  if (d.type === "veyra:signin" && d.url) {
+    const target = canonical(d.url);
+    if (target && t.view === "page" && !isRemote(t)) void handleSigninHandoff(t, target);
+    return;
+  }
   if (d.type === "veyra:challenge" && d.url) {
     
     const u = canonical(d.url); if (!u || t.view !== "page") return;
@@ -2647,16 +2678,27 @@ async function handleMessage(e) {
     if (String(d.source).startsWith("history.")) { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target; }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
-      if (!same) {
-        
-        
-        
-        void loadInTab(t, target, { loadFrame: true, record: null, displayUrl: sourceDisplayUrl }).then(() => {
-          if (activeTab() === t) syncRoute({ replace: true });
-        });
-        if (activeTab() === t) syncRoute({ replace: true });
+      // Only the tab's own root frame drives the tab: a nested proxied frame
+      // (game/artwork iframes) loading or navigating must never hijack it.
+      const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
+      if (!same && fromRootFrame) {
+        // The proxied frame already navigated itself (link click, redirect,
+        // form post). Adopt the new URL in place instead of tearing the tab
+        // down and reloading it: the frame session, console and network
+        // capture stay continuous across the redirect, the page is not
+        // loaded twice, and redirect flows (security checks that land on
+        // the real page) keep working instead of restarting from scratch.
+        t.url = target;
+        t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
+        pushTabHistory(t, target);
+        recordHistory("page", target, d.title || hostOf(target), t.sessionId || state.session?.id);
+        t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false);
+        hooks.dt?.onNavigate(t);
+        if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
+        renderTabsSoon();
         return;
       }
+      if (!same && !fromRootFrame) return;
       t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
       const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); }
     } else { t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); }
