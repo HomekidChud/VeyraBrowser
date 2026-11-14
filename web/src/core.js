@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.32";
+export const VERSION = "8.28.33";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -331,13 +331,15 @@ export function addLog(level, message, meta = {}) {
 }
 
 
-export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200 } = {}) {
+export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200, node = null } = {}) {
   const host = $("toasts");
   if (!host) return;
   const el = document.createElement("div");
   el.className = `toast ${kind}`.trim();
   el.setAttribute("role", kind === "err" ? "alert" : "status");
-  const text = document.createElement("span"); text.textContent = String(message || ""); el.appendChild(text);
+  // A DOM node (e.g. the handoff bookmarklet) replaces the plain text.
+  const text = node || (() => { const s = document.createElement("span"); s.textContent = String(message || ""); return s; })();
+  el.appendChild(text);
   let timer = 0;
   const dismiss = () => { clearTimeout(timer); el.remove(); };
   if (typeof action === "function" && actionLabel) {
@@ -346,7 +348,9 @@ export function toast(message, { kind = "", action = null, actionLabel = "", ms 
     el.appendChild(button);
   }
   host.appendChild(el);
-  timer = setTimeout(dismiss, Math.max(1200, Number(ms) || 3200));
+  // ms <= 0 keeps the toast on screen until the caller dismisses it.
+  if (Number(ms) > 0) timer = setTimeout(dismiss, Math.max(1200, Number(ms) || 3200));
+  return dismiss;
 }
 
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {

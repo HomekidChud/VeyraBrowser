@@ -450,6 +450,8 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 .toast.err{background:var(--err);color:#fff}
 .toast.warn{background:var(--warn);color:#1b1400}
 .toast button{border:0;background:transparent;color:inherit;font-weight:800;text-decoration:underline}
+.toast a{color:inherit;font-weight:800;text-decoration:underline;white-space:nowrap}
+.toast .handoff-wait{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 
 /* ---------- overlay */
 .overlay,.fatal{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:rgba(5,7,10,.66);backdrop-filter:blur(6px);padding:20px}
