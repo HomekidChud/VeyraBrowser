@@ -4,7 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.28.31-in-app-popups";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.32-redirect-signin";
+import { initSettings } from "./settings.js?v=8.28.33-handoff-wait";
 
 let B;
 
@@ -468,7 +468,7 @@ function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; o
 // The "Bring session back" bookmarklet: clicked on the real site after a
 // sign-in handoff, it sends that site's readable cookies straight into the
 // Veyra session — the tab picks them up and reloads signed in.
-function handoffBookmarklet(sid, url) {
+export function handoffBookmarklet(sid, url) {
   const safeSid = String(sid || "").replace(/[^A-Za-z0-9_-]/g, "");
   const js = `(function(){fetch('${API}/api/handoff/cookies',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sid:'${safeSid}',url:location.href,cookies:document.cookie||'',userAgent:navigator.userAgent})}).then(function(r){return r.json()}).then(function(j){if(j&&j.ok){alert('Veyra imported '+(j.imported||0)+' cookie(s) from '+location.hostname+'. The Veyra tab picks them up automatically — this tab will close itself.');setTimeout(function(){try{window.close()}catch(e){}},600)}else{alert('Veyra could not import cookies ('+((j&&(j.error||j.message))||('HTTP '+r.status))+'). Sign in on this site first, then click again.')}}).catch(function(e){alert('Veyra import failed: '+e)})})()`;
   return `javascript:${encodeURIComponent(js)}`;

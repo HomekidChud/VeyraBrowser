@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.28.31-in-app-popups";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.32-redirect-signin";
+import { initUI, handoffBookmarklet } from "./ui.js?v=8.28.33-handoff-wait";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { maybeOfferRenew } from "./renew.js";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
@@ -2489,6 +2489,7 @@ function stopHandoffPoll(tabId) {
   handoffPolls.delete(tabId);
   try { clearInterval(poll.timer); } catch {}
   try { clearTimeout(poll.stopTimer); } catch {}
+  try { poll.dismiss?.(); } catch {}
 }
 function startHandoffPoll(tab, url) {
   const s = state.session;
@@ -2496,7 +2497,25 @@ function startHandoffPoll(tab, url) {
   let host = "";
   try { host = new URL(url).hostname.toLowerCase(); } catch { return; }
   stopHandoffPoll(tab.id);
-  const poll = { host, baseline: -1, sid: s.id, timer: 0, stopTimer: 0 };
+  const poll = { host, baseline: -1, sid: s.id, timer: 0, stopTimer: 0, dismiss: null };
+  // Persistent in-app reminder: the user is about to leave Veyra to sign in on
+  // the real site. Keeping the "Bring session back" bookmarklet on screen until
+  // the session arrives (or the wait is cancelled) means returning to Veyra
+  // always shows the next step — no silent dead end.
+  try {
+    const box = document.createElement("span");
+    box.className = "handoff-wait";
+    const line = document.createElement("span");
+    line.textContent = `Waiting for your ${host} session — sign in on the real site, then click the “Bring session back” bookmarklet there.`;
+    const bk = document.createElement("a");
+    bk.href = handoffBookmarklet(s.id, url);
+    bk.draggable = true;
+    bk.textContent = "“Bring session back” — drag to bookmarks";
+    bk.title = "Drag me to your bookmarks bar";
+    bk.addEventListener("click", e => e.preventDefault());
+    box.append(line, bk);
+    poll.dismiss = toast("", { node: box, ms: 0, action: () => stopHandoffPoll(tab.id), actionLabel: "Stop waiting" });
+  } catch {}
   const check = async () => {
     try {
       const r = await api(`/api/session/${poll.sid}/cookies?host=${encodeURIComponent(poll.host)}`, { timeoutMs: 6000 });
@@ -2513,13 +2532,31 @@ function startHandoffPoll(tab, url) {
           void navigate(t.url, { tab: t, push: false });
         }
       }
-    } catch { /* transient — keep watching */ }
+    } catch (e) {
+      // The session died while the user was away signing in — say so instead
+      // of watching a dead session forever.
+      if (e?.code === "SESSION_EXPIRED" || e?.status === 410) {
+        stopHandoffPoll(tab.id);
+        toast(`Your Veyra session ended while you were signing in on ${poll.host}. Start a new session and try the sign-in again.`, { kind: "warn", ms: 9000 });
+      }
+    }
   };
   void check();
   poll.timer = setInterval(() => { if (!state.tabs.find(x => x.id === tab.id)) return stopHandoffPoll(tab.id); void check(); }, 2000);
   poll.stopTimer = setTimeout(() => stopHandoffPoll(tab.id), 20 * 60 * 1000);
   handoffPolls.set(tab.id, poll);
 }
+// Returning to Veyra mid-handoff: remind the user of the one remaining step
+// instead of a tab that looks like nothing is happening.
+let handoffFocusToastAt = 0;
+addEventListener("focus", () => {
+  if (!handoffPolls.size) return;
+  const now = Date.now();
+  if (now - handoffFocusToastAt < 30000) return;
+  handoffFocusToastAt = now;
+  const hosts = [...new Set([...handoffPolls.values()].map(p => p.host))].slice(0, 3).join(", ");
+  toast(`Still waiting on ${hosts} — once you've signed in on the real site, click the “Bring session back” bookmarklet there and Veyra picks up your session automatically.`, { ms: 7000 });
+});
 // The handoff popup is opened here (never by the sandboxed proxy iframe) and
 // this tab is watched for the session to arrive.
 function openHandoffWindow(dest, tab) {
