@@ -2662,6 +2662,26 @@ async function handleSigninHandoff(t, url) {
   try { opened = hooks.openHandoff?.(dest, t); } catch (err) { opened = null; }
   if (!opened) window.open(dest, "_blank", "noopener");
 }
+// The page's own sign-in was clicked. Sign-in is a choice: load the site's
+// real login page through Veyra and sign in inside Veyra, or open the real
+// sign-in in the user's own browser (the handoff). The choice is remembered
+// in settings.signinMode: "ask" (the default) shows the dialog, "veyra"
+// and "handoff" skip it.
+function chooseSignin(t, url) {
+  const mode = settings.signinMode || "ask";
+  if (mode === "veyra") { void loadInTab(t, url, { loadFrame: true }); return; }
+  if (mode === "handoff") { void handleSigninHandoff(t, url); return; }
+  const dlg = $("signinDialog");
+  if (!dlg || typeof dlg.showModal !== "function") { void handleSigninHandoff(t, url); return; }
+  $("signinTitle").textContent = `Sign in to ${hostOf(url)}`;
+  $("signinSub").textContent = "How do you want to sign in?";
+  const inVeyra = $("signinInVeyra");
+  const handoff = $("signinHandoff");
+  const choose = fn => { try { dlg.close(); } catch {} for (const b of [inVeyra, handoff]) { b.onclick = null; } fn(); };
+  inVeyra.onclick = () => choose(() => { void loadInTab(t, url, { loadFrame: true }); });
+  handoff.onclick = () => choose(() => { void handleSigninHandoff(t, url); });
+  try { dlg.showModal(); } catch { void handleSigninHandoff(t, url); }
+}
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
   // The challenge card asks the app to open the handoff because a popup
@@ -2760,7 +2780,16 @@ async function handleMessage(e) {
   if (d.type === "veyra:browser-network") { t.network.push(d); if (t.network.length > 1500) t.network.splice(0, t.network.length - 1500); hooks.dt?.onNetwork(t, d); return; }
   if (d.type === "veyra:find-result") { const n = Number(d.matches || 0); $("findCount").textContent = n ? `${n} match${n === 1 ? "" : "es"}` : "No matches"; return; }
   if (d.type === "veyra:unsupported") { toast(d.reason || "That action isn't supported through the proxy", { kind: "warn" }); return; }
-  if (d.type === "veyra:open" && d.url) { const u = canonical(d.url); if (u) newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return; }
+  if (d.type === "veyra:open" && d.url) {
+    const u = canonical(d.url); if (!u) return;
+    // The page said where the destination belongs: _top/_parent means "replace
+    // this whole view", which is in-place navigation for the tab — never a
+    // second tab. Everything else (_blank, named windows) opens a new Veyra
+    // tab as before.
+    const tgt = String(d.target || "_blank").toLowerCase();
+    if ((tgt === "_top" || tgt === "_parent") && t.view === "page" && !isRemote(t)) { void loadInTab(t, u, { loadFrame: true }); return; }
+    newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return;
+  }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
   // The page's own sign-in button was clicked: hand the user to the site's
@@ -2768,7 +2797,7 @@ async function handleMessage(e) {
   // rendering the site's OAuth/login wall through the fast proxy.
   if (d.type === "veyra:signin" && d.url) {
     const target = canonical(d.url);
-    if (target && t.view === "page" && !isRemote(t)) void handleSigninHandoff(t, target);
+    if (target && t.view === "page" && !isRemote(t)) chooseSignin(t, target);
     return;
   }
   if (d.type === "veyra:challenge" && d.url) {
