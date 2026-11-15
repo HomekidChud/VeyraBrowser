@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.28.31-in-app-popups";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI, handoffBookmarklet } from "./ui.js?v=8.28.34-handoff-csp";
+import { initUI, handoffBookmarklet } from "./ui.js?v=8.28.35-handoff-paste";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { maybeOfferRenew } from "./renew.js";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
@@ -2554,7 +2554,40 @@ function startHandoffPoll(tab, url) {
     bk.textContent = "“Bring session back” — drag to bookmarks";
     bk.title = "Drag me to your bookmarks bar";
     bk.addEventListener("click", e => e.preventDefault());
-    box.append(line, bk);
+    // Sites whose session cookie is HttpOnly (github.com's _gh_sess, …) can
+    // never be read by the bookmarklet. Offer the paste path right here —
+    // copy the site's cookies from devtools (Application → Cookies) and
+    // import them into this session.
+    const paste = document.createElement("details");
+    paste.className = "handoff-paste";
+    const sum = document.createElement("summary");
+    sum.textContent = "Session cookie is HttpOnly? Paste it instead";
+    const help = document.createElement("span");
+    help.className = "handoff-paste-help";
+    help.textContent = `Copy ${host}'s cookies from your browser's devtools (Application → Cookies) and paste them here. Veyra stores them in this session only.`;
+    const area = document.createElement("textarea");
+    area.rows = 3;
+    area.placeholder = "name=value; other=value";
+    area.spellcheck = false;
+    const btn = document.createElement("button");
+    btn.className = "btn ghost sm";
+    btn.textContent = "Import session";
+    const msg = document.createElement("span");
+    msg.className = "handoff-paste-msg";
+    btn.addEventListener("click", async () => {
+      const cookies = area.value.trim();
+      if (!cookies) { msg.textContent = "Paste the site's cookies first."; return; }
+      btn.disabled = true; msg.textContent = "Importing…";
+      try {
+        const r = await api("/api/handoff/cookies", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sid: poll.sid, url, cookies, userAgent: navigator.userAgent }) });
+        msg.textContent = `Imported ${r?.imported ?? "the"} cookie(s).`;
+      } catch (e) {
+        msg.textContent = `Import failed: ${e.message}`;
+        btn.disabled = false;
+      }
+    });
+    paste.append(sum, help, area, btn, msg);
+    box.append(line, bk, paste);
     poll.dismiss = toast("", { node: box, ms: 0, action: () => stopHandoffPoll(tab.id), actionLabel: "Stop waiting" });
   } catch {}
   const check = async () => {
