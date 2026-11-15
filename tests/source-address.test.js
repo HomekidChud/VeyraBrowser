@@ -16,7 +16,7 @@ assert.equal(validateSourceDisplayUrl(uri, `https://veyraserver-xscy.onrender.co
 assert.equal(resolveSourceUri(uri, "javascript:alert(1)"), null);
 const appSource = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 assert.match(appSource, /t\.displayUrl \|\| t\.url/, "the address field must show the virtual alias without replacing the HTTP page URL");
-assert.match(appSource, /loadInTab\(t, target, \{ loadFrame: true, record: null, displayUrl: sourceDisplayUrl \}\)/, "the HTTP viewer URL remains the actual load target");
+assert.match(appSource, /navigate\(r\.url, \{ tab, push, activate, displayUrl: r\.uri \}\)/, "the HTTP viewer URL remains the actual load target");
 assert.match(appSource, /validateSourceDisplayUrl\(d\.veyraSourceUri, target, API_ORIGIN\)/, "a virtual alias is accepted only for a matching same-origin viewer route");
 assert.match(appSource, /kind === "source"/, "pasting a Veyra source URI should resolve back to the HTTP viewer");
 for (const bad of [
