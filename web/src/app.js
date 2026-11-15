@@ -709,6 +709,9 @@ function probeFrameForEscape(t) {
   try {
     const f = frameFor(t);
     if (!f || isRemote(t) || t.youtubeEmbed) return;
+    // Only frames actually pointed at a proxy URL carry the runtime. Empty
+    // src (boot/about:blank, srcdoc embeds) must not count as escapes.
+    if (!f.src || !/^https?:/i.test(f.src)) return;
     let origin = ""; try { origin = new URL(f.src, location.href).origin; } catch { return; }
     if (origin !== API_ORIGIN) return; // only proxy frames carry the runtime
     const loadedAt = Date.now();
@@ -727,6 +730,14 @@ function probeFrameForEscape(t) {
       } catch { /* frame gone — ignore */ }
     }, 2500);
   } catch { /* not a probeable frame — ignore */ }
+}
+// Assigning the same value to iframe.src does NOT navigate the frame — but
+// reload paths (the sign-in handoff's post-import reload, escape recovery)
+// legitimately re-load the same URL. Dropping the attribute first makes the
+// assignment always navigate.
+function setFrameSrc(f, src) {
+  try { if (f.src === src) f.removeAttribute("src"); } catch {}
+  f.src = src;
 }
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page") return;
@@ -1339,7 +1350,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       f.removeAttribute("srcdoc");
       f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
       f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      f.src = proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl);
+      setFrameSrc(f, proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl));
       if (activeTab() === tab) showFrameForTab(tab);
     }
     tab.loading = false; clearTimeout(tab.loadGuard);
@@ -1373,7 +1384,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-    f.src = proxyUrl(url, "view", session.id, previousUrl);
+    setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl));
     if (activeTab() === t) showFrameForTab(t);
     
     
@@ -1445,7 +1456,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         f.removeAttribute("srcdoc");
         f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-        f.src = proxyUrl(url, "view", session.id, previousUrl);
+        setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl));
         if (activeTab() === t) showFrameForTab(t);
       }
       void raceChromium();
@@ -1664,7 +1675,7 @@ async function refreshRemote(t, loop = false) {
       if (state.tabs.includes(t) && t.view === "page" && t.url && t.sessionId && state.session?.id === t.sessionId) {
         const f = getOrCreateFrame(t);
         f.removeAttribute("srcdoc");
-        f.src = proxyUrl(t.url, "view", t.sessionId);
+        setFrameSrc(f, proxyUrl(t.url, "view", t.sessionId));
         t.renderWinner = "proxy";
         if (activeTab() === t) showFrameForTab(t);
       } else if (activeTab() === t) {
