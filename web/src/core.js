@@ -102,6 +102,7 @@ export const DEFAULT_SETTINGS = {
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
   challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true,
+  signinMode: "ask",
   
   neuralCrawlerEnabled: true, neuralCrawlerPrewarm: true, neuralCrawlerQueryExpansion: true,
   neuralCrawlerParallelSearch: true, neuralCrawlerBlockTrackers: true, neuralCrawlerProgressiveRender: true,

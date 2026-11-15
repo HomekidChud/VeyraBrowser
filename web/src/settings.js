@@ -106,6 +106,7 @@ function sessionsSection() {
     ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? fmtClock(left) + " left" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
     ${toggle("sessionWarnings", "Warn before a session ends", "Shows a warning 30 and 10 seconds before the limit.")}
     ${toggle("autoRestartSession", "Start a new session automatically", "When the timer ends, reopen your tabs in a fresh session.")}
+    ${select("signinMode", "Sign-in method", "What happens when you click a site's sign-in button.", [["ask", "Ask me each time"], ["veyra", "Sign in inside Veyra"], ["handoff", "Open real sign-in in my browser"]])}
     ${toggle("clearHistoryOnSessionEnd", "Clear local history when a session ends", "Server session cookies are always deleted when the session closes.")}`);
 }
 function downloadsSection() {
