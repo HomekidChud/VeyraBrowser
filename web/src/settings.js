@@ -1,6 +1,6 @@
 
 import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.31-in-app-popups";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.35-handoff-paste";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.36-inproxy-signin";
 
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -106,7 +106,7 @@ function sessionsSection() {
     ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? fmtClock(left) + " left" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
     ${toggle("sessionWarnings", "Warn before a session ends", "Shows a warning 30 and 10 seconds before the limit.")}
     ${toggle("autoRestartSession", "Start a new session automatically", "When the timer ends, reopen your tabs in a fresh session.")}
-    ${select("signinMode", "Sign-in method", "What happens when you click a site's sign-in button.", [["ask", "Ask me each time"], ["veyra", "Sign in inside Veyra"], ["handoff", "Open real sign-in in my browser"]])}
+    ${row("Sign-in method", "Sites' sign-in pages load through the fast proxy and you sign in inside Veyra — in this session's own cookie jar. OAuth popups open as proxied Veyra tabs.", `<span class="chip">Inside Veyra</span>`)}
     ${toggle("clearHistoryOnSessionEnd", "Clear local history when a session ends", "Server session cookies are always deleted when the session closes.")}`);
 }
 function downloadsSection() {
