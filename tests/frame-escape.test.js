@@ -29,7 +29,7 @@ assert.match(src, /if \(d\.type === "veyra:embed-probe-ack"\) \{ t\.lastRuntimeA
 // Reload paths must actually navigate: assigning the same value to iframe.src
 // is a no-op, so the handoff's post-import reload and the escape recovery
 // must drop the attribute first (setFrameSrc).
-assert.match(src, /function setFrameSrc\(f, src\) \{/, "the forced frame-src helper must exist");
+assert.match(src, /function setFrameSrc\(f, src, tab = null\) \{/, "the forced frame-src helper must exist");
 assert.match(src, /if \(f\.src === src\) f\.removeAttribute\("src"\);/, "an identical src must be dropped before reassignment so the frame reloads");
 assert.doesNotMatch(src, /f\.src = proxyUrl\(/, "frame src assignments must go through setFrameSrc");
 

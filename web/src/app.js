@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.28.31-in-app-popups";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI, handoffBookmarklet } from "./ui.js?v=8.28.35-handoff-paste";
+import { initUI } from "./ui.js?v=8.28.36-inproxy-signin";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { maybeOfferRenew } from "./renew.js";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
@@ -456,6 +456,9 @@ export function closeTab(id, { silent = false } = {}) {
   if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
   else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section });
   teardownTab(t); hooks.dt?.onTabClosed(t);
+  // If this tab was an OAuth/popup tab, tell the opener's runtime so its
+  // popup handle flips to .closed = true (site polling loops exit).
+  teardownPopupLinks(t);
   state.tabs.splice(idx, 1);
   if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
   else if (state.activeId === id) state.activeId = state.tabs[Math.min(idx, state.tabs.length - 1)].id;
@@ -741,8 +744,14 @@ function probeFrameForEscape(t) {
 // reload paths (the sign-in handoff's post-import reload, escape recovery)
 // legitimately re-load the same URL. Dropping the attribute first makes the
 // assignment always navigate.
-function setFrameSrc(f, src) {
+function setFrameSrc(f, src, tab = null) {
   try { if (f.src === src) f.removeAttribute("src"); } catch {}
+  // A popup tab's frame URL carries veyra_popup=1: the runtime sees it at
+  // injection time (synchronously, before any site script) and installs
+  // the window.opener shim + window.close patch for the popup relay.
+  if (tab?.popupOf && /^https?:/i.test(src)) {
+    try { const u = new URL(src); if (!u.searchParams.has("veyra_popup")) { u.searchParams.set("veyra_popup", "1"); src = u.href; } } catch {}
+  }
   f.src = src;
 }
 function onFrameLoad(t) {
@@ -1356,7 +1365,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       f.removeAttribute("srcdoc");
       f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
       f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      setFrameSrc(f, proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl));
+      setFrameSrc(f, proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl), tab);
       if (activeTab() === tab) showFrameForTab(tab);
     }
     tab.loading = false; clearTimeout(tab.loadGuard);
@@ -1390,7 +1399,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-    setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl));
+    setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl), t);
     if (activeTab() === t) showFrameForTab(t);
     
     
@@ -1462,7 +1471,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         f.removeAttribute("srcdoc");
         f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-        setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl));
+        setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl), t);
         if (activeTab() === t) showFrameForTab(t);
       }
       void raceChromium();
@@ -1683,7 +1692,7 @@ async function refreshRemote(t, loop = false) {
       if (state.tabs.includes(t) && t.view === "page" && t.url && t.sessionId && state.session?.id === t.sessionId) {
         const f = getOrCreateFrame(t);
         f.removeAttribute("srcdoc");
-        setFrameSrc(f, proxyUrl(t.url, "view", t.sessionId));
+        setFrameSrc(f, proxyUrl(t.url, "view", t.sessionId), t);
         t.renderWinner = "proxy";
         if (activeTab() === t) showFrameForTab(t);
       } else if (activeTab() === t) {
@@ -2526,169 +2535,55 @@ function pageConsoleEntry(d, t) {
     kind: isException ? "exception" : "console"
   };
 }
-// ---------- Handoff auto-return ----------
-// While a handoff popup is open, the app watches the session's cookie jar for
-// that host. The moment the user's session arrives — the "Bring session back"
-// bookmarklet, the paste form, any cookie import — the challenged tab reloads
-// through the fast proxy, signed in. No manual "come back and reload" step.
-const handoffPolls = new Map();
-function stopHandoffPoll(tabId) {
-  const poll = handoffPolls.get(tabId);
-  if (!poll) return;
-  handoffPolls.delete(tabId);
-  try { clearInterval(poll.timer); } catch {}
-  try { clearTimeout(poll.stopTimer); } catch {}
-  try { poll.dismiss?.(); } catch {}
+// ---------- In-proxy sign-in + popup relay ----------
+// The cross-session cookie handoff is gone: no bookmarklet, no cookie
+// paste, no "open the real site in your browser and bring your session
+// back". Sign-in happens inside the fast proxy — the site's login page
+// loads through the proxy in the tab, credentials land in this session's
+// own cookie jar, and OAuth popups open as proxied Veyra tabs whose
+// opener semantics (postMessage, .closed, .close(), window.opener) are
+// relayed by the app between the two frames. No cookie ever crosses
+// between the user's browser and a Veyra session, or between sessions.
+//
+// Popup bookkeeping: a tab opened on behalf of another tab's frame keeps
+// popupOf (opener tab id) + popupId (the runtime's handle id), so relayed
+// postMessages find their way between the two frames.
+function relayIntoFrame(tab, payload) {
+  try { const f = frameFor(tab); if (!f?.contentWindow) return false; f.contentWindow.postMessage(payload, API_ORIGIN); return true; } catch { return false; }
 }
-function startHandoffPoll(tab, url) {
-  const s = state.session;
-  if (!tab || !s || !/^https?:\/\//i.test(String(url || ""))) return;
-  let host = "";
-  try { host = new URL(url).hostname.toLowerCase(); } catch { return; }
-  stopHandoffPoll(tab.id);
-  const poll = { host, baseline: -1, sid: s.id, timer: 0, stopTimer: 0, dismiss: null };
-  // Persistent in-app reminder: the user is about to leave Veyra to sign in on
-  // the real site. Keeping the "Bring session back" bookmarklet on screen until
-  // the session arrives (or the wait is cancelled) means returning to Veyra
-  // always shows the next step — no silent dead end.
-  try {
-    const box = document.createElement("span");
-    box.className = "handoff-wait";
-    const line = document.createElement("span");
-    line.textContent = `Waiting for your ${host} session — sign in on the real site, then click the “Bring session back” bookmarklet there.`;
-    const bk = document.createElement("a");
-    bk.href = handoffBookmarklet(s.id, url);
-    bk.draggable = true;
-    bk.textContent = "“Bring session back” — drag to bookmarks";
-    bk.title = "Drag me to your bookmarks bar";
-    bk.addEventListener("click", e => e.preventDefault());
-    // Sites whose session cookie is HttpOnly (github.com's _gh_sess, …) can
-    // never be read by the bookmarklet. Offer the paste path right here —
-    // copy the site's cookies from devtools (Application → Cookies) and
-    // import them into this session.
-    const paste = document.createElement("details");
-    paste.className = "handoff-paste";
-    const sum = document.createElement("summary");
-    sum.textContent = "Session cookie is HttpOnly? Paste it instead";
-    const help = document.createElement("span");
-    help.className = "handoff-paste-help";
-    help.textContent = `Copy ${host}'s cookies from your browser's devtools (Application → Cookies) and paste them here. Veyra stores them in this session only.`;
-    const area = document.createElement("textarea");
-    area.rows = 3;
-    area.placeholder = "name=value; other=value";
-    area.spellcheck = false;
-    const btn = document.createElement("button");
-    btn.className = "btn ghost sm";
-    btn.textContent = "Import session";
-    const msg = document.createElement("span");
-    msg.className = "handoff-paste-msg";
-    btn.addEventListener("click", async () => {
-      const cookies = area.value.trim();
-      if (!cookies) { msg.textContent = "Paste the site's cookies first."; return; }
-      btn.disabled = true; msg.textContent = "Importing…";
-      try {
-        const r = await api("/api/handoff/cookies", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sid: poll.sid, url, cookies, userAgent: navigator.userAgent }) });
-        msg.textContent = `Imported ${r?.imported ?? "the"} cookie(s).`;
-      } catch (e) {
-        msg.textContent = `Import failed: ${e.message}`;
-        btn.disabled = false;
-      }
-    });
-    paste.append(sum, help, area, btn, msg);
-    box.append(line, bk, paste);
-    poll.dismiss = toast("", { node: box, ms: 0, action: () => stopHandoffPoll(tab.id), actionLabel: "Stop waiting" });
-  } catch {}
-  const check = async () => {
-    try {
-      const r = await api(`/api/session/${poll.sid}/cookies?host=${encodeURIComponent(poll.host)}`, { timeoutMs: 6000 });
-      if (!state.session || state.session.id !== poll.sid) return stopHandoffPoll(tab.id);
-      const n = Array.isArray(r?.cookies) ? r.cookies.length : -1;
-      if (n < 0) return; // transient error — keep watching
-      if (poll.baseline < 0) { poll.baseline = n; return; }
-      if (n > poll.baseline) {
-        stopHandoffPoll(tab.id);
-        const t = state.tabs.find(x => x.id === tab.id);
-        if (t && t.view === "page" && t.url) {
-          addLog("info", `Handoff session for ${poll.host} arrived; reloading ${hostOf(t.url)} through the fast proxy.`);
-          toast("Session imported — reloading the page signed in.", { ms: 6000 });
-          void navigate(t.url, { tab: t, push: false });
-        }
-      }
-    } catch (e) {
-      // The session died while the user was away signing in — say so instead
-      // of watching a dead session forever.
-      if (e?.code === "SESSION_EXPIRED" || e?.status === 410) {
-        stopHandoffPoll(tab.id);
-        toast(`Your Veyra session ended while you were signing in on ${poll.host}. Start a new session and try the sign-in again.`, { kind: "warn", ms: 9000 });
-      }
-    }
-  };
-  void check();
-  poll.timer = setInterval(() => { if (!state.tabs.find(x => x.id === tab.id)) return stopHandoffPoll(tab.id); void check(); }, 2000);
-  poll.stopTimer = setTimeout(() => stopHandoffPoll(tab.id), 20 * 60 * 1000);
-  handoffPolls.set(tab.id, poll);
+function notifyPopupClosed(openerTab, popupId) {
+  if (!openerTab || !popupId) return;
+  relayIntoFrame(openerTab, { type: "veyra:popup-closed", popupId });
 }
-// Returning to Veyra mid-handoff: remind the user of the one remaining step
-// instead of a tab that looks like nothing is happening.
-let handoffFocusToastAt = 0;
-addEventListener("focus", () => {
-  if (!handoffPolls.size) return;
-  const now = Date.now();
-  if (now - handoffFocusToastAt < 30000) return;
-  handoffFocusToastAt = now;
-  const hosts = [...new Set([...handoffPolls.values()].map(p => p.host))].slice(0, 3).join(", ");
-  toast(`Still waiting on ${hosts} — once you've signed in on the real site, click the “Bring session back” bookmarklet there and Veyra picks up your session automatically.`, { ms: 7000 });
-});
-// The handoff popup is opened here (never by the sandboxed proxy iframe) and
-// this tab is watched for the session to arrive.
-function openHandoffWindow(dest, tab) {
-  const win = window.open(dest, "_blank", "noopener");
-  startHandoffPoll(tab, dest);
-  return win;
+function teardownPopupLinks(tab) {
+  if (tab.popupOf) { const opener = state.tabs.find(x => x.id === tab.popupOf); notifyPopupClosed(opener, tab.popupId); }
 }
-hooks.openHandoff = openHandoffWindow;
-// A detected sign-in button on a proxied page hands off to the site's real
-// sign-in in the user's own browser. The tab keeps watching the session jar:
-// the moment the user's session arrives (bookmarklet, paste, return trip),
-// the page reloads signed in through the fast proxy.
-async function handleSigninHandoff(t, url) {
-  if (!state.tabs.includes(t)) return;
-  let session = state.session;
-  if (!session) {
-    try { session = await ensureSession(); } catch (e) { toast(`Couldn't start a session for the sign-in handoff: ${e.message}`, { kind: "err" }); return; }
-  }
-  if (!state.tabs.includes(t)) return;
-  let dest = url;
-  try {
-    const r = await api(`/api/handoff/login?sid=${encodeURIComponent(session.id)}&url=${encodeURIComponent(url)}`, { headers: { accept: "application/json" }, timeoutMs: 8000 });
-    if (r && typeof r.dest === "string" && /^https?:\/\//i.test(r.dest)) dest = r.dest;
-  } catch (err) { addLog("warn", `Sign-in handoff destination unavailable, opening the page directly: ${err.message}`); }
-  if (!state.tabs.includes(t)) return;
-  addLog("info", `Sign-in on ${hostOf(url)} handed off to the real site in your browser.`);
-  toast(`Veyra opened ${hostOf(url)}'s real sign-in in your browser. Finish signing in there, then click the “Bring session back” bookmarklet — this page reloads signed in automatically. Hold Shift while clicking a sign-in button to sign in inside Veyra instead.`, { ms: 10000 });
-  let opened = null;
-  try { opened = hooks.openHandoff?.(dest, t); } catch (err) { opened = null; }
-  if (!opened) window.open(dest, "_blank", "noopener");
+// A proxied frame asked for a popup (window.open from the page — OAuth
+// sign-in, share dialogs, …): open it as a proxied Veyra tab and remember
+// the opener relationship so postMessage relay works both ways.
+function openProxiedPopup(sourceTab, d) {
+  const target = canonical(String(d.url || ""));
+  if (!target) return null;
+  const popup = newTab({ url: target, index: state.tabs.indexOf(sourceTab) + 1 });
+  popup.popupOf = sourceTab.id;
+  popup.popupId = String(d.popupId || "");
+  return popup;
 }
-// The page's own sign-in was clicked. Sign-in is a choice: load the site's
-// real login page through Veyra and sign in inside Veyra, or open the real
-// sign-in in the user's own browser (the handoff). The choice is remembered
-// in settings.signinMode: "ask" (the default) shows the dialog, "veyra"
-// and "handoff" skip it.
+// The popup's frame embed-pings on every load; ack it and, for popup
+// tabs, re-assert the popup role (installs window.opener + window.close
+// shims in the runtime — covers post-navigation reloads of the popup).
+function ackEmbedPing(e) {
+  try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {}
+  const t = tabForSource(e.source);
+  if (t?.popupOf) relayIntoFrame(t, { type: "veyra:popup-role" });
+}
+// The page's own sign-in was clicked (veyra:signin from the runtime):
+// load the site's sign-in page through the fast proxy in this tab and
+// sign in inside Veyra. Same session, same cookie jar, no handoff.
 function chooseSignin(t, url) {
-  const mode = settings.signinMode || "ask";
-  if (mode === "veyra") { void loadInTab(t, url, { loadFrame: true }); return; }
-  if (mode === "handoff") { void handleSigninHandoff(t, url); return; }
-  const dlg = $("signinDialog");
-  if (!dlg || typeof dlg.showModal !== "function") { void handleSigninHandoff(t, url); return; }
-  $("signinTitle").textContent = `Sign in to ${hostOf(url)}`;
-  $("signinSub").textContent = "How do you want to sign in?";
-  const inVeyra = $("signinInVeyra");
-  const handoff = $("signinHandoff");
-  const choose = fn => { try { dlg.close(); } catch {} for (const b of [inVeyra, handoff]) { b.onclick = null; } fn(); };
-  inVeyra.onclick = () => choose(() => { void loadInTab(t, url, { loadFrame: true }); });
-  handoff.onclick = () => choose(() => { void handleSigninHandoff(t, url); });
-  try { dlg.showModal(); } catch { void handleSigninHandoff(t, url); }
+  addLog("info", `Sign-in on ${hostOf(url)} loading through the fast proxy.`);
+  toast(`Signing in to ${hostOf(url)} inside Veyra`, { ms: 4000 });
+  void loadInTab(t, url, { loadFrame: true });
 }
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
@@ -2701,14 +2596,14 @@ async function handleMessage(e) {
     if (e.origin !== API_ORIGIN) return;
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
     const url = String(d.url || "");
-    if (/^https?:\/\//i.test(url)) { openHandoffWindow(url, activeTab()); addLog("info", `Handoff opened directly: ${hostOf(url)}`); }
+    if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Opened directly: ${hostOf(url)}`); }
     return;
   }
   // A proxied page asks whether it is embedded in the app (its parent is
   // cross-origin, so it cannot tell on its own). The ack switches its popup
   // guards on: window.open()/target=_blank become Veyra tabs instead of
   // raw browser tabs at path-based proxy URLs.
-  if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {} return; }
+  if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   
   
@@ -2800,12 +2695,45 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
-  // The page's own sign-in button was clicked: hand the user to the site's
-  // real sign-in in their own browser (the "auto sign-in" handoff) instead of
-  // rendering the site's OAuth/login wall through the fast proxy.
+  // The page's own sign-in button was clicked: load the site's sign-in
+  // page through the fast proxy in this tab — the user signs in inside
+  // Veyra, in this session's own cookie jar (no browser handoff).
   if (d.type === "veyra:signin" && d.url) {
     const target = canonical(d.url);
     if (target && t.view === "page" && !isRemote(t)) chooseSignin(t, target);
+    return;
+  }
+  // ----- Popup relay (OAuth/sign-in popups as proxied Veyra tabs) -----
+  if (d.type === "veyra:popup-open" && d.url) {
+    const target = canonical(String(d.url));
+    if (target && t.view === "page" && !isRemote(t)) { openProxiedPopup(t, { url: target, popupId: d.popupId }); addLog("info", `Popup opened through the fast proxy: ${hostOf(target)}`); }
+    return;
+  }
+  // Opener frame → its popup tab (e.g. the opener replying to the popup).
+  if (d.type === "veyra:popup-message" && d.popupId) {
+    const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
+    if (popup) relayIntoFrame(popup, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "opener", popupId: String(d.popupId) });
+    return;
+  }
+  // Popup tab → its opener (e.g. Google's OAuth response postMessage).
+  if (d.type === "veyra:popup-to-opener") {
+    const opener = t.popupOf ? state.tabs.find(x => x.id === t.popupOf) : null;
+    if (opener) relayIntoFrame(opener, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "popup", popupId: t.popupId || "" });
+    return;
+  }
+  // The popup's own scripts closed it (window.close) or the opener asked
+  // it closed (handle.close()): close the tab and tell the opener's
+  // runtime so its popup handle flips to .closed = true.
+  if (d.type === "veyra:popup-self-close" || (d.type === "veyra:popup-close" && d.popupId)) {
+    const popup = d.type === "veyra:popup-self-close" ? t : state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
+    if (popup) closeTab(popup.id, { silent: true });
+    return;
+  }
+  // The opener navigated its popup handle (w.location = url).
+  if (d.type === "veyra:popup-navigate" && d.url) {
+    const target = canonical(String(d.url));
+    const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
+    if (target && popup) void loadInTab(popup, target, { loadFrame: true });
     return;
   }
   if (d.type === "veyra:challenge" && d.url) {
@@ -2982,20 +2910,9 @@ async function boot() {
     await revisitSavedSession();
     applyRoute();
     applyStartup(params);
-    // Direct-login handoff return: the site's login page sent the user back
-    // here with their target URL — pick the tab up where it left off.
-    const handoff = params.get("veyra_handoff");
-    if (handoff) {
-      params.delete("veyra_handoff");
-      try { history.replaceState({}, "", `${location.pathname}${params.toString() ? "?" + params.toString() : ""}`); } catch {}
-      try {
-        const u = new URL(handoff);
-        if (/^https?:$/.test(u.protocol)) {
-          const t = activeTab();
-          if (t) void navigate(u.href, { tab: t, push: false });
-        }
-      } catch {}
-    }
+    // (Removed) the veyra_handoff return-trip param: with the cookie
+    // handoff gone, nothing navigates back into the app with a target URL
+    // anymore. Sign-in happens inside the fast proxy.
     api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }

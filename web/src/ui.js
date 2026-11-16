@@ -4,7 +4,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.28.31-in-app-popups";
 import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.35-handoff-paste";
+import { initSettings } from "./settings.js?v=8.28.36-inproxy-signin";
 
 let B;
 
@@ -465,18 +465,9 @@ function menuKeys(e) {
 
 
 function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; openFloating(p, anchor, { align: anchor.getBoundingClientRect().left < innerWidth / 2 ? "left" : "right" }); wire?.(p); }
-// The "Bring session back" bookmarklet: clicked on the real site after a
-// sign-in handoff, it sends that site's readable cookies straight into the
-// Veyra session — the tab picks them up and reloads signed in. Strict-CSP
-// sites (github.com, …) block the cross-origin fetch from the page entirely
-// (connect-src), so on failure it finishes by NAVIGATING to the API —
-// top-level navigations are not subject to connect-src, and the GET endpoint
-// answers with a self-closing page.
-export function handoffBookmarklet(sid, url) {
-  const safeSid = String(sid || "").replace(/[^A-Za-z0-9_-]/g, "");
-  const js = `(function(){var api='${API}/api/handoff/cookies',sid='${safeSid}';var d={sid:sid,url:location.href,cookies:document.cookie||'',userAgent:navigator.userAgent};var q='?sid='+encodeURIComponent(sid)+'&url='+encodeURIComponent(d.url)+'&cookies='+encodeURIComponent(d.cookies)+'&ua='+encodeURIComponent(d.userAgent);fetch(api,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(j){if(j&&j.ok){alert('Veyra imported '+(j.imported||0)+' cookie(s) from '+location.hostname+'. The Veyra tab picks them up automatically — this tab will close itself.');setTimeout(function(){try{window.close()}catch(e){}},600)}else{alert('Veyra could not import cookies ('+((j&&(j.error||j.message))||('unknown'))+'). Sign in on this site first, then click again.')}}).catch(function(e){window.open(api+q,'_blank')})})()`;
-  return `javascript:${encodeURIComponent(js)}`;
-}
+// (Removed) handoffBookmarklet and the "Sign in on the real site" cookie
+// handoff: sign-in now happens inside the fast proxy, in the session's own
+// cookie jar. No bookmarklet, no cookie paste, no cross-session cookies.
 async function openSiteInfo() {
   const t = B.activeTab(); const anchor = $("siteChip");
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
@@ -484,29 +475,11 @@ async function openSiteInfo() {
   pop(`<h4>${esc(host)}</h4><p class="pop-sub">${secure ? "Connection between Veyra and this site is encrypted." : "This site doesn't use HTTPS. Don't enter passwords."}</p>
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popHandoff" ${s ? "" : "disabled title=\"Start a session first\""}>Sign in on the real site</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>
-    ${s ? `<div style="margin-top:10px"><a class="btn ghost sm" id="popBk" draggable="true" href="${esc(handoffBookmarklet(s.id, t.url))}" onclick="return false" title="Drag me to your bookmarks bar">“Bring session back” — drag to bookmarks</a><p class="pop-sub" style="margin-top:6px">After signing in on the real site, click this bookmarklet there and Veyra picks up your session — the tab reloads signed in.</p></div>` : ""}`, anchor, p => {
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>
+    <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra — click a site's sign-in button and it loads through the fast proxy in this session's own cookie jar.</p>`, anchor, p => {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popDirect").onclick = () => { window.open(t.url, "_blank", "noopener"); closeFloating(); };
-    p.querySelector("#popHandoff")?.addEventListener("click", async () => {
-      if (!s) return;
-      closeFloating();
-      // Ask the server where the handoff should land, then open the real
-      // site directly — the popup never navigates through the API origin,
-      // so a blocked or asleep server can't break the sign-in.
-      let dest = t.url;
-      try {
-        const r = await api(`/api/handoff/login?sid=${encodeURIComponent(s.id)}&url=${encodeURIComponent(t.url)}`, { headers: { accept: "application/json" }, timeoutMs: 8000 });
-        if (r && typeof r.dest === "string" && /^https?:\/\//i.test(r.dest)) dest = r.dest;
-      } catch (err) { addLog("warn", `Handoff destination unavailable, opening the page directly: ${err.message}`); }
-      // Opened through the app so the tab is watched: when the session
-      // arrives (bookmarklet or paste), this page reloads signed in.
-      let opened = null;
-      try { opened = hooks.openHandoff?.(dest, t); } catch (err) { opened = null; }
-      if (!opened) window.open(dest, "_blank", "noopener");
-      toast("Sign in (or finish the check) on the real site. When you're done there, click the “Bring session back” bookmarklet — Veyra picks up your session and this page reloads automatically.", { ms: 9000 });
-    });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
     else p.querySelector("#popCookies").textContent = "0";

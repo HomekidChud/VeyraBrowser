@@ -403,17 +403,8 @@
     </form>
   </dialog>
 
-  <dialog id="signinDialog" class="modal">
-    <form method="dialog" class="modal-card sm" id="signinForm">
-      <h2 id="signinTitle">Sign in</h2>
-      <p class="muted" id="signinSub">How do you want to sign in?</p>
-      <div class="modal-actions">
-        <button type="button" class="btn primary" id="signinInVeyra" value="default">Sign in inside Veyra</button>
-        <button type="button" class="btn ghost" id="signinHandoff">Open real sign-in in my browser</button>
-      </div>
-      <p class="muted small" id="signinHint">You can change this anytime in Settings → Sessions.</p>
-    </form>
-  </dialog>
+  <!-- (Removed) the sign-in choice dialog: sign-in always happens inside
+       Veyra through the fast proxy, in the session's own cookie jar. -->
 
   <div class="fatal hidden" id="fatalOverlay"><div class="overlay-card"><h2>Veyra hit an error</h2><pre id="fatalMessage"></pre><button class="btn primary" onclick="location.reload()">Reload</button></div></div>
 
