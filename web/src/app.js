@@ -611,7 +611,9 @@ function incognitoAddressToken() {
   return incognitoToken;
 }
 function rotateIncognitoAddressToken() {
-  const bytes = new Uint8Array(48);
+  // 32 random chars — the address never reveals the real site, and it keeps
+  // rotating so the visible URL can't be used to track or share a position.
+  const bytes = new Uint8Array(32);
   try { crypto.getRandomValues(bytes); } catch { for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256); }
   incognitoToken = "veyra://private/" + Array.from(bytes, b => INCOGNITO_TOKEN_ALPHABET[b % INCOGNITO_TOKEN_ALPHABET.length]).join("");
   const input = $("address"); const t = activeTab();
@@ -624,7 +626,11 @@ function rotateIncognitoAddressToken() {
 function startIncognitoAddressRotation() {
   if (!INCOGNITO || window.__veyraIncognitoAddressRotation) return;
   rotateIncognitoAddressToken();
-  window.__veyraIncognitoAddressRotation = window.setInterval(rotateIncognitoAddressToken, 1);
+  // Rotate at 500ms: fast enough that the address keeps visibly changing, but
+  // slow enough to stay under Chrome's silent history.replaceState throttle
+  // (~100 calls per 30s) — the old 1ms interval hit it instantly, freezing the
+  // URL on one token. 500ms is 60 calls per 30s, under the budget.
+  window.__veyraIncognitoAddressRotation = window.setInterval(rotateIncognitoAddressToken, 500);
 }
 function updateNavButtons() {
   const t = activeTab(); if (!t) return;
@@ -1580,6 +1586,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
 }
 
 export function recordHistory(kind, url, title, sid = state.session?.id) {
+  // Incognito keeps no history at all — nothing recorded, nothing persisted.
+  if (INCOGNITO) return;
   if (!url) return; const prev = state.history[0];
   if (prev && prev.url === url) { prev.time = new Date().toISOString(); if (title) prev.title = title; saveHistory(); return; }
   state.history.unshift({ id: uid(), time: new Date().toISOString(), kind, url, title: String(title || hostOf(url) || url).slice(0, 240), sid });
