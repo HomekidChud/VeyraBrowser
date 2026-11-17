@@ -584,7 +584,7 @@ export function buildContentScriptSource(ext) {
   });
   try {
 ${code}
-  } catch (e) { try { console.error("[chrome shim ${JSON.stringify(ext.id)}] content script failed:", e); } catch (e2) {} }
+  } catch (e) { try { console.error('[chrome shim ${JSON.stringify(ext.id)}] content script failed:', e); } catch (e2) {} }
 })();`);
   }
   return parts.join("\n\n");

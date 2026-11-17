@@ -191,6 +191,22 @@ const mv3Files = {
     { manifest_version: 3, name: "BgOnly", background: { service_worker: "sw.js" } }, { "sw.js": "x" });
   assert.equal(buildContentScriptSource(bgOnly).includes("cs1.js"), false);
   assert.ok(buildContentScriptSource(bgOnly).includes("var chrome"));
+  // REGRESSION: the built source must actually COMPILE. The error handler
+  // used to embed JSON.stringify(ext.id) — double quotes included — inside
+  // a double-quoted string literal, so every content script with an id
+  // produced a SyntaxError at new Function time and never ran.
+  assert.doesNotThrow(() => new Function(src), "the full built content-script source must be valid JavaScript");
+  const i18nRec = parseChromeManifest({
+    manifest_version: 3, name: "Compile", version: "1.0", default_locale: "en",
+    web_accessible_resources: [{ resources: ["images/logo.png"], matches: ["*://e/*"] }],
+    content_scripts: [{ matches: ["*://e/*"], js: ["cs.js"], css: ["style.css"] }]
+  }, {
+    "_locales/en/messages.json": JSON.stringify({ greeting: { message: "Hi $1" } }),
+    "images/logo.png": "data:image/png;base64,AAA",
+    "cs.js": "chrome.i18n.getMessage('greeting', ['World']);",
+    "style.css": "body { outline: 3px solid rgb(255, 0, 7); }"
+  });
+  assert.doesNotThrow(() => new Function(buildContentScriptSource(i18nRec)), "the i18n/resources content-script source must compile");
 }
 
 // --- 7. Background worker source -------------------------------------------
