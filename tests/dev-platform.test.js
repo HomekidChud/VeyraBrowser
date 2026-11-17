@@ -13,9 +13,10 @@ const app = read("web/dev/platform/app.js");
 const serverUrl = "https://veyraserver-xscy.onrender.com";
 
 // --- the portal ships all three files with versioned (cache-bust) references ---
-assert.ok(html.includes('<script type="module" src="./app.js?v=2">'), "index.html loads app.js as a versioned module");
-assert.ok(html.includes('href="./styles.css?v=2"'), "index.html loads styles.css with a versioned query");
-assert.ok(!/[?&]v=3/.test(html), "the script and stylesheet versions stay in sync");
+const scriptVersion = html.match(/<script type="module" src="\.\/app\.js\?v=(\d+)">/)?.[1];
+const styleVersion = html.match(/href="\.\/styles\.css\?v=(\d+)"/)?.[1];
+assert.ok(scriptVersion && styleVersion);
+assert.equal(scriptVersion, styleVersion, "the script and stylesheet versions stay in sync");
 
 // --- same conventions as the rest of the static site ---
 assert.ok(html.includes('meta name="veyra-api"'), "the portal declares its API origin like the other pages");
@@ -58,8 +59,8 @@ assert.ok(app.includes("usage?.requests") && app.includes("usage?.last24h"), "th
 
 // --- the API reference documents workspaces, keys and the full public API ---
 for (const doc of [
-  "POST $API/api/platform/workspaces",
-  "POST $API/api/platform/workspaces/$WS_ID/keys",
+  "POST /api/platform/workspaces",
+  "POST /api/platform/workspaces/:id/keys",
   "authorization: Bearer $VYR_KEY",
   "PLATFORM_RATE_LIMITED",
   "BILLING_REQUIRED"
@@ -79,7 +80,12 @@ for (const ep of [
 ]) assert.ok(html.includes(`<span class="method ${ep[1].toLowerCase()}">${ep[1]}</span><code>${ep[0]}</code>`), `the reference documents ${ep[1]} ${ep[0]}`);
 assert.ok(html.includes('id="referenceFilter"'), "the reference has an endpoint filter");
 assert.ok(html.includes("data-code-tabs=\"quickstart\""), "the quickstart has language tabs");
-for (const lang of ["curl", "js", "python", "node"]) assert.ok(new RegExp(`data-lang="${lang}"`).test(html), `the quickstart covers ${lang}`);
+for (const lang of ["curl", "python", "node"]) assert.ok(new RegExp(`data-lang="${lang}"`).test(html), `the quickstart covers ${lang}`);
+assert.match(html, /class="view active" id="view-guide"/, "the default view is the public fetch guide");
+assert.match(html, /--json '\{"url":"https:\/\/example\.com\/","format":"text"\}'/);
+assert.match(html, /iframe src="\/preview" sandbox title="Page preview"/);
+assert.match(html, /sanitizeHtml\(page\.body/);
+assert.match(html, /never receives your Veyra key/);
 
 // --- eye mode: the secret modal masks the key until the eye reveals it ---
 assert.ok(html.includes('id="secretEye"'), "the secret modal has an eye toggle");

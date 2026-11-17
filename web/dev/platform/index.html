@@ -5,20 +5,40 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="veyra-api" content="https://veyraserver-xscy.onrender.com">
   <link rel="preconnect" href="https://veyraserver-xscy.onrender.com" crossorigin>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://veyraserver-xscy.onrender.com; font-src 'self' data:">
-  <meta name="robots" content="noindex">
-  <meta name="description" content="Veyra Developer Platform — manage workspaces, API keys and usage for the Veyra API.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' https://veyraserver-xscy.onrender.com; font-src 'self' https://fonts.gstatic.com">
+  <meta name="description" content="Fetch webpages, search the Veyra index, and track request usage with the Veyra API.">
   <title>Veyra Developer Platform</title>
-  <link rel="stylesheet" href="./styles.css?v=2">
-  <script type="module" src="./app.js?v=2"></script>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+  <link rel="stylesheet" href="./styles.css?v=3">
+  <script type="module" src="./app.js?v=3"></script>
 </head>
 <body>
   <!-- Sign-in: reuses the Veyra account session token (same origin as the main app). -->
-  <div class="auth-shell" id="authShell" hidden>
+  <main id="portal">
+    <a class="skip-link" href="#platform-content">Skip to content</a>
+    <header class="topbar">
+      <a class="brand" href="#guide" aria-label="Veyra developers, start here">
+        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 8.5l9 16 9-16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="25" cy="8.5" r="2.4" fill="var(--accent)"/></svg>
+        <span>Veyra <span class="brand-section">Developers</span></span>
+      </a>
+      <div class="account" id="accountControls" hidden>
+        <span id="accountEmail" class="mono"></span>
+        <button class="btn" id="signOutButton" type="button">Sign out</button>
+      </div>
+    </header>
+    <nav class="tabs" aria-label="Developer platform">
+      <a class="tab" data-view="guide" href="#guide" aria-current="page">Start here</a>
+      <a class="tab" data-view="reference" href="#api-reference">API reference</a>
+      <a class="tab" data-view="playground" href="#playground">Playground</a>
+      <a class="tab console-link" data-view="overview" href="#overview">Console <span aria-hidden="true">↗</span></a>
+    </nav>
+    <div id="platform-content" tabindex="-1">
+  <section class="auth-shell" id="authShell" hidden aria-labelledby="signInTitle">
     <div class="auth-card">
-      <p class="eyebrow">Veyra · developer platform</p>
-      <h1>Sign in to the platform</h1>
-      <p class="lead">Use your Veyra account. If you are signed in to Veyra in this browser, the session is picked up automatically.</p>
+      <p class="eyebrow">Console</p>
+      <h1 id="signInTitle">Sign in to manage keys</h1>
+      <p class="lead">Use your Veyra account to create workspaces, issue keys, and view usage. The <a href="#api-reference">API reference</a> and playground do not require an account session.</p>
       <form id="loginForm">
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" required></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>
@@ -26,35 +46,18 @@
         <p class="status-line" id="loginStatus" aria-live="polite"></p>
       </form>
     </div>
-  </div>
-
-  <main id="portal" hidden>
-    <div class="topbar">
-      <div class="brand">
-        <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 8.5l9 16 9-16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="25" cy="8.5" r="2.4" fill="var(--accent)"/></svg>
-        <span>Veyra Developer Platform</span>
-      </div>
-      <div class="account">
-        <span id="accountEmail" class="mono"></span>
-        <button class="btn" id="signOutButton" type="button">Sign out</button>
-      </div>
-    </div>
-    <p class="eyebrow">API · workspaces · keys</p>
-    <h1>Build on Veyra</h1>
-    <p class="lead">Create workspaces, issue API keys, watch request usage, and read the API docs. Key secrets are shown once at creation — store them somewhere safe.</p>
-
-    <nav class="tabs" aria-label="Platform sections" role="tablist">
-      <button class="tab" role="tab" aria-selected="true" data-view="overview">Overview</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="workspaces">Workspaces</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="keys">API keys</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="usage">Usage</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="reference">API reference</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="playground">Playground</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="plans">Plans & waitlist</button>
+  </section>
+    <nav class="tabs console-tabs" id="consoleTabs" aria-label="Console sections" hidden>
+      <a class="tab" data-view="overview" href="#overview">Overview</a>
+      <a class="tab" data-view="workspaces" href="#workspaces">Workspaces</a>
+      <a class="tab" data-view="keys" href="#keys">API keys</a>
+      <a class="tab" data-view="usage" href="#usage">Usage</a>
+      <a class="tab" data-view="plans" href="#plans">Plans &amp; waitlist</a>
     </nav>
 
     <!-- Overview -->
-    <section class="view active" id="view-overview" role="tabpanel">
+    <section class="view" id="view-overview">
+      <div class="page-heading"><h1>Console overview</h1><p>Manage your workspaces and see how your keys are used.</p></div>
       <div class="metrics">
         <article class="metric"><span>Workspaces</span><b id="metricWorkspaces">—</b><small id="metricWorkspaceLimit">—</small></article>
         <article class="metric"><span>Active API keys</span><b id="metricKeys">—</b><small>Across all workspaces</small></article>
@@ -79,7 +82,8 @@
     </section>
 
     <!-- Workspaces -->
-    <section class="view" id="view-workspaces" role="tabpanel">
+    <section class="view" id="view-workspaces">
+      <div class="page-heading"><h1>Workspaces</h1><p>Group API keys by project or environment.</p></div>
       <section class="panel">
         <div class="panel-head"><div><h2>Create a workspace</h2><p class="small muted">Names become URL-safe slugs, e.g. “My Dev Workspace” → my-dev-workspace.</p></div></div>
         <form id="workspaceForm">
@@ -97,14 +101,15 @@
     </section>
 
     <!-- API keys -->
-    <section class="view" id="view-keys" role="tabpanel">
+    <section class="view" id="view-keys">
+      <div class="page-heading"><h1>API keys</h1><p>Use a workspace key to call <code>/api/v1</code> from your server. <a href="#guide">See the first request.</a></p></div>
       <section class="panel">
-        <div class="panel-head"><div><h2>Create an API key</h2><p class="small muted">The secret is shown once and stored only as a hash — Veyra cannot recover it later.</p></div></div>
+        <div class="panel-head"><div><h2>Create an API key</h2><p class="small muted">Copy the new key into your server’s secrets manager. If you lose it, rotate it here and update your app.</p></div></div>
         <div class="field"><label for="keyWorkspace">Workspace</label><select id="keyWorkspace"></select></div>
         <form id="keyForm">
           <div class="field-row">
             <div class="field"><label for="keyName">Key name</label><input id="keyName" maxlength="80" placeholder="Production key" required></div>
-            <div class="field"><label for="keySubmit">&nbsp;</label><button class="btn primary" id="keySubmit" type="submit">Create key</button></div>
+            <div class="field pg-send-field"><button class="btn primary" id="keySubmit" type="submit">Create key</button></div>
           </div>
         </form>
       </section>
@@ -118,7 +123,8 @@
     </section>
 
     <!-- Usage -->
-    <section class="view" id="view-usage" role="tabpanel">
+    <section class="view" id="view-usage">
+      <div class="page-heading"><h1>Usage</h1><p>Track authenticated API requests across your workspaces.</p></div>
       <div class="metrics">
         <article class="metric"><span>Total requests</span><b id="usageTotal">—</b><small>All keys, all time</small></article>
         <article class="metric"><span>Requests (24h)</span><b id="usage24h">—</b><small>Rolling window</small></article>
@@ -139,7 +145,8 @@
     </section>
 
     <!-- Plans & waitlist -->
-    <section class="view" id="view-plans" role="tabpanel">
+    <section class="view" id="view-plans">
+      <div class="page-heading"><h1>Plans &amp; waitlist</h1><p>Compare access options and check your waitlist position.</p></div>
       <section class="panel">
         <div class="panel-head"><h2>Plans</h2></div>
         <div class="plan-grid" id="planGrid"><div class="empty">Loading plans…</div></div>
@@ -158,77 +165,150 @@
       </section>
     </section>
 
-    <!-- API reference -->
-    <section class="view" id="view-reference" role="tabpanel">
-      <section class="panel">
-        <div class="panel-head"><div><h2>Quickstart</h2><p class="small muted">From zero to your first API call in three steps. Create a workspace and key in the tabs above, then use the key from your own code.</p></div></div>
-        <ol class="steps">
-          <li><b>Create a workspace and an API key.</b> The secret (<span class="mono">vyr_live_…</span>) is revealed once — the eye toggle in the modal keeps it hidden until you click it, and Veyra stores only a hash.</li>
-          <li><b>Send it as a Bearer token.</b> Every <span class="mono">/api/v1</span> call carries <span class="mono">Authorization: Bearer $VYR_KEY</span>.</li>
-          <li><b>Watch usage climb.</b> Every authenticated call is counted per key on the Usage tab and via <span class="mono">GET /api/v1/usage</span>.</li>
-        </ol>
-        <div class="code-tabs" data-code-tabs="quickstart">
-          <div class="code-tabbar">
-            <button class="code-tab active" type="button" data-lang="curl">curl</button>
-            <button class="code-tab" type="button" data-lang="js">JavaScript</button>
-            <button class="code-tab" type="button" data-lang="python">Python</button>
-            <button class="code-tab" type="button" data-lang="node">Node</button>
-          </div>
-          <pre class="docs code-block" data-lang="curl"><span class="c"># Sign in for a session token, create a workspace, mint a key</span>
-curl -s -X POST $API/api/auth/login -H <b>'content-type: application/json'</b> \
-  -d '{"email":"you@example.com","password":"•••"}'
-
-curl -s -X POST $API/api/platform/workspaces \
-  -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
-  -d '{"name":"My Dev Workspace","description":"docs crawler"}'
-
-curl -s -X POST $API/api/platform/workspaces/$WS_ID/keys \
-  -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
-  -d '{"name":"Production key"}'
-
-<span class="c"># Then call the public API with the key</span>
-curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b></pre>
-          <pre class="docs code-block" data-lang="js" hidden><span class="c">// Browser or Deno — same shape everywhere.</span>
-const API = "https://veyraserver-xscy.onrender.com";
-const key = "vyr_live_…"; <span class="c">// created in the API keys tab — shown once</span>
-
-const r = await fetch(`${API}/api/v1/me`, {
-  headers: { authorization: `Bearer ${key}` }
+    <section class="view active" id="view-guide">
+      <div class="page-heading guide-heading">
+        <p class="eyebrow">Documentation / API v1</p>
+        <h1>Fetch a webpage</h1>
+        <p>Send a public URL to Veyra and get its HTML or JSON back. Use the response in your backend, or show a static preview in your app.</p>
+      </div>
+      <div class="guide-layout">
+        <article class="guide-article">
+          <section class="guide-section" id="first-request">
+            <div class="guide-section-heading"><span aria-hidden="true">01</span><h2>Make your first request</h2></div>
+            <p><a href="#keys">Create an API key</a> in the console and set <code>VYR_KEY</code> as a secret environment variable on your server. Then request <code>https://example.com/</code>:</p>
+            <div class="code-tabs" data-code-tabs="quickstart">
+              <div class="code-tabbar">
+                <button class="code-tab active" type="button" data-lang="curl">curl</button>
+                <button class="code-tab" type="button" data-lang="node">Node.js</button>
+                <button class="code-tab" type="button" data-lang="python">Python</button>
+                <button class="btn code-copy" type="button" data-copy-code>Copy</button>
+              </div>
+              <pre class="docs code-block" data-lang="curl"><span class="c"># Set VYR_KEY in your environment before running this.</span>
+curl --fail-with-body -sS https://veyraserver-xscy.onrender.com/api/v1/fetch \
+  -H "Authorization: Bearer $VYR_KEY" \
+  --json '{"url":"https://example.com/","format":"text"}'</pre>
+              <pre class="docs code-block" data-lang="node" hidden><span class="c">// Save as fetch-page.mjs and run with Node.js 20+.</span>
+const r = await fetch("https://veyraserver-xscy.onrender.com/api/v1/fetch", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.VYR_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ url: "https://example.com/", format: "text" }),
+  signal: AbortSignal.timeout(25000),
 });
-console.log(await r.json());</pre>
-          <pre class="docs code-block" data-lang="python" hidden><span class="c"># pip install requests</span>
+const page = await r.json();
+if (!r.ok) throw new Error(page.error);
+if (page.status &gt;= 400) throw new Error(`Upstream HTTP ${page.status}`);
+if (page.truncated) throw new Error("The page exceeded the response limit");
+console.log(page.body);</pre>
+              <pre class="docs code-block" data-lang="python" hidden><span class="c"># python -m pip install requests</span>
+import os
 import requests
 
-API = "https://veyraserver-xscy.onrender.com"
-key = "vyr_live_…"  <span class="c"># created in the API keys tab — shown once</span>
+r = requests.post(
+    "https://veyraserver-xscy.onrender.com/api/v1/fetch",
+    headers={"Authorization": f"Bearer {os.environ['VYR_KEY']}"},
+    json={"url": "https://example.com/", "format": "text"},
+    timeout=30,
+)
+r.raise_for_status()
+page = r.json()
+if page["status"] &gt;= 400:
+    raise RuntimeError(f"Upstream HTTP {page['status']}")
+if page.get("truncated"):
+    raise RuntimeError("The page exceeded the response limit")
+print(page["body"])</pre>
+            </div>
+            <p class="doc-note">Check both statuses: the HTTP status describes your call to Veyra; <code>status</code> in the JSON is the response from the website. Use <code>finalUrl</code> to see where redirects ended.</p>
+          </section>
+          <section class="guide-section" id="embed">
+            <div class="guide-section-heading"><span aria-hidden="true">02</span><h2>Show a preview in your app</h2></div>
+            <p>Fetch from your backend, sanitize the returned HTML, and serve it on your own preview route. Your browser loads that route in a sandboxed iframe. It never receives your Veyra key.</p>
+            <details class="embed-example">
+              <summary>Runnable Node.js preview</summary>
+              <div class="code-tabs" data-code-tabs="embed">
+                <div class="code-tabbar"><span class="code-file">preview.mjs</span><button class="btn code-copy" type="button" data-copy-code>Copy</button></div>
+                <pre class="docs code-block" data-lang="node"><span class="c">// npm install express sanitize-html
+// Set VYR_KEY, then run: node preview.mjs</span>
+import express from "express";
+import sanitizeHtml from "sanitize-html";
 
-r = requests.get(f"{API}/api/v1/me", headers={"authorization": f"Bearer {key}"})
-print(r.json())</pre>
-          <pre class="docs code-block" data-lang="node" hidden><span class="c">// Node 18+ has global fetch.</span>
-const API = "https://veyraserver-xscy.onrender.com";
-const key = "vyr_live_…";
-
-const r = await fetch(`${API}/api/v1/search?q=veyra`, {
-  headers: { authorization: `Bearer ${key}` }
+const app = express();
+app.get("/", (_req, res) =&gt; {
+  res.type("html").send(
+    '&lt;iframe src="/preview" sandbox title="Page preview" width="640" height="350"&gt;&lt;/iframe&gt;'
+  );
 });
-console.log(await r.json());</pre>
-        </div>
-      </section>
+app.get("/preview", async (_req, res) =&gt; {
+  try {
+    const r = await fetch("https://veyraserver-xscy.onrender.com/api/v1/fetch", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.VYR_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: "https://example.com/", format: "text" }),
+      signal: AbortSignal.timeout(25000),
+    });
+    const page = await r.json();
+    if (!r.ok || page.status &gt;= 400 || page.truncated ||
+        !/^text\/html\b/i.test(page.contentType || "")) {
+      return res.status(502).type("text").send("Preview unavailable");
+    }
+    const markup = sanitizeHtml(page.body, {
+      allowedTags: ["h1", "h2", "h3", "p", "strong", "em", "ul", "ol", "li", "pre", "code"],
+      allowedAttributes: {},
+    });
+    res.set("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.type("html").send(`&lt;!doctype html&gt;&lt;meta charset="utf-8"&gt;${markup}`);
+  } catch {
+    res.status(502).type("text").send("Preview unavailable");
+  }
+});
+app.listen(3000, "127.0.0.1");</pre>
+              </div>
+              <p>Open <code>http://127.0.0.1:3000/</code>. The sample uses a fixed URL so visitors cannot spend your quota fetching arbitrary pages through your app.</p>
+            </details>
+            <p class="doc-note"><strong>Need the interactive website?</strong> Use the publisher’s official embed URL, if available, or open the site in a new tab. The fetch API returns a snapshot, not a browser session: it does not run scripts, load subresources, or provide an iframe URL. Never put a key in an iframe URL or insert a raw response into your app’s DOM.</p>
+          </section>
+          <section class="guide-section" id="responses">
+            <div class="guide-section-heading"><span aria-hidden="true">03</span><h2>Read the response</h2></div>
+            <dl class="response-fields">
+              <div><dt><code>body</code> / <code>json</code></dt><dd>UTF-8 text by default; use <code>"format":"json"</code> for a parsed JSON value.</dd></div>
+              <div><dt><code>contentType</code></dt><dd>Check the returned MIME type before treating a response as HTML.</dd></div>
+              <div><dt><code>truncated</code></dt><dd>If true, the body is incomplete or empty because it exceeded the text limit. Do not render it as a complete page.</dd></div>
+            </dl>
+            <p><a href="#endpoint-fetch">Full fetch reference</a> · <a href="#endpoint-usage">Measure key usage</a></p>
+          </section>
+        </article>
+        <aside class="guide-rail" aria-label="Quickstart navigation">
+          <p class="eyebrow">On this page</p>
+          <nav aria-label="Quickstart sections">
+            <a href="#first-request">Make your first request</a>
+            <a href="#embed">Show a preview in your app</a>
+            <a href="#responses">Read the response</a>
+          </nav>
+          <a class="btn primary" href="#try-fetch">Try Fetch in the playground <span aria-hidden="true">↗</span></a>
+        </aside>
+      </div>
+    </section>
 
-      <section class="panel">
-        <div class="panel-head"><div><h2>Authentication</h2><p class="small muted">Two token types: your <b>Veyra account session</b> (from <span class="mono">POST /api/auth/login</span>) manages workspaces and keys; an <b>API key</b> (<span class="mono">vyr_live_…</span>) calls the public API. Both travel as <span class="mono">Authorization: Bearer <token></span>. All platform routes are rate limited (120 requests/minute per IP; the waitlist form allows 5 per hour). Key-authenticated calls count towards that key’s usage.</p></div></div>
-        <div class="error-grid">
-          <div><span class="pill err">401</span> <code>PLATFORM_KEY_REQUIRED</code> — no Bearer key on a protected route</div>
-          <div><span class="pill err">401</span> <code>PLATFORM_KEY_INVALID</code> — revoked or unknown key</div>
-          <div><span class="pill warn">429</span> <code>PLATFORM_RATE_LIMITED</code> — too many requests this minute</div>
-          <div><span class="pill warn">402</span> <code>BILLING_REQUIRED</code> — set up billing before issuing keys</div>
+    <!-- API reference -->
+    <section class="view" id="view-reference">
+      <div class="page-heading">
+        <p class="eyebrow">Documentation / API v1</p>
+        <h1>API reference</h1>
+        <p>Explore endpoints for fetching pages, searching the index, and monitoring workspace keys.</p>
+      </div>
+      <section class="reference-index" aria-label="Public endpoints">
+        <div class="reference-toolbar">
+          <div class="reference-base"><span>Base URL</span><code>https://veyraserver-xscy.onrender.com</code></div>
+          <label for="referenceFilter" class="sr-only">Filter endpoints</label>
+          <input id="referenceFilter" class="ref-filter" type="search" placeholder="Filter by name, method, or path">
         </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head"><div><h2>Public API reference</h2><p class="small muted">Every <span class="mono">/api/v1</span> endpoint, what it takes, what it returns. Click an endpoint to expand its parameters and examples.</p></div>
-          <input id="referenceFilter" class="ref-filter" type="search" placeholder="Filter endpoints… e.g. usage, fetch, keys" aria-label="Filter endpoints">
-        </div>
+        <p class="reference-count" id="referenceCount" aria-live="polite"></p>
+        <p class="empty" id="referenceEmpty" hidden>No endpoints match. Try “fetch”, “GET”, or “usage”.</p>
         <div class="ref-groups" id="referenceGroups">
 
           <h3 class="ref-group">Status & identity</h3>
@@ -238,7 +318,8 @@ console.log(await r.json());</pre>
               <p class="small muted">Liveness check for the public API. Returns the server version, uptime and the documented rate limit. The one endpoint that needs no authentication.</p>
               <pre class="docs">curl -s $API/api/v1/status
 <span class="c">→ {"ok":true,"api":"veyra","version":"8.21.0","uptimeSeconds":3600,
-   "rateLimit":{"max":120,"windowMs":60000},"docs":"…"}</span></pre>
+   "rateLimit":{"max":120,"windowMs":60000},
+   "docs":"https://homekidchud.github.io/VeyraBrowser/web/dev/platform/"}</span></pre>
             </div>
           </details>
           <details class="endpoint" data-search="verify key valid check identity">
@@ -246,8 +327,8 @@ console.log(await r.json());</pre>
             <div class="endpoint-body">
               <p class="small muted">Lightweight key validation. Returns the key’s identity, its workspace and current usage counters. Perfect for a “connection test” button in your app.</p>
               <pre class="docs">curl -s $API/api/v1/verify -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"valid":true,"key":{"id":"…","name":"Production key","last4":"abcd",…},
-   "workspace":{"id":"…","name":"My Dev Workspace","slug":"my-dev-workspace"},
+<span class="c">→ {"ok":true,"valid":true,"key":{"id":"key-uuid","name":"Production key","last4":"abcd","createdAt":"2026-11-17T15:00:00.000Z"},
+   "workspace":{"id":"workspace-uuid","name":"Demo","slug":"demo"},
    "usage":{"requests":7,"last24h":2}}</span></pre>
             </div>
           </details>
@@ -256,7 +337,9 @@ console.log(await r.json());</pre>
             <div class="endpoint-body">
               <p class="small muted">Identity of the calling key: workspace, key metadata and usage counters.</p>
               <pre class="docs">curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"workspace":{…},"key":{…},"usage":{"requests":1,"last24h":1,"lastUsedAt":"…"}}</span></pre>
+<span class="c">→ {"ok":true,"workspace":{"id":"workspace-uuid","name":"Demo","slug":"demo"},
+   "key":{"id":"key-uuid","name":"Production","last4":"abcd","createdAt":"2026-11-17T15:00:00.000Z"},
+   "usage":{"requests":1,"last24h":1,"lastUsedAt":"2026-11-17T16:00:00.000Z"}}</span></pre>
             </div>
           </details>
 
@@ -264,10 +347,12 @@ console.log(await r.json());</pre>
           <details class="endpoint" data-search="keys list workspace">
             <summary><span class="method get">GET</span><code>/api/v1/keys</code><span class="pill">api key</span><span class="ref-hint">List the keys in this key’s workspace</span></summary>
             <div class="endpoint-body">
-              <p class="small muted">The active keys in the workspace the calling key belongs to. Only public metadata — hashed secrets never leave the server.</p>
+              <p class="small muted">List active keys in the calling key’s workspace. Use the returned IDs to look up a key’s metadata and usage.</p>
               <pre class="docs">curl -s $API/api/v1/keys -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"workspace":{"id":"…","slug":"my-dev-workspace"},"total":2,
-   "keys":[{"id":"…","name":"Production key","last4":"abcd","usage":{…}},…]}</span></pre>
+<span class="c">→ {"ok":true,"workspace":{"id":"workspace-uuid","slug":"demo"},"total":1,
+   "keys":[{"id":"key-uuid","name":"Production","last4":"abcd","createdAt":"2026-11-17T15:00:00.000Z",
+            "lastUsedAt":"2026-11-17T16:00:00.000Z","revokedAt":null,
+            "usage":{"requests":1,"last24h":1,"byHour":{"2026-11-17T16:00:00Z":1}}}]}</span></pre>
             </div>
           </details>
           <details class="endpoint" data-search="key detail one metadata usage">
@@ -277,8 +362,10 @@ console.log(await r.json());</pre>
                 <tr><td><code>id</code></td><td>path</td><td>The key’s UUID (from <code>GET /api/v1/keys</code>).</td></tr>
               </tbody></table>
               <pre class="docs">curl -s $API/api/v1/keys/$KEY_ID -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"key":{"id":"…","name":"Production key","last4":"abcd",…},"usage":{…}}</span>
-<span class="c"># 404 {"error":"API key not found.","code":"API_KEY_NOT_FOUND"}</span></pre>
+<span class="c">→ {"ok":true,"key":{"id":"key-uuid","name":"Production","last4":"abcd","createdAt":"2026-11-17T15:00:00.000Z",
+                   "lastUsedAt":null,"revokedAt":null,"usage":{"requests":0,"last24h":0,"byHour":{}}},
+   "usage":{"requests":0,"last24h":0,"window":[]}}</span></pre>
+              <p class="small muted">An ID not found in the workspace returns <code>404 API_KEY_NOT_FOUND</code>.</p>
             </div>
           </details>
 
@@ -288,8 +375,9 @@ console.log(await r.json());</pre>
             <div class="endpoint-body">
               <p class="small muted">Usage for the calling key: totals, the rolling 24h window and per-hour buckets.</p>
               <pre class="docs">curl -s $API/api/v1/usage -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"keyId":"…","usage":{"requests":12,"last24h":3,…},
-   "byHour":{"2026-11-13T20:00:00Z":2,…}}</span></pre>
+<span class="c">→ {"ok":true,"keyId":"key-uuid",
+   "usage":{"requests":12,"last24h":3,"lastUsedAt":"2026-11-17T16:00:00.000Z"},
+   "byHour":{"2026-11-17T15:00:00Z":2,"2026-11-17T16:00:00Z":1}}</span></pre>
             </div>
           </details>
           <details class="endpoint" data-search="usage hours hourly buckets chart 24">
@@ -297,8 +385,9 @@ console.log(await r.json());</pre>
             <div class="endpoint-body">
               <p class="small muted">The last 24 hours of requests for the calling key as hourly buckets — every hour present, zero-filled, ready to chart.</p>
               <pre class="docs">curl -s $API/api/v1/usage/hours -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"keyId":"…","windowHours":24,
-   "hours":{"2026-11-16T17:00:00Z":0,…,"2026-11-17T16:00:00Z":4}}</span></pre>
+<span class="c">→ {"ok":true,"keyId":"key-uuid","windowHours":24,
+   "hours":{"2026-11-17T15:00:00Z":0,"2026-11-17T16:00:00Z":4}}</span></pre>
+              <p class="small muted">The sample shows two buckets for brevity. The API returns all 24.</p>
             </div>
           </details>
 
@@ -308,12 +397,13 @@ console.log(await r.json());</pre>
             <div class="endpoint-body">
               <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
                 <tr><td><code>q</code></td><td>query</td><td>Required. The search term.</td></tr>
-                <tr><td><code>limit</code></td><td>query</td><td>Max results (1–20, default 10).</td></tr>
+                <tr><td><code>limit</code></td><td>query</td><td>Max results (default 10, capped by the server).</td></tr>
                 <tr><td><code>offset</code></td><td>query</td><td>Result offset for paging.</td></tr>
               </tbody></table>
-              <pre class="docs">curl -s "$API/api/v1/search?q=veyra&limit=5" -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"results":[…],"provider":"veyra-index","responseTimeMs":3}
-<span class="c"># 400 {"error":"Provide a search term: ?q=…","code":"SEARCH_QUERY_REQUIRED"}</span></span></pre>
+              <pre class="docs">curl -s "$API/api/v1/search?q=veyra&amp;limit=5" -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"total":0,"results":[],"indexSize":42,"terms":["veyra"],
+   "filters":{},"provider":"veyra-index","responseTimeMs":3}</span></pre>
+              <p class="small muted">A blank query returns <code>400 SEARCH_QUERY_REQUIRED</code>. A query with no matches returns an empty <code>results</code> array.</p>
             </div>
           </details>
           <details class="endpoint" data-search="suggest suggestions autocomplete">
@@ -323,32 +413,41 @@ console.log(await r.json());</pre>
                 <tr><td><code>q</code></td><td>query</td><td>The partial term to complete.</td></tr>
               </tbody></table>
               <pre class="docs">curl -s "$API/api/v1/suggest?q=vey" -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c">→ {"ok":true,"suggestions":["veyra browser","veyra api",…]}</span></pre>
+<span class="c">→ {"ok":true,"suggestions":["veyra"]}</span></pre>
             </div>
           </details>
 
           <h3 class="ref-group">Fetch</h3>
           <details class="endpoint" data-search="fetch url proxy retrieve page html json">
-            <summary><span class="method post">POST</span><code>/api/v1/fetch</code><span class="pill">api key</span><span class="ref-hint">Fetch any public URL through Veyra’s proxy infrastructure</span></summary>
+            <summary><span class="method post">POST</span><code>/api/v1/fetch</code><span class="pill">api key</span><span class="ref-hint">Retrieve HTML, text or JSON from a public URL</span></summary>
             <div class="endpoint-body">
-              <p class="small muted">Fetches a public URL server-side through the same infrastructure as the fast proxy (SSRF guards, DNS checks, caching) and returns the body as text or parsed JSON. The body is capped at 256KB.</p>
+              <p>Fetch a public HTTP(S) URL without running page scripts. Text responses are capped at 256 KiB; JSON responses have a separate server-side limit. The result is data, not an iframe URL. <a href="#embed">See the static preview guide.</a></p>
               <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
                 <tr><td><code>url</code></td><td>body</td><td>Required. A public http(s) URL. Private addresses are blocked.</td></tr>
                 <tr><td><code>format</code></td><td>body</td><td><code>"text"</code> (default) or <code>"json"</code> — parse the body as JSON and return it inline.</td></tr>
               </tbody></table>
               <pre class="docs">curl -s -X POST $API/api/v1/fetch -H <b>"authorization: Bearer $VYR_KEY"</b> \
   -H 'content-type: application/json' -d '{"url":"https://example.com/"}'
-<span class="c">→ {"ok":true,"status":200,"finalUrl":"https://example.com/",
-   "contentType":"text/html; charset=UTF-8","body":"<!doctype html>…"}</span>
-<span class="c"># 400 {"code":"FETCH_URL_INVALID"} · 422 {"code":"FETCH_NOT_JSON"}
-# 502 {"code":"FETCH_FAILED"} — includes Veyra’s SSRF guard message</span></pre>
+<span class="c">→ {"ok":true,"status":200,"url":"https://example.com/","finalUrl":"https://example.com/",
+   "contentType":"text/html","truncated":false,"body":"&lt;!doctype html&gt;&lt;h1&gt;Example Domain&lt;/h1&gt;"}</span></pre>
+              <p class="small muted">Invalid URL: <code>400 FETCH_URL_INVALID</code>. Invalid or oversized JSON: <code>422 FETCH_NOT_JSON</code>. Blocked or unreachable destination: <code>502 FETCH_FAILED</code>.</p>
             </div>
           </details>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-head"><h2>Management endpoints</h2><span class="pill">session token</span></div>
+      <section class="guide-section">
+        <h2>Authentication and errors</h2>
+        <p>Send <code>Authorization: Bearer $VYR_KEY</code> on protected <code>/api/v1</code> requests. <a href="#endpoint-status">Status</a> is public. Authenticated calls count toward key usage; the v1 limit is 120 requests per minute per IP.</p>
+        <dl class="response-fields">
+          <div><dt><code>401</code></dt><dd><code>PLATFORM_KEY_REQUIRED</code> or <code>PLATFORM_KEY_INVALID</code>: add a valid, active API key.</dd></div>
+          <div><dt><code>429</code></dt><dd><code>PLATFORM_RATE_LIMITED</code>: pause before retrying; use backoff for repeated calls.</dd></div>
+          <div><dt><code>502</code></dt><dd><code>FETCH_FAILED</code>: the target was unavailable or could not be fetched. Check the URL and returned error message.</dd></div>
+        </dl>
+      </section>
+      <details class="management-reference">
+        <summary>Management API: workspaces, keys and billing</summary>
+        <p>Use a Veyra account session token for management, not a workspace key. Pricing and waitlist submission are public.</p>
         <div class="table-wrap docs-table"><table>
           <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
           <tbody>
@@ -357,7 +456,7 @@ console.log(await r.json());</pre>
             <tr><td><code>POST /api/platform/workspaces</code></td><td>Create a workspace (<span class="mono">name</span>, optional <span class="mono">description</span>). Errors: WORKSPACE_NAME_INVALID, PLATFORM_PLAN_LIMIT.</td></tr>
             <tr><td><code>PATCH /api/platform/workspaces/:id</code></td><td>Rename or edit the description.</td></tr>
             <tr><td><code>DELETE /api/platform/workspaces/:id</code></td><td>Delete a workspace and orphan its keys.</td></tr>
-            <tr><td><code>GET /api/platform/workspaces/:id/keys</code></td><td>List active keys (no secrets — hash and last-4 only at rest).</td></tr>
+            <tr><td><code>GET /api/platform/workspaces/:id/keys</code></td><td>List active key names, IDs, last four characters and usage.</td></tr>
             <tr><td><code>POST /api/platform/workspaces/:id/keys</code></td><td>Create a key; the raw secret is returned once. Errors: BILLING_REQUIRED, PLATFORM_KEY_LIMIT, API_KEY_NAME_INVALID.</td></tr>
             <tr><td><code>PATCH /api/platform/workspaces/:ws/keys/:key</code></td><td>Rename a key.</td></tr>
             <tr><td><code>POST /api/platform/workspaces/:ws/keys/:key/rotate</code></td><td>Revoke the old secret and mint a new one (shown once).</td></tr>
@@ -366,11 +465,12 @@ console.log(await r.json());</pre>
             <tr><td><code>POST /api/platform/waitlist</code></td><td>Join the early-access waitlist. Errors: WAITLIST_EMAIL_INVALID, PLATFORM_RATE_LIMITED.</td></tr>
           </tbody>
         </table></div>
-      </section>
+      </details>
     </section>
 
     <!-- Playground -->
-    <section class="view" id="view-playground" role="tabpanel">
+    <section class="view" id="view-playground">
+      <div class="page-heading"><p class="eyebrow">Developer tools / API v1</p><h1>Playground</h1><p>Run a request against the live API and copy the equivalent server-side code.</p></div>
       <section class="panel">
         <div class="panel-head"><div><h2>API playground</h2><p class="small muted">Pick an endpoint, paste an API key, and send real requests against the live API. The key stays in this tab only — it is never stored by the portal.</p></div></div>
         <div class="field">
@@ -389,7 +489,6 @@ console.log(await r.json());</pre>
             <select id="pgEndpoint"></select>
           </div>
           <div class="field pg-send-field">
-            <label for="pgSend">&nbsp;</label>
             <button class="btn primary" id="pgSend" type="button">Send request</button>
           </div>
         </div>
@@ -397,7 +496,7 @@ console.log(await r.json());</pre>
         <div class="pg-response">
           <div class="pg-response-head">
             <h3>Response</h3>
-            <span id="pgResponseMeta" class="small muted">Send a request to see the response here.</span>
+            <span id="pgResponseMeta" class="small muted" role="status">Send a request to see the response here.</span>
           </div>
           <pre class="docs pg-response-body" id="pgResponseBody" aria-live="polite"></pre>
         </div>
@@ -408,18 +507,17 @@ console.log(await r.json());</pre>
         <div class="code-tabs" data-code-tabs="playground">
           <div class="code-tabbar">
             <button class="code-tab active" type="button" data-lang="curl">curl</button>
-            <button class="code-tab" type="button" data-lang="js">JavaScript</button>
             <button class="code-tab" type="button" data-lang="python">Python</button>
-            <button class="code-tab" type="button" data-lang="node">Node</button>
+            <button class="code-tab" type="button" data-lang="node">Node.js</button>
             <button class="code-copy btn" id="pgCopyCode" type="button">Copy</button>
           </div>
           <pre class="docs code-block" data-lang="curl" id="pgCodeCurl"></pre>
-          <pre class="docs code-block" data-lang="js" id="pgCodeJs" hidden></pre>
           <pre class="docs code-block" data-lang="python" id="pgCodePython" hidden></pre>
           <pre class="docs code-block" data-lang="node" id="pgCodeNode" hidden></pre>
         </div>
       </section>
     </section>
+    </div>
   </main>
 
   <!-- Secret modal: shown after create/rotate; the secret is displayed exactly once. -->
