@@ -1,7 +1,7 @@
 
 import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.31-in-app-popups";
 import { dtCall, isRemote } from "./bridge.js?v=8.28.18-professional-shell";
-import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl } from "./extension-manifest.js";
+import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.28.38-extension-folders";
 
 let B;
 const BUILTIN = [];
@@ -74,21 +74,22 @@ function normalizeUserscript(raw, source = "local") {
 // wrapper keeps the Developer-mode gate and stores the original manifest +
 // file map as the source of truth (derived code is rebuilt on demand and
 // cached, so nothing is duplicated in localStorage).
-function normalizeBrowserManifest(manifest, files = {}) {
+function normalizeBrowserManifest(manifest, files = {}, source = "browser-manifest") {
   if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before importing Chrome or Edge extensions.");
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("The extension manifest must be a JSON object.");
   const filesMap = files && typeof files === "object" && !Array.isArray(files) ? files : {};
   const rec = parseChromeManifest(manifest, filesMap);
   const total = Object.values(filesMap).reduce((n, v) => n + (typeof v === "string" ? v.length : 0), 0);
-  if (total > 600000) throw new Error("The Chrome extension bundle is too large (600 KB max).");
+  if (total > FOLDER_LIMITS.maxTotalKb * 1000) throw new Error(`The Chrome extension bundle is too large (${FOLDER_LIMITS.maxTotalKb} KB max).`);
   return {
     id: rec.id, kind: "chrome", manifestVersion: rec.manifestVersion,
     name: rec.name, version: rec.version, description: rec.description,
     matches: rec.matches, excludeMatches: rec.excludeMatches,
     permissions: rec.permissions, hostPermissions: rec.hostPermissions,
+    iconData: rec.iconData || {}, action: rec.action || null,
     warnings: rec.warnings, backgroundKind: rec.background?.kind || null,
     minimumChromeVersion: rec.minimumChromeVersion,
-    enabled: true, installedAt: Date.now(), source: "browser-manifest", verified: false,
+    enabled: true, installedAt: Date.now(), source, verified: false,
     publisher: "Local import", author: rec.author,
     manifest, files: filesMap
   };
@@ -145,6 +146,11 @@ function startBackground(d) {
         else if (m.kind.endsWith(".clear")) { extSaveArea(d.id, area, {}); result = true; }
         else result = null;
       } else if (m.kind === "sendMessage") result = await deliverExtMessage(d, m.payload);
+      else if (m.kind === "tabs.query") result = veyraTabsQuery(m.payload);
+      else if (m.kind === "tabs.get") result = veyraTabGet(m.payload);
+      else if (m.kind === "tabs.create") result = veyraTabCreate(m.payload);
+      else if (m.kind === "tabs.sendMessage") result = await veyraTabSendMessage(d, m.payload);
+      else if (m.kind === "scripting.executeScript") result = await veyraExecuteScript(d, m.payload);
       else result = null;
     } catch (e) { error = e.message; }
     try { worker.postMessage({ __veyraRpcReply: m.__veyraRpc, result, error }); } catch (e) {}
@@ -161,6 +167,125 @@ function stopBackground(id) {
   try { e.worker.terminate(); } catch {}
   try { URL.revokeObjectURL(e.url); } catch {}
   bgWorkers.delete(id);
+}
+// Fire chrome.action.onClicked listeners in the extension's background
+// worker — Veyra's equivalent of clicking the toolbar icon (puzzle popover).
+function fireActionClick(d) {
+  const e = bgWorkers.get(d.id);
+  if (!e || e.status !== "running") return false;
+  try { e.worker.postMessage({ __veyraActionClick: Date.now() }); return true; } catch { return false; }
+}
+// --- chrome.tabs / chrome.scripting host implementations --------------------
+// Background workers reach these over the postMessage RPC; they map onto
+// Veyra's own tab model (tabId === the Veyra tab id).
+function tabInfo(t, i) {
+  const active = t.id === B.state.activeId;
+  return {
+    id: t.id, index: i, windowId: 1, active,
+    highlighted: active, selected: active, currentWindow: true, lastFocusedWindow: true,
+    pinned: !!t.pinned, incognito: false, discarded: false, audible: false, muted: false,
+    status: t.view === "page" ? "complete" : "complete",
+    title: String(t.title || t.url || ""), url: t.view === "page" ? String(t.url || "") : "",
+    favIconUrl: "", width: 0, height: 0
+  };
+}
+function veyraTabsQuery(q) {
+  const info = q || {};
+  const tabs = B.state.tabs.map(tabInfo);
+  return tabs.filter(t => {
+    if (info.active === true && !t.active) return false;
+    if (info.active === false && t.active) return false;
+    if (info.currentWindow === false) return false;
+    if (info.pinned === true && !t.pinned) return false;
+    if (info.pinned === false && t.pinned) return false;
+    if (info.windowId != null && Number(info.windowId) !== 1) return false;
+    if (info.url != null) {
+      const pats = Array.isArray(info.url) ? info.url : [info.url];
+      const hit = pats.some(p => {
+        const pat = String(p).replace(/[.+?^${}()|[\\]]/g, "\\$&").replace(/\\*/g, ".*");
+        try { return new RegExp(`^${pat}$`).test(t.url) || t.url.includes(String(p)); } catch { return t.url.includes(String(p)); }
+      });
+      if (!hit) return false;
+    }
+    if (info.title != null && !String(t.title).toLowerCase().includes(String(info.title).toLowerCase())) return false;
+    return true;
+  });
+}
+function veyraTabGet(id) {
+  const i = B.state.tabs.findIndex(t => t.id === id);
+  if (i < 0) throw new Error(`No tab with id: ${id}`);
+  return tabInfo(B.state.tabs[i], i);
+}
+function veyraTabCreate(props) {
+  const p = props || {};
+  let url = String(p.url || "");
+  if (url && !/^https?:/i.test(url)) throw new Error(`Invalid url: "${url.slice(0, 80)}" — Veyra extensions can only open http(s) pages.`);
+  const t = B.newTab({ url, background: p.active === false });
+  return tabInfo(t, B.state.tabs.indexOf(t));
+}
+async function veyraTabSendMessage(d, payload) {
+  const p = payload || {};
+  const t = B.state.tabs.find(x => x.id === p.tabId && x.view === "page");
+  if (!t) return { response: undefined, lastError: { message: `Could not establish connection. Receiving end does not exist.` } };
+  const rec = chromeRecord(d);
+  // Deliver to the content-script bus inside the proxied page (the shim
+  // registers listeners on window.__veyraChromeExtBus[extId]). Fire-and-
+  // forget: the DevTools bridge has no synchronous return channel, so the
+  // callback resolves with undefined like a one-way message.
+  const nonce = `msg${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const script = `(function(){try{var bus=window.__veyraChromeExtBus;var set=bus&&bus.get(${JSON.stringify(d.id)});if(set){var respond=function(){};set.forEach(function(fn){try{fn(${JSON.stringify(p.message ?? null)},{id:${JSON.stringify(d.id)},tab:null},respond)}catch(e){}})}}catch(e){}})();/*${nonce}*/`;
+  await dtCall(t, "ext.script", { key: `${d.id}:${nonce}`, script }, 4000);
+  return { response: undefined };
+}
+async function veyraExecuteScript(d, details) {
+  const det = details || {};
+  const target = det.target || {};
+  let tabs = [];
+  if (target.tabId != null) tabs = B.state.tabs.filter(t => t.id === target.tabId && t.view === "page");
+  else tabs = B.state.tabs.filter(t => t.view === "page" && matches(d, t.url));
+  if (!tabs.length) return [];
+  const sources = [];
+  for (const f of Array.isArray(det.files) ? det.files : []) {
+    const code = d.files?.[String(f)];
+    if (typeof code === "string" && !code.startsWith("data:")) sources.push(code);
+  }
+  if (typeof det.func === "function") {
+    sources.push(`(${det.func.toString()})(${(det.args || []).map(a => JSON.stringify(a)).join(",")});`);
+  }
+  if (!sources.length) throw new Error("executeScript needs target.files or target.func.");
+  const nonce = `inj${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  await Promise.all(tabs.map(t => dtCall(t, "ext.script", { key: `${d.id}:${nonce}`, script: sources.join("\n;\n") }, 4000).catch(() => {})));
+  return [];
+}
+// --- unpacked folder import ("Load unpacked…", Chrome-style) ----------------
+function readPickedFile(file) {
+  return new Promise((resolve, reject) => {
+    if (file.size > FOLDER_LIMITS.maxFileKb * 1024) return reject(new Error(`File "${file.name}" is larger than ${FOLDER_LIMITS.maxFileKb} KB.`));
+    if (isBinaryPath(file.name)) {
+      const r = new FileReader();
+      r.onload = () => resolve({ path: file.webkitRelativePath || file.name, dataUrl: String(r.result || "") });
+      r.onerror = () => reject(new Error(`Couldn't read "${file.name}".`));
+      r.readAsDataURL(file);
+    } else {
+      const r = new FileReader();
+      r.onload = () => resolve({ path: file.webkitRelativePath || file.name, text: String(r.result || "") });
+      r.onerror = () => reject(new Error(`Couldn't read "${file.name}".`));
+      r.readAsText(file);
+    }
+  });
+}
+async function loadUnpackedFolder(fileList) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  if (files.length > FOLDER_LIMITS.maxFiles + 50) throw new Error(`Too many files (${files.length}) — pick the extension's own folder.`);
+  const entries = [];
+  for (const f of files.slice(0, FOLDER_LIMITS.maxFiles + 50)) entries.push(await readPickedFile(f));
+  const { manifest, files: bundle, rootPath } = readExtensionFolder(entries);
+  const v = normalizeBrowserManifest(manifest, bundle, "unpacked-folder");
+  const cur = devExts(); const i = cur.findIndex(x => x.name === v.name && x.kind === "chrome");
+  if (i >= 0) cur[i] = v; else cur.unshift(v);
+  save("veyra-dev-extensions", cur.slice(0, 50)); hooks.scheduleSync?.(); applyAll(); startBackground(v); renderExtensions();
+  toast(`${v.name} loaded${rootPath ? ` from ${rootPath.replace(/\/$/, "")}/` : " unpacked"}${v.warnings?.length ? ` (${v.warnings.length} warning${v.warnings.length === 1 ? "" : "s"})` : ""}`);
 }
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
@@ -296,9 +421,11 @@ function chromeCardMeta(e) {
   return `<div class="ext-tags">${chips}${bg}</div>${warnText ? `<p class="small" style="margin:0;color:#e5484d">${esc(warnText)}</p>` : ""}`;
 }
 function card(e, on, dev = false) {
-  return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico"><svg><use href="#${e.icon || "i-puzzle"}"/></svg></span><div><h3>${esc(e.name)}${e.kind === "chrome" && e.permissions?.denied?.length ? ` <span class="ext-tag" style="color:#e5484d">${e.permissions.denied.length} disabled</span>` : ""}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
+  const icon = e.iconData ? (e.iconData[128] || e.iconData[48] || e.iconData[32] || e.iconData[16] || Object.values(e.iconData)[0]) : null;
+  const iconHtml = icon ? `<img src="${esc(icon)}" alt="" style="width:22px;height:22px;object-fit:contain" loading="lazy">` : `<svg><use href="#${e.icon || "i-puzzle"}"/></svg>`;
+  return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico">${iconHtml}</span><div><h3>${esc(e.name)}${e.kind === "chrome" && e.permissions?.denied?.length ? ` <span class="ext-tag" style="color:#e5484d">${e.permissions.denied.length} disabled</span>` : ""}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
     ${e.zoom ? `<label class="field" style="margin:0"><span>Zoom for new pages: <b id="zoomVal">${Math.round((settings.zoomDefault || 1) * 100)}%</b></span><input type="range" min="50" max="200" step="10" value="${Math.round((settings.zoomDefault || 1) * 100)}" id="zoomRange"></label>` : ""}
-    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.kind === "chrome" ? `Chrome MV${e.manifestVersion}` : e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
+    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.kind === "chrome" ? `Chrome MV${e.manifestVersion}${e.source === "unpacked-folder" ? " · unpacked folder" : ""}` : e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
     ${dev && e.kind === "chrome" ? chromeCardMeta(e) : ""}
     <div class="ext-foot">${dev ? `${e.kind === "chrome" ? "" : `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button>`}<button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
       <span class="spacer"></span><input type="checkbox" class="switch" data-toggle="${esc(e.id)}" ${dev ? "data-dev" : ""} ${on ? "checked" : ""} aria-label="Enable ${esc(e.name)}"></div></article>`;
@@ -369,10 +496,23 @@ function openPuzzle() {
   const s = state(); const t = B.activeTab(); const onPage = t?.view === "page" && !!t.url;
   const p = $("popover");
   p.innerHTML = `<h4>Extensions</h4><p class="pop-sub">${onPage ? `Acting on ${esc(hostOf(t.url))}` : "Install verified CSS-only extensions from the Veyra Store."}</p>
-    ${devExts().map(d => `<div class="ext-pop-row"><span class="ext-ico" style="width:30px;height:30px;border-radius:9px"><svg style="width:16px;height:16px"><use href="#i-code"/></svg></span><div class="n"><b>${esc(d.name)}</b><small>${t?.url && matches(d, t.url) ? "Runs on this site" : "Not for this site"}</small></div></div>`).join("")}
+    ${devExts().map(d => {
+      const icon = d.iconData ? (d.iconData[128] || d.iconData[48] || d.iconData[32] || d.iconData[16] || Object.values(d.iconData)[0]) : null;
+      const clickable = d.kind === "chrome" && d.enabled && d.action?.defaultPopup == null;
+      return `<div class="ext-pop-row${clickable ? " ext-click" : ""}" ${clickable ? `data-action-ext="${esc(d.id)}" title="Click to run this extension's toolbar action"` : ""}><span class="ext-ico" style="width:30px;height:30px;border-radius:9px">${icon ? `<img src="${esc(icon)}" alt="" style="width:16px;height:16px;object-fit:contain">` : `<svg style="width:16px;height:16px"><use href="#i-code"/></svg>`}</span><div class="n"><b>${esc(d.name)}</b><small>${t?.url && matches(d, t.url) ? "Runs on this site" : "Not for this site"}</small></div></div>`;
+    }).join("")}
     <div style="margin-top:10px;display:grid;gap:8px"><button class="btn ghost sm block" data-go="/extensions/store">Open extension store</button><button class="btn ghost sm block" data-go="/extensions">Manage installed</button></div>`;
   p.onchange = e => { const sw = e.target.closest("[data-toggle]"); if (sw) { toggle(sw.dataset.toggle, sw.checked); setTimeout(openPuzzle, 0); } };
-  p.onclick = e => { const r = e.target.closest("[data-run]"); if (r) runAction(r.dataset.run, $("extBtn")); if (e.target.closest("[data-go]")) closeFloating(); };
+  p.onclick = e => {
+    const r = e.target.closest("[data-run]"); if (r) runAction(r.dataset.run, $("extBtn"));
+    const act = e.target.closest("[data-action-ext]");
+    if (act) {
+      const d = devExts().find(x => x.id === act.dataset.actionExt);
+      if (d && fireActionClick(d)) toast(`${d.name} action fired`);
+      else if (d) toast(`${d.name} has no background action running`, { kind: "warn" });
+    }
+    if (e.target.closest("[data-go]")) closeFloating();
+  };
   openFloating(p, $("extBtn"));
 }
 async function loadManifestFile(file) {
@@ -404,6 +544,23 @@ export function initExtensions(b) {
   $("extDevMode").onchange = e => { settings.extensionDeveloperMode = e.target.checked; saveSettings(); renderExtensions(); };
   $("loadExtensionBtn").onclick = () => $("extensionFile").click();
   $("extensionFile").onchange = e => { const f = e.target.files?.[0]; if (f) loadManifestFile(f); e.target.value = ""; };
+  // "Load unpacked…": pick an extension folder (Chrome-style). Reads every
+  // file (text or data URL), finds manifest.json (root or single subfolder),
+  // and runs the full MV2/MV3 pipeline on the bundle.
+  const folderBtn = $("loadFolderBtn");
+  if (folderBtn) {
+    folderBtn.onclick = () => {
+      if (!settings.extensionDeveloperMode) return toast("Enable Developer mode before loading unpacked extensions.", { kind: "warn" });
+      $("extensionFolder").click();
+    };
+  }
+  const folderInput = $("extensionFolder");
+  if (folderInput) folderInput.onchange = async e => {
+    const list = e.target.files;
+    e.target.value = "";
+    try { await loadUnpackedFolder(list); }
+    catch (err) { toast(`Couldn't load unpacked extension: ${err.message}`, { kind: "err", ms: 7000 }); }
+  };
   $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => x.script ? x.script : x.kind === "chrome" ? { manifest: x.manifest, files: x.files } : ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
   renderExtensions();
   // Start background workers for every enabled Chrome extension on boot.

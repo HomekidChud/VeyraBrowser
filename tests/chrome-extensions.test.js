@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   parseChromeManifest, classifyPermissions,
   buildContentScriptShim, buildContentScriptSource, buildBackgroundWorkerSource,
-  patternMatchesUrl, matchesUrl
+  patternMatchesUrl, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS
 } from "../web/src/extension-manifest.js";
 
 const mv3Manifest = {
@@ -223,4 +223,138 @@ const mv3Files = {
   assert.equal(matchesUrl([], "https://any.site/", []), true); // no matches = all sites
 }
 
-console.log("Chrome extension tests passed: MV3 + MV2 parsing, permission allow/deny with warnings, missing-file errors, chrome.* shims, run_at gating, and match patterns.");
+// --- 9. Unpacked-folder reading -------------------------------------------
+{
+  const entries = [
+    { path: "my-ext/manifest.json", text: JSON.stringify({ manifest_version: 3, name: "Folder Ext", version: "1.0.0", content_scripts: [{ matches: ["*://f/*"], js: ["cs.js"] }] }) },
+    { path: "my-ext/cs.js", text: "console.log('cs');" },
+    { path: "my-ext/style.css", text: "body{color:red}" },
+    { path: "my-ext/icons/icon48.png", dataUrl: "data:image/png;base64,AAA" },
+    { path: "my-ext/.DS_Store", text: "junk" },
+    { path: "__MACOSX/my-ext/._manifest.json", text: "junk" },
+    { path: "unrelated.txt", text: "outside the extension folder" }
+  ];
+  const { manifest, files, rootPath } = readExtensionFolder(entries);
+  assert.equal(rootPath, "my-ext/");
+  assert.equal(manifest.name, "Folder Ext");
+  assert.deepEqual(Object.keys(files).sort(), ["cs.js", "icons/icon48.png", "manifest.json", "style.css"]);
+  assert.equal(files["cs.js"], "console.log('cs');");
+  // manifest at root: no stripping
+  const root = readExtensionFolder([
+    { path: "manifest.json", text: JSON.stringify({ manifest_version: 2, name: "Root", background: { scripts: ["bg.js"] } }) },
+    { path: "bg.js", text: "x();" }
+  ]);
+  assert.equal(root.rootPath, "");
+  assert.ok("bg.js" in root.files);
+  // errors: no manifest, ambiguous manifests, bad JSON, oversize
+  assert.throws(() => readExtensionFolder([{ path: "a.txt", text: "x" }]), /No manifest\.json found/);
+  assert.throws(() => readExtensionFolder([
+    { path: "one/manifest.json", text: "{}" },
+    { path: "two/manifest.json", text: "{}" }
+  ]), /more than one manifest\.json/);
+  assert.throws(() => readExtensionFolder([{ path: "manifest.json", text: "{oops" }]), /not valid JSON/);
+  assert.throws(() => readExtensionFolder([
+    { path: "manifest.json", text: JSON.stringify({ manifest_version: 3, name: "Big" }) },
+    { path: "huge.js", text: "x".repeat(FOLDER_LIMITS.maxFileKb * 1024 + 1) }
+  ]), /larger than/);
+  const tooMany = [{ path: "manifest.json", text: JSON.stringify({ manifest_version: 3, name: "Crowd" }) }];
+  for (let i = 0; i < FOLDER_LIMITS.maxFiles; i++) tooMany.push({ path: `f${i}.js`, text: "x" });
+  assert.throws(() => readExtensionFolder(tooMany), /Too many files/);
+  assert.equal(isBinaryPath("icons/a.png"), true);
+  assert.equal(isBinaryPath("cs.js"), false);
+}
+
+// --- 10. i18n (_locales), icon data URLs, web-accessible resources ---------
+{
+  const folderManifest = {
+    manifest_version: 3,
+    name: "__MSG_appName__",
+    description: "__MSG_appDesc__",
+    version: "1.2.3",
+    default_locale: "en",
+    icons: { "48": "icons/48.png", "128": "icons/logo.svg" },
+    web_accessible_resources: [{ resources: ["images/logo.png"], matches: ["*://e/*"] }],
+    content_scripts: [{ matches: ["*://e/*"], js: ["cs.js"] }]
+  };
+  const files = {
+    "_locales/en/messages.json": JSON.stringify({ appName: { message: "Localized Ext" }, appDesc: { message: "Hello $1" }, greeting: { message: "Hi $1, welcome" } }),
+    "icons/48.png": "data:image/png;base64,AAA",
+    "icons/logo.svg": "<svg xmlns='http://www.w3.org/2000/svg'/>",
+    "images/logo.png": "data:image/png;base64,BBB",
+    "cs.js": "chrome.i18n.getMessage('greeting', ['World']);"
+  };
+  const rec = parseChromeManifest(folderManifest, files);
+  assert.equal(rec.name, "Localized Ext", "__MSG_ substitution in name");
+  assert.equal(rec.description, "Hello $1", "__MSG_ substitution in description");
+  assert.equal(rec.i18n.defaultLocale, "en");
+  assert.equal(rec.i18n.messages.greeting, "Hi $1, welcome");
+  assert.equal(rec.iconData[48], "data:image/png;base64,AAA", "binary icon passes through as data URL");
+  assert.ok(rec.iconData[128].startsWith("data:image/svg+xml,"), "SVG icon encoded to a data URL");
+  assert.deepEqual(rec.resources, { "images/logo.png": "data:image/png;base64,BBB" }, "WAR files embedded for getURL");
+  // missing WAR warns, never blocks
+  const missing = parseChromeManifest({ ...folderManifest, web_accessible_resources: ["gone.png"] }, files);
+  assert.ok(missing.warnings.some(w => w.includes('Web-accessible resource "gone.png" is missing')));
+  // no default_locale -> no substitution machinery
+  const plain = parseChromeManifest({ manifest_version: 3, name: "__MSG_x__", content_scripts: [{ matches: ["*://e/*"], js: ["cs.js"] }] }, files);
+  assert.equal(plain.name, "__MSG_x__");
+  assert.deepEqual(plain.i18n.messages, {});
+}
+
+// --- 11. Working getURL + chrome.i18n in the content shim ------------------
+{
+  const folderManifest = {
+    manifest_version: 3, name: "GetURL", version: "1.0", default_locale: "en",
+    web_accessible_resources: [{ resources: ["images/logo.png", "page.html"], matches: ["*://e/*"] }],
+    content_scripts: [{ matches: ["*://e/*"], js: ["cs.js"] }]
+  };
+  const files = {
+    "_locales/en/messages.json": JSON.stringify({ greeting: { message: "Hi $1" } }),
+    "images/logo.png": "data:image/png;base64,AAA",
+    "page.html": "<b>hello</b>",
+    "cs.js": ";"
+  };
+  const rec = parseChromeManifest(folderManifest, files);
+  const chrome = new Function(buildContentScriptShim(rec) + "\n;return chrome;")();
+  assert.equal(chrome.runtime.getURL("images/logo.png"), "data:image/png;base64,AAA", "binary WAR served as its data URL");
+  const htmlUrl = chrome.runtime.getURL("page.html");
+  assert.ok(htmlUrl.startsWith("blob:"), "text WAR served as a blob URL");
+  assert.equal(chrome.runtime.getURL("not/a/resource.png"), `chrome-extension://${rec.id}/not/a/resource.png`, "non-WAR falls back to the placeholder");
+  assert.equal(chrome.i18n.getMessage("greeting", ["World"]), "Hi World", "$1 substitution");
+  assert.equal(chrome.i18n.getMessage("missing"), "", "unknown message key -> empty string");
+  assert.match(chrome.i18n.getUILanguage(), /^[a-z]{2}(_[A-Z]{2})?$/);
+}
+
+// --- 12. Background shim: tabs, scripting, action clicks -------------------
+{
+  const rec = parseChromeManifest({
+    manifest_version: 3, name: "Tabby", version: "1.0",
+    background: { service_worker: "sw.js" }
+  }, { "sw.js": "self.chrome.tabs.query({active:true});" });
+  const src = buildBackgroundWorkerSource(rec);
+  assert.ok(src.includes('rpc("tabs.query"'), "tabs.query goes through host RPC");
+  assert.ok(src.includes('rpc("tabs.get"'));
+  assert.ok(src.includes('rpc("tabs.create"'));
+  assert.ok(src.includes('rpc("tabs.sendMessage"'));
+  assert.ok(src.includes('rpc("scripting.executeScript"'), "scripting.executeScript through host RPC");
+  assert.ok(src.includes("actionListeners"), "action.onClicked listener registry");
+  assert.ok(src.includes("__veyraActionClick"), "host action-click delivery");
+  assert.ok(src.includes("getURL: function (path)"), "getURL in the worker shim");
+  assert.ok(src.includes("var MESSAGES ="), "i18n messages embedded in the worker shim");
+  // Execute the worker shim headlessly against a fake self. tabs.query
+  // posts the RPC synchronously (string-checked above); calling it here
+  // would arm a 15 s reply timer, so only the action-click path — which
+  // needs no host round-trip — is executed.
+  const posted = [];
+  const fakeSelf = {
+    postMessage: m => posted.push(m),
+    onmessage: null
+  };
+  const workerChrome = new Function("self", buildBackgroundWorkerSource(rec) + "\n;return self.chrome;")(fakeSelf);
+  assert.equal(workerChrome.runtime.id, rec.id);
+  let clicked = null;
+  workerChrome.action.onClicked.addListener(tab => { clicked = tab; });
+  fakeSelf.onmessage({ data: { __veyraActionClick: 1 } });
+  assert.equal(clicked?.id, rec.id, "action.onClicked fires on host action click");
+}
+
+console.log("Chrome extension tests passed: MV3 + MV2 parsing, permission allow/deny with warnings, missing-file errors, chrome.* shims, run_at gating, match patterns, unpacked folders, _locales i18n, web-accessible resources, tabs/scripting/action RPC.");

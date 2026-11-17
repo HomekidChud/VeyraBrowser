@@ -14,7 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.28.37-inproxy-signin"></script>
+  <script src="./src/bootstrap.js?v=8.28.38-extension-folders"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -285,9 +285,10 @@
             <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Extensions are isolated CSS-only packages that run through the Veyra page bridge.</p></div>
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
-              <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
-              <span class="muted small">CSS is sandboxed. Developer mode supports <code>.user.js</code> and Chrome/Edge MV2/MV3 manifest bundles; background code runs in a sandboxed worker shim and dangerous permissions are disabled with a warning.</span>
+              <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="loadFolderBtn">Load unpacked…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
+              <span class="muted small">CSS is sandboxed. Developer mode supports <code>.user.js</code>, Chrome/Edge MV2/MV3 manifest bundles, and unpacked extension folders (manifest.json + scripts, icons, styles, <code>_locales</code>); background code runs in a sandboxed worker shim and dangerous permissions are disabled with a warning.</span>
               <input type="file" id="extensionFile" accept="application/json,.json,.vex,.vex.json,.user.js,text/javascript" hidden>
+              <input type="file" id="extensionFolder" webkitdirectory directory multiple hidden>
             </div>
             <div class="ext-grid" id="extensionsGrid"></div>
           </div>
