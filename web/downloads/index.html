@@ -57,6 +57,11 @@
     details { margin-top: 10px; color: var(--muted); }
     summary { cursor: pointer; color: #d7e3fa; }
     code { display: block; margin-top: 9px; overflow-wrap: anywhere; color: #d7e3fa; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .79rem; }
+    #browser-extension h2 { margin: 0 0 8px; }
+    .install-steps { margin: 14px 0; padding-inline-start: 1.4rem; }
+    .install-steps li + li { margin-top: 8px; }
+    #browser-extension code { display: inline; margin: 0; font-size: .95em; }
+    #browser-extension .download { width: auto; margin: 6px 0; }
     footer { padding: 0 0 34px; color: #90a0bd; font-size: .9rem; }
     footer a { color: #c5d6fa; }
     @media (max-width: 720px) { .shell { width: min(100% - 28px, 1100px); } .hero { padding-top: 43px; } .grid { grid-template-columns: 1fr; } .card { min-height: 0; padding: 25px; } }
@@ -91,14 +96,24 @@
       </article>
     </section>
 
-    <aside class="notice" id="browser-extension">
-      <strong>Veyra Browser Launcher:</strong> A permission-free Chrome and Edge extension for opening Veyra and official account pages in regular tabs. It does not read or transfer your login session.
+    <section class="notice" id="browser-extension" aria-labelledby="launcher-title">
+      <h2 id="launcher-title">Veyra Browser Launcher</h2>
+      <p>A permission-free Chrome and Edge extension for opening Veyra and official account pages in regular tabs. It does not read or transfer your login session.</p>
       <p><a class="download" href="./veyra-launcher.zip" download>Download extension ZIP <span aria-hidden="true">↓</span></a></p>
+      <h3>Install in Microsoft Edge</h3>
+      <ol class="install-steps">
+        <li>Extract <code>veyra-launcher.zip</code> to a folder you can keep.</li>
+        <li>In desktop Edge, type <code>edge://extensions</code> in the address bar and press Enter.</li>
+        <li>Turn on <strong>Developer mode</strong>, then select <strong>Load unpacked</strong>.</li>
+        <li>Select the extracted folder that contains <code>manifest.json</code>, not the ZIP file or its parent folder.</li>
+        <li>Open the <strong>Extensions</strong> menu, then choose <strong>Veyra Browser Launcher</strong>.</li>
+      </ol>
+      <p>If Edge reports a missing manifest, check that you selected the folder with <code>manifest.json</code> directly inside it. If the install controls are unavailable on a managed device, ask your administrator. This is not an Edge Add-ons store release. See <a href="https://learn.microsoft.com/en-gb/microsoft-edge/extensions/getting-started/extension-sideloading">Microsoft’s local installation guide</a>.</p>
       <details>
-        <summary>Manual installation</summary>
-        <p>Extract the ZIP. Open <code>chrome://extensions</code> or <code>edge://extensions</code>, enable Developer mode, select <strong>Load unpacked</strong>, then pick the folder containing <code>manifest.json</code>. This build is not distributed through an extension store.</p>
+        <summary>Install in Chrome instead</summary>
+        <p>Extract the ZIP, open <code>chrome://extensions</code>, enable Developer mode, select <strong>Load unpacked</strong>, and pick the folder containing <code>manifest.json</code>.</p>
       </details>
-    </aside>
+    </section>
     <aside class="notice">
       <strong>About these builds:</strong> these are debug APKs, signed with the standard Android debug key. Android may ask you to allow installs from your browser or file manager. If you already installed a build signed with a different key, uninstall that copy before installing this one.
       <details>
