@@ -1,0 +1,11 @@
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0f1319;color:#e8ecf2}
+body{width:296px;margin:0}
+main{padding:18px}
+.eyebrow{color:#a7c2fa;font-size:10px;font-weight:750;letter-spacing:.12em;margin:0}
+h1{font-size:18px;line-height:1.2;margin:6px 0}
+p{color:#a9b2c1;font-size:12px;line-height:1.5;margin:0}
+nav{display:grid;gap:6px;margin-top:14px}
+a{display:flex;justify-content:space-between;gap:10px;border:1px solid #344052;border-radius:7px;padding:8px 10px;color:inherit;background:#191f29;text-decoration:none;font-size:12px;font-weight:625}
+a:hover{background:#232b38}
+a:focus-visible{outline:2px solid #a7c2fa;outline-offset:2px}
+a.primary{background:#a7c2fa;color:#0d1320}

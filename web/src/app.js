@@ -3,23 +3,24 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.31-in-app-popups";
+} from "./core.js?v=8.28.41-account-notices";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.39-account-flows";
-import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
-import { maybeOfferRenew } from "./renew.js";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.41-account-notices";
+import { initUI } from "./ui.js?v=8.28.41-account-notices";
+import { initDevtools } from "./devtools.js?v=8.28.41-account-notices";
+import { maybeOfferRenew } from "./renew.js?v=8.28.41-account-notices";
+import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.28.41-account-notices").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 function ensureAdminModule() {
-  adminModulePromise ||= import("./admin.js");
+  adminModulePromise ||= import("./admin.js?v=8.28.41-account-notices");
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
@@ -67,6 +68,15 @@ const INTERNAL = {
 const saveHistory = () => save("veyra-history", state.history.slice(0, settings.historyMax || 1000));
 const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
 const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
+const GITHUB_BOOKMARK_SEEDED = "veyra-github-signup-bookmark-seeded";
+if (!INCOGNITO && !load(GITHUB_BOOKMARK_SEEDED, false)) {
+  const bookmarks = withGitHubSignupBookmark(state.bookmarks);
+  if (bookmarks !== state.bookmarks) {
+    state.bookmarks = bookmarks;
+    saveBookmarks();
+  }
+  save(GITHUB_BOOKMARK_SEEDED, true);
+}
 const saveTabGroups = () => save("veyra-tab-groups", state.tabGroups);
 // Tab-group membership lives on the tab objects, so persisting the group list
 // is not enough: every membership change must refresh a per-tab snapshot too,
@@ -434,7 +444,8 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
   const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
   if (!background) state.activeId = t.id;
   renderTabs();
-  if (url) { if (displayUrl) navigate(url, { tab: t, activate: !background, displayUrl }); else go(url, { tab: t, activate: !background }); }
+  if (url && interceptAccount(classify(url)?.url)) { if (!background) renderActive({ push: true }); }
+  else if (url) { if (displayUrl) navigate(url, { tab: t, activate: !background, displayUrl }); else go(url, { tab: t, activate: !background }); }
   else if (view) openInternal(view, { tab: t, section });
   else if (settings.homepage) go(settings.homepage, { tab: t });
   else { t.view = "newtab"; if (!background) renderActive({ push: true }); }
@@ -665,7 +676,7 @@ export function updateIdentity() {
     if (!CHROMIUM_TRY_DISABLED && t.failoverReason && t.view === "page" && !t.loading) {
       sc.innerHTML = `<button class="retry-browser-btn" id="retryBrowserBtn" title="Reset the circuit breaker and retry Chromium">Retry full browser</button>`;
       const btn = $("retryBrowserBtn");
-      if (btn) btn.onclick = () => { import('./app.js').then(m => m.retryFullBrowser?.()).catch(() => {}); };
+      if (btn) btn.onclick = () => { void retryFullBrowser().catch(() => {}); };
     } else {
       sc.innerHTML = "";
     }
@@ -1194,7 +1205,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
     if (inNew) { newTab({ url: target }); return; }
     return navigate(target, { tab, push, activate });
   }
-  if (inNew) { newTab({ url: input }); return; }
+  if (inNew) { if (interceptAccount(r.url, activeTab()?.url)) updateAddress(); else newTab({ url: input }); return; }
   if (r.kind === "internal") { openInternal(r.view, { tab, section: r.section, push }); return; }
   if (r.kind === "unsupported") { toast("Veyra only opens http and https addresses", { kind: "warn" }); return; }
   if (r.kind === "calc") { openInternal("calculator", { tab, calc: r.expression, push }); return; }
@@ -1207,6 +1218,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   return navigate(url, { tab, push, activate });
 }
 export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true, displayUrl = "" } = {}) {
+  if (interceptAccount(url, (tab || activeTab())?.url)) { updateAddress(); return; }
   url = normalizeYouTubeUrl(url);
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
@@ -1313,6 +1325,7 @@ function openCrawl(t, url, session, enabled = true) {
   });
 }
 async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "" } = {}) {
+  if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
   const previousUrl = t.url;
   t.sourceDisplayAliases ||= new Map();
@@ -2564,7 +2577,9 @@ function teardownPopupLinks(tab) {
 function openProxiedPopup(sourceTab, d) {
   const target = canonical(String(d.url || ""));
   if (!target) return null;
+  if (interceptAccount(target, sourceTab.url)) return null;
   const popup = newTab({ url: target, index: state.tabs.indexOf(sourceTab) + 1 });
+  if (!popup) return null;
   popup.popupOf = sourceTab.id;
   popup.popupId = String(d.popupId || "");
   return popup;
@@ -2577,13 +2592,100 @@ function ackEmbedPing(e) {
   const t = tabForSource(e.source);
   if (t?.popupOf) relayIntoFrame(t, { type: "veyra:popup-role" });
 }
-// The page's own sign-in was clicked (veyra:signin from the runtime):
-// load the site's sign-in page through the fast proxy in this tab and
-// sign in inside Veyra. Same session, same cookie jar, no handoff.
+// Ordinary sites can sign in through their Fast Proxy session. Recognized
+// account providers instead get a direct entry point without session transfer.
 function chooseSignin(t, url) {
+  if (interceptAccount(url, t.url)) return;
   addLog("info", `Sign-in on ${hostOf(url)} loading through the fast proxy.`);
   toast(`Signing in to ${hostOf(url)} inside Veyra`, { ms: 4000 });
   void loadInTab(t, url, { loadFrame: true });
+}
+
+function accountRow(parent, { icon, title, description, label, href, download, action, primary = false }) {
+  const row = document.createElement("li"); row.className = "account-option";
+  const marker = document.createElement("span"); marker.className = "account-option-icon"; marker.textContent = icon; marker.setAttribute("aria-hidden", "true");
+  const copy = document.createElement("div"); copy.className = "account-option-copy";
+  const name = document.createElement("strong"); name.textContent = title;
+  const detail = document.createElement("span"); detail.textContent = description;
+  copy.append(name, detail);
+  const control = document.createElement(href ? "a" : "button");
+  control.className = `toast-action${primary ? " toast-action-primary" : ""}`; control.textContent = label;
+  if (href) {
+    control.href = href;
+    if (download) control.download = download;
+    else { control.target = "_blank"; control.rel = "noopener noreferrer"; }
+  } else { control.type = "button"; control.addEventListener("click", action); }
+  row.append(marker, copy, control); parent.append(row);
+}
+
+function directAccountBookmark(target) {
+  const provider = target.provider;
+  const label = `${provider} ${target.signup ? "signup" : "sign-in"}`;
+  toast(`This bookmark opens ${provider} directly. It does not store your sign-in session.`, {
+    title: `Save ${provider} bookmark`, key: `account-bookmark-${provider}-${target.signup ? "signup" : "login"}`, ms: 0,
+    field: { label: "Bookmark name", value: label, submitLabel: "Save bookmark", autofocus: true, onSubmit: name => {
+      const existing = state.bookmarks.find(b => accountDestination(b.url)?.url === target.url);
+      if (existing) existing.title = name;
+      else state.bookmarks.push({ id: uid(), url: target.url, title: name, time: Date.now() });
+      if (!settings.showBookmarksBar) { settings.showBookmarksBar = true; saveSettings(); }
+      saveBookmarks(); hooks.renderBookmarksBar?.(); updateIdentity();
+      if (activeTab()?.view === "newtab") hooks.renderNewTab?.();
+      toast(`${provider} will open directly from your bookmarks bar.`, { title: "Bookmark saved", kind: "success" });
+    } }
+  });
+}
+
+let accountNotice = null;
+function showAccountNotice(key, message, opts) {
+  if (accountNotice?.key !== key) accountNotice?.dismiss?.();
+  const dismiss = toast(message, { ...opts, key, ms: 0 });
+  accountNotice = { key, dismiss };
+  return dismiss;
+}
+
+export function showAccountOptions(url = GOOGLE_SIGN_IN, from = "") {
+  const target = accountDestination(url); if (!target) return false;
+  if (target.provider === "GitHub") {
+    showAccountNotice(`github-account-${target.signup ? "signup" : "login"}`,
+      "GitHub verifies accounts on its own site. Start there in a regular browser tab.", {
+      title: target.signup ? "Create a GitHub account" : "Sign in to GitHub",
+      actions: [
+        { label: "Continue on GitHub", href: target.url, primary: true },
+        { label: "Add bookmark", onClick: () => directAccountBookmark(target) }
+      ]
+    });
+    return true;
+  }
+  const options = document.createElement("ul"); options.className = "account-options";
+  const title = target.signup ? "Create a Google account" : "Sign in to Google";
+  let original = "";
+  if (from && !accountDestination(from) && /\/(?:o\/oauth2|oauth)(?:\/|$)/i.test(new URL(url).pathname)) {
+    try {
+      const source = new URL(from);
+      if (source.protocol === "https:" && !source.username && !source.password && source.origin !== API_ORIGIN &&
+        source.origin !== location.origin && !["google.com", "www.google.com"].includes(source.hostname)) original = source.origin;
+    } catch {}
+  }
+  const dismiss = showAccountNotice(`google-account-${target.signup ? "signup" : "login"}-${original || "direct"}`, original
+    ? `To sign in to ${hostOf(original)} with Google, open that site directly and restart its sign-in. Google account sessions stay in that browser.`
+    : "Google handles your password and verification in a regular browser tab. Choose how to get there.", {
+    title, node: options
+  });
+  if (!options.isConnected) return true;
+  accountRow(options, { icon: "↗", title: "Fast Veyra Browser", description: "Open a direct tab in your current browser, with no proxy in between.",
+    label: original ? `Open ${hostOf(original)}` : target.signup ? "Create on Google" : "Continue on Google", href: original || target.url, primary: true });
+  accountRow(options, { icon: "☆", title: "Bookmark Google", description: "Save the official page to open directly next time.",
+    label: "Add bookmark", action: () => { directAccountBookmark(target); dismiss?.(); } });
+  accountRow(options, { icon: "↓", title: "Veyra Browser extension", description: "Manual install for Chrome and Edge. No site permissions.",
+    label: "Download ZIP", href: `${APP_BASE}/downloads/veyra-launcher.zip`, download: "veyra-launcher.zip" });
+  accountRow(options, { icon: "◇", title: "Veyra VPN", description: "Set routing for Fast Proxy. Google verification stays direct.",
+    label: "VPN settings", action: () => { dismiss?.(); openInternal("vpn"); } });
+  if (!from || navigator.userActivation?.isActive) options.querySelector("a").focus({ preventScroll: true });
+  return true;
+}
+
+function interceptAccount(url, from = "") {
+  return accountDestination(url) ? showAccountOptions(url, from) : false;
 }
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
@@ -2596,6 +2698,11 @@ async function handleMessage(e) {
     if (e.origin !== API_ORIGIN) return;
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
     const url = String(d.url || "");
+    if (accountDestination(canonical(url))) {
+      const source = tabForSource(e.source);
+      if (source && activeTab() === source) showAccountOptions(canonical(url), source.url);
+      return;
+    }
     if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Opened directly: ${hostOf(url)}`); }
     return;
   }
@@ -2685,6 +2792,7 @@ async function handleMessage(e) {
   if (d.type === "veyra:unsupported") { toast(d.reason || "That action isn't supported through the proxy", { kind: "warn" }); return; }
   if (d.type === "veyra:open" && d.url) {
     const u = canonical(d.url); if (!u) return;
+    if (interceptAccount(u, t.url)) return;
     // The page said where the destination belongs: _top/_parent means "replace
     // this whole view", which is in-place navigation for the tab — never a
     // second tab. Everything else (_blank, named windows) opens a new Veyra
@@ -2695,9 +2803,7 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
-  // The page's own sign-in button was clicked: load the site's sign-in
-  // page through the fast proxy in this tab — the user signs in inside
-  // Veyra, in this session's own cookie jar (no browser handoff).
+  // The page's sign-in button was clicked; use the appropriate site route.
   if (d.type === "veyra:signin" && d.url) {
     const target = canonical(d.url);
     if (target && t.view === "page" && !isRemote(t)) chooseSignin(t, target);
@@ -2706,7 +2812,10 @@ async function handleMessage(e) {
   // ----- Popup relay (OAuth/sign-in popups as proxied Veyra tabs) -----
   if (d.type === "veyra:popup-open" && d.url) {
     const target = canonical(String(d.url));
-    if (target && t.view === "page" && !isRemote(t)) { openProxiedPopup(t, { url: target, popupId: d.popupId }); addLog("info", `Popup opened through the fast proxy: ${hostOf(target)}`); }
+    if (target && t.view === "page" && !isRemote(t)) {
+      if (openProxiedPopup(t, { url: target, popupId: d.popupId })) addLog("info", `Popup opened through the fast proxy: ${hostOf(target)}`);
+      else if (accountDestination(target)) notifyPopupClosed(t, String(d.popupId || ""));
+    }
     return;
   }
   // Opener frame → its popup tab (e.g. the opener replying to the popup).
@@ -2733,12 +2842,14 @@ async function handleMessage(e) {
   if (d.type === "veyra:popup-navigate" && d.url) {
     const target = canonical(String(d.url));
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
+    if (target && interceptAccount(target, t.url)) { if (popup) closeTab(popup.id, { silent: true }); return; }
     if (target && popup) void loadInTab(popup, target, { loadFrame: true });
     return;
   }
   if (d.type === "veyra:challenge" && d.url) {
     
     const u = canonical(d.url); if (!u || t.view !== "page") return;
+    if (interceptAccount(u, t.url)) return;
     t.challengeTried ||= new Set();
     // TEMPORARY: the Chromium handoff for security checks is disabled until
     // streamed Chromium fully works (see CHROMIUM_TRY_DISABLED above).
@@ -2753,6 +2864,16 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
+    if (accountDestination(target)) {
+      // A child frame may run silent OAuth; never prompt for it or promote
+      // its URL. If a root frame already followed a redirect, remove it.
+      if (frameFor(t)?.contentWindow === e.source) {
+        if (activeTab() === t) showAccountOptions(target, t.url);
+        if (t.popupOf) closeTab(t.id, { silent: true });
+        else openInternal("newtab", { tab: t, push: activeTab() === t });
+      }
+      return;
+    }
     const sourceDisplayUrl = validateSourceDisplayUrl(d.veyraSourceUri, target, API_ORIGIN);
     if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
     if (String(d.source).startsWith("history.")) {
@@ -2820,6 +2941,7 @@ function canonical(value) {
   return "";
 }
 function submitForm(t, msg) {
+  if (interceptAccount(canonical(msg.url), t.url)) return;
   if (!state.session) return;
   const f = getOrCreateFrame(t); const form = document.createElement("form"); form.method = "POST"; form.action = proxyUrl(msg.url, "view", state.session.id, t.url); form.target = f.name; form.style.display = "none";
   for (const [n, v] of msg.entries || []) form.appendChild(Object.assign(document.createElement("input"), { type: "hidden", name: n, value: v }));
@@ -2870,7 +2992,7 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions
 };
 hooks.B = B;
 

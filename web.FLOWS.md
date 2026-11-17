@@ -13,3 +13,13 @@
 
 ## Layout
 - Check desktop and 375px. Navigation and code copy should fit without body overflow; wide tables can scroll inside their container.
+
+## Browser smoke checks
+
+- Open `/browse/` with an unlocked QA API: the new-tab dashboard, address bar, browser menu and bookmarks bar appear.
+- Enter a regular HTTPS URL and a search: regular navigation remains in Fast Proxy, and searches still open Veyra Search.
+- Open the profile menu and its Veyra account dialog: email and password remain available, and Google site sign-in is not described as Veyra OAuth.
+- Open Google sign-in choices from the browser menu or enter an `accounts.google.com` URL: verify VPN settings, editable bookmark name, extension ZIP and direct tab. Cancel with the close button or Escape, and re-open without duplicate cards.
+- Open a GitHub login or signup URL: verify the direct action uses the official start page and drops transient session parameters.
+- On a normal browser profile, verify **GitHub signup** is added once and opens the official signup page in a separate tab. Remove it, reload and verify it stays removed. An existing signup bookmark with a custom name should be preserved. Incognito should not seed it.
+- Check toast actions, input submission, deduplication, screen fit at 375 px, and reduced-motion behavior. Check that saved Google bookmarks open directly and ordinary bookmarks do not change behavior.
