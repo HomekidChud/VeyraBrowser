@@ -29,12 +29,16 @@ assert.match(ext, /user\\.js/);
 assert.match(ext, /data-edit=.*Edit \${e\.script \? "script"/);
 assert.match(ext, /x\.script \? x\.script/);
 assert.match(ext, /veyra-extension\/v1/);
-assert.match(bridge, /ext\.script/);
-assert.match(bridge, /scriptValues/);
-assert.match(bridge, /GM_deleteValue/);
-assert.match(bridge, /GM_listValues/);
-assert.match(bridge, /if \(old === source\) return true/);
-assert.match(bridge, /extStyle\("script-" \+ key, ""\)/);
+if (bridge) {
+  assert.match(bridge, /ext\.script/);
+  assert.match(bridge, /scriptValues/);
+  assert.match(bridge, /GM_deleteValue/);
+  assert.match(bridge, /GM_listValues/);
+  assert.match(bridge, /if \(old === source\) return true/);
+  assert.match(bridge, /extStyle\("script-" \+ key, ""\)/);
+} else {
+  console.log('Skipping optional bridge assertions: VeyraServer is not checked out alongside VeyraBrowser.');
+}
 
 // Chrome MV2/MV3 manifests: full parsing in the pure manifest module.
 assert.match(ext, /Chrome or Edge extensions/);
