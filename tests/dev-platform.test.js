@@ -13,9 +13,9 @@ const app = read("web/dev/platform/app.js");
 const serverUrl = "https://veyraserver-xscy.onrender.com";
 
 // --- the portal ships all three files with versioned (cache-bust) references ---
-assert.ok(html.includes('<script type="module" src="./app.js?v=1">'), "index.html loads app.js as a versioned module");
-assert.ok(html.includes('href="./styles.css?v=1"'), "index.html loads styles.css with a versioned query");
-assert.ok(!/[?&]v=2/.test(html), "the script and stylesheet versions stay in sync");
+assert.ok(html.includes('<script type="module" src="./app.js?v=2">'), "index.html loads app.js as a versioned module");
+assert.ok(html.includes('href="./styles.css?v=2"'), "index.html loads styles.css with a versioned query");
+assert.ok(!/[?&]v=3/.test(html), "the script and stylesheet versions stay in sync");
 
 // --- same conventions as the rest of the static site ---
 assert.ok(html.includes('meta name="veyra-api"'), "the portal declares its API origin like the other pages");
@@ -56,15 +56,67 @@ assert.ok(app.includes("showSecret(r.key, \"Your replacement API key\")") || app
 // --- usage dashboard reads per-key counters from the overview ---
 assert.ok(app.includes("usage?.requests") && app.includes("usage?.last24h"), "the usage view renders per-key request counts");
 
-// --- API docs document workspaces, keys and the public API with curl examples ---
+// --- the API reference documents workspaces, keys and the full public API ---
 for (const doc of [
   "POST $API/api/platform/workspaces",
   "POST $API/api/platform/workspaces/$WS_ID/keys",
-  "GET /api/v1/me",
-  "GET /api/v1/usage",
   "authorization: Bearer $VYR_KEY",
   "PLATFORM_RATE_LIMITED",
   "BILLING_REQUIRED"
 ]) assert.ok(html.includes(doc), `the docs cover ${doc}`);
+// Every /api/v1 endpoint is documented in the reference with method badges.
+for (const ep of [
+  ["/api/v1/status", "GET"],
+  ["/api/v1/verify", "GET"],
+  ["/api/v1/me", "GET"],
+  ["/api/v1/keys", "GET"],
+  ["/api/v1/keys/:id", "GET"],
+  ["/api/v1/usage", "GET"],
+  ["/api/v1/usage/hours", "GET"],
+  ["/api/v1/search", "GET"],
+  ["/api/v1/suggest", "GET"],
+  ["/api/v1/fetch", "POST"]
+]) assert.ok(html.includes(`<span class="method ${ep[1].toLowerCase()}">${ep[1]}</span><code>${ep[0]}</code>`), `the reference documents ${ep[1]} ${ep[0]}`);
+assert.ok(html.includes('id="referenceFilter"'), "the reference has an endpoint filter");
+assert.ok(html.includes("data-code-tabs=\"quickstart\""), "the quickstart has language tabs");
+for (const lang of ["curl", "js", "python", "node"]) assert.ok(new RegExp(`data-lang="${lang}"`).test(html), `the quickstart covers ${lang}`);
+
+// --- eye mode: the secret modal masks the key until the eye reveals it ---
+assert.ok(html.includes('id="secretEye"'), "the secret modal has an eye toggle");
+assert.ok(html.includes('id="pgKeyEye"'), "the playground key field has an eye toggle");
+assert.ok(app.includes("maskSecret("), "app.js masks the secret by default");
+assert.ok(app.includes("copyText(currentSecret)"), "copy always uses the real secret, never the masked text");
+assert.ok(app.includes('input.type = revealed ? "text" : "password"'), "the playground key field toggles between password and text");
+
+// --- playground: endpoint picker, live request sender, code generator ---
+assert.ok(app.includes("const V1_ENDPOINTS = ["), "app.js defines the playground endpoint catalog");
+for (const path of ["/api/v1/status", "/api/v1/verify", "/api/v1/keys/:id", "/api/v1/usage/hours", "/api/v1/search", "/api/v1/suggest", "/api/v1/fetch"]) {
+  assert.ok(app.includes(path), `the playground catalog covers ${path}`);
+}
+assert.ok(app.includes("function pgSend()"), "the playground can send real requests");
+assert.ok(app.includes("function pgCode(lang)"), "the playground generates code samples");
+assert.ok(html.includes('id="pgSend"'), "the playground has a send button");
+assert.ok(html.includes('id="pgCopyCode"'), "generated code has a copy button");
+assert.ok(app.includes('vyr_live_…"; // never print a real key into samples') || app.includes("never print a real key into samples"), "generated samples never embed the pasted key");
+
+// --- usage chart ---
+assert.ok(html.includes('id="usageChartWrap"'), "the usage view has an hourly chart");
+assert.ok(app.includes("renderUsageChart(keys)"), "the usage chart renders from per-key byHour buckets");
+
+// --- code tabs work for both quickstart and playground groups ---
+assert.ok(app.includes("wireCodeTabs()"), "code tab switching is wired for all groups");
+
+// --- boot ordering: boot() wires the playground/reference UI, which reads the
+// V1_ENDPOINTS catalog; calling it before that const is evaluated throws a
+// temporal-dead-zone ReferenceError and leaves the portal stuck on
+// "Loading…" for every signed-in visitor. The boot call must come AFTER the
+// catalog declaration (positionally) in the module.
+{
+  const bootCalls = [...app.matchAll(/(^|\n)\s*boot\(\);/g)].map(m => m.index);
+  const catalogAt = app.indexOf("const V1_ENDPOINTS");
+  assert.ok(bootCalls.length === 1, "boot() is invoked exactly once");
+  assert.ok(catalogAt >= 0, "the V1_ENDPOINTS catalog exists");
+  assert.ok(bootCalls[0] > catalogAt, "boot() runs after the V1_ENDPOINTS declaration (no temporal dead zone)");
+}
 
 console.log("Developer platform portal tests passed");
