@@ -36,6 +36,8 @@ assert.ok(app.includes('localStorage.setItem("veyra-auth", JSON.stringify({ toke
 assert.ok(app.includes('headers.set("Authorization", `Bearer ${authToken}`)'), "requests send the Bearer token like api() in core.js");
 assert.ok(app.includes("/api/auth/login"), "the sign-in form posts to /api/auth/login");
 assert.ok(app.includes("/api/auth/me"), "a stored session is validated against /api/auth/me");
+assert.ok(app.includes("/api/auth/signup") && html.includes('id="authToggle"'), "the console offers first-time account signup");
+assert.ok(app.includes("X-Veyra-Gate") && app.includes("AUTH_SIGNUP_KEY_REQUIRED"), "the console honors the gate and signup policy");
 
 // --- the portal covers the full management surface ---
 for (const path of [

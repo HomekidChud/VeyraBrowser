@@ -15,14 +15,17 @@ class ApiError extends Error {
 /* ---------- auth: reuse the main app's stored session (same origin) ---------- */
 const readAuth = () => { try { return JSON.parse(localStorage.getItem("veyra-auth") || "null"); } catch { return null; } };
 let authToken = readAuth()?.token || "";
+const gateToken = () => { try { return localStorage.getItem("veyra-gate") || ""; } catch { return ""; } };
 
 function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
   const headers = new Headers(options.headers || {});
   if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+  const gate = gateToken();
+  if (gate) headers.set("X-Veyra-Gate", gate);
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
-  return fetch(API + path, { method, headers, body, credentials: "omit", cache: "no-store" })
+  return fetch(API + path, { method, headers, body, credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(20000) })
     .then(async r => {
       const text = await r.text();
       let data = null; try { data = text ? JSON.parse(text) : null; } catch {}
@@ -48,6 +51,7 @@ async function copyText(text) {
 
 /* ---------- state ---------- */
 const state = { overview: null, workspaces: [], selectedWorkspaceId: "", signedIn: false };
+let authMode = "login", signupPolicy = null, authPending = false;
 const consoleViews = new Set(["overview", "workspaces", "keys", "usage", "plans"]);
 const guideAnchors = new Set(["first-request", "embed", "responses"]);
 
@@ -92,24 +96,88 @@ async function boot() {
   route();
   if (authToken) {
     try { await api("/api/auth/me"); await openPortal(); }
-    catch { authToken = ""; }
+    catch (err) {
+      if (err.status === 401) {
+        if (readAuth()?.token === authToken) try { localStorage.removeItem("veyra-auth"); } catch {}
+        authToken = "";
+        authStatus("Your session expired. Sign in again.", true);
+      } else {
+        authStatus("Could not restore your console session. Try signing in again.", true);
+        $("gateHelp").hidden = err.code !== "GATE_REQUIRED";
+      }
+    }
   }
 }
 
+function authStatus(message, error = false) {
+  $("loginStatus").textContent = message;
+  $("loginStatus").classList.toggle("err", error);
+}
+
+function renderAuthForm() {
+  const signup = authMode === "signup", keyRequired = signup && signupPolicy?.signupKeyRequired === true;
+  $("signInTitle").textContent = signup ? "Create a Veyra account" : "Sign in to manage keys";
+  $("signupNameRow").hidden = !signup;
+  $("signupKeyRow").hidden = !keyRequired;
+  $("signupKey").required = keyRequired;
+  $("loginPassword").autocomplete = signup ? "new-password" : "current-password";
+  $("loginPassword").placeholder = signup ? "At least 8 characters, a letter, and a number" : "";
+  $("loginButton").textContent = authPending ? (signup ? "Creating account…" : "Signing in…") : (signup ? "Create account" : "Sign in");
+  $("loginButton").disabled = authPending || (signup && signupPolicy?.signupEnabled === false);
+  $("authToggle").textContent = signup ? "Back to sign in" : "Create account";
+  $("authToggle").disabled = authPending;
+}
+
 function wireEvents() {
+  $("authToggle").addEventListener("click", async () => {
+    authMode = authMode === "login" ? "signup" : "login";
+    authStatus("");
+    $("gateHelp").hidden = true;
+    $("loginPassword").value = "";
+    renderAuthForm();
+    if (authMode !== "signup") return;
+    try {
+      signupPolicy = await api("/api/auth/config");
+      if (authMode !== "signup" || authPending) return;
+      renderAuthForm();
+      if (signupPolicy.signupEnabled === false) authStatus("Sign-ups are turned off on this server.", true);
+    } catch (err) {
+      if (authMode !== "signup" || authPending || err.code !== "GATE_REQUIRED") return;
+      authStatus(err.message, true);
+      $("gateHelp").hidden = false;
+    }
+  });
   $("loginForm").addEventListener("submit", async e => {
     e.preventDefault();
-    const status = $("loginStatus"), button = $("loginButton");
-    button.disabled = true; status.textContent = "Signing in…"; status.className = "status-line";
+    const signup = authMode === "signup", password = $("loginPassword").value;
+    if (authPending || (signup && signupPolicy?.signupEnabled === false)) return;
+    if (signup && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) {
+      authStatus("Use at least 8 characters with a letter and a number.", true);
+      $("loginPassword").focus();
+      return;
+    }
+    authPending = true; renderAuthForm(); authStatus(""); $("gateHelp").hidden = true;
+    let authenticated = false;
     try {
-      const r = await api("/api/auth/login", { json: { email: $("loginEmail").value.trim(), password: $("loginPassword").value } });
+      const credentials = { email: $("loginEmail").value.trim(), password };
+      const r = signup
+        ? await api("/api/auth/signup", { json: { ...credentials, name: $("signupName").value.trim(), signupKey: $("signupKey").value } })
+        : await api("/api/auth/login", { json: credentials });
       authToken = r.token;
       try { localStorage.setItem("veyra-auth", JSON.stringify({ token: r.token, user: r.user })); } catch {}
-      $("loginPassword").value = "";
-      status.textContent = ""; await openPortal();
+      authenticated = true;
+      $("loginForm").reset();
+      authMode = "login";
+      await openPortal();
     } catch (err) {
-      status.textContent = err.message; status.className = "status-line err";
-    } finally { button.disabled = false; }
+      if (err.code === "AUTH_SIGNUP_KEY_REQUIRED") {
+        signupPolicy = { ...signupPolicy, signupKeyRequired: true };
+        renderAuthForm();
+        $("signupKey").focus();
+      } else if (err.code === "AUTH_SIGNUP_DISABLED") signupPolicy = { ...signupPolicy, signupEnabled: false };
+      $("gateHelp").hidden = err.code !== "GATE_REQUIRED";
+      authStatus(authenticated ? "Your account is signed in, but the console could not load. Reload to try again." : err.message, true);
+    } finally { authPending = false; renderAuthForm(); }
   });
   $("signOutButton").addEventListener("click", () => {
     try { localStorage.removeItem("veyra-auth"); } catch {}

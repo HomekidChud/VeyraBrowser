@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.28.31-in-app-popups";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.18-professional-shell";
-import { initUI } from "./ui.js?v=8.28.38-extension-folders";
+import { initUI } from "./ui.js?v=8.28.39-account-flows";
 import { initDevtools } from "./devtools.js?v=8.28.18-professional-shell";
 import { maybeOfferRenew } from "./renew.js";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
