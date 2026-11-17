@@ -1,0 +1,15 @@
+Veyra Browser Launcher
+
+The launcher opens official sites in new tabs. It is not a sign-in provider or
+proxy engine, and it never reads credentials, website data, or cookies.
+
+To install locally on desktop:
+
+1. Extract the ZIP into its own folder.
+2. In Chrome open chrome://extensions, or in Edge open edge://extensions.
+3. Enable Developer mode and choose Load unpacked.
+4. Select the extracted folder that contains manifest.json.
+5. Open Veyra Browser Launcher from your browser's extensions menu.
+
+This is an unpacked developer build, not a Chrome Web Store or Edge Add-ons
+release. Chrome and Edge may disallow unpacked extensions on managed devices.

@@ -10,8 +10,8 @@
   <title>Veyra Developer Platform</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
-  <link rel="stylesheet" href="./styles.css?v=3">
-  <script type="module" src="./app.js?v=3"></script>
+  <link rel="stylesheet" href="./styles.css?v=4">
+  <script type="module" src="./app.js?v=4"></script>
 </head>
 <body>
   <!-- Sign-in: reuses the Veyra account session token (same origin as the main app). -->
@@ -40,11 +40,14 @@
       <h1 id="signInTitle">Sign in to manage keys</h1>
       <p class="lead">Use your Veyra account to create workspaces, issue keys, and view usage. The <a href="#api-reference">API reference</a> and playground do not require an account session.</p>
       <form id="loginForm">
+        <div class="field" id="signupNameRow" hidden><label for="signupName">Name (optional)</label><input id="signupName" autocomplete="nickname" maxlength="60"></div>
         <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" required></div>
         <div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>
-        <div class="actions"><button class="btn primary" type="submit" id="loginButton">Sign in</button></div>
+        <div class="field" id="signupKeyRow" hidden><label for="signupKey">Signup key</label><input id="signupKey" type="password" autocomplete="off"></div>
+        <div class="actions"><button class="btn primary" type="submit" id="loginButton">Sign in</button><button class="btn" type="button" id="authToggle">Create account</button></div>
         <p class="status-line" id="loginStatus" aria-live="polite"></p>
       </form>
+      <p class="status-line" id="gateHelp" hidden>Unlock access in the <a href="../../">Veyra browser</a>, then return here.</p>
     </div>
   </section>
     <nav class="tabs console-tabs" id="consoleTabs" aria-label="Console sections" hidden>

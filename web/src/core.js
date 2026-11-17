@@ -1,5 +1,5 @@
-
-
+import { toast } from "./notifications.js?v=1";
+export { toast };
 
 export function bootParam(name) {
   try {
@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.35";
+export const VERSION = "8.28.41";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -331,28 +331,6 @@ export function addLog(level, message, meta = {}) {
   hooks.onLog?.();
 }
 
-
-export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200, node = null } = {}) {
-  const host = $("toasts");
-  if (!host) return;
-  const el = document.createElement("div");
-  el.className = `toast ${kind}`.trim();
-  el.setAttribute("role", kind === "err" ? "alert" : "status");
-  // A DOM node (e.g. the handoff bookmarklet) replaces the plain text.
-  const text = node || (() => { const s = document.createElement("span"); s.textContent = String(message || ""); return s; })();
-  el.appendChild(text);
-  let timer = 0;
-  const dismiss = () => { clearTimeout(timer); el.remove(); };
-  if (typeof action === "function" && actionLabel) {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = actionLabel;
-    button.addEventListener("click", () => { dismiss(); try { action(); } catch {} });
-    el.appendChild(button);
-  }
-  host.appendChild(el);
-  // ms <= 0 keeps the toast on screen until the caller dismisses it.
-  if (Number(ms) > 0) timer = setTimeout(dismiss, Math.max(1200, Number(ms) || 3200));
-  return dismiss;
-}
 
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {
   const dlg = $("promptDialog"); $("promptTitle").textContent = title; $("promptOk").textContent = ok;

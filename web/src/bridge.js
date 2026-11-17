@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.31-in-app-popups";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.41-account-notices";
 
 const pending = new Map();
 const listeners = new Set();

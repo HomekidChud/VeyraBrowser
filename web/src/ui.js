@@ -1,10 +1,11 @@
 
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
-  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.31-in-app-popups";
-import { initExtensions } from "./extensions.js?v=8.28.38-extension-folders";
-import { initSettings } from "./settings.js?v=8.28.38-extension-folders";
+  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
+} from "./core.js?v=8.28.41-account-notices";
+import { initExtensions } from "./extensions.js?v=8.28.41-account-notices";
+import { initSettings } from "./settings.js?v=8.28.41-account-notices";
+import { accountDestination } from "./account-navigation.js?v=2";
 
 let B;
 
@@ -179,37 +180,62 @@ const initials = () => { const n = auth.user?.name || auth.user?.email || ""; re
 
 
 let authMode = "login";
+let authPending = false;
+function updateAuthPolicy() {
+  const signup = authMode === "signup";
+  const closed = signup && auth.config?.signupEnabled === false;
+  $("authSignupKeyRow").classList.toggle("hidden", !signup || auth.config?.signupKeyRequired !== true);
+  $("authSubmit").disabled = authPending || closed;
+  if (closed && !authPending) $("authError").textContent = "Sign-ups are turned off on this server.";
+}
 export function openAuth(mode = "login") {
+  if (authPending) return;
   authMode = mode; const dlg = $("authDialog"); const f = $("authForm");
   qsa(".seg button", f).forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
   $("authTitle").textContent = mode === "signup" ? "Create your Veyra account" : "Welcome back";
   $("authSub").textContent = mode === "signup" ? "Sync settings, bookmarks, shortcuts and extensions across devices." : "Sign in to sync your Veyra settings.";
   $("authNameRow").classList.toggle("hidden", mode !== "signup");
-  $("authSignupKeyRow")?.classList.toggle("hidden", mode !== "signup" || auth.config?.signupKeyRequired !== true);
   $("authSubmit").textContent = mode === "signup" ? "Create account" : "Sign in";
   f.password.autocomplete = mode === "signup" ? "new-password" : "current-password";
   $("authError").textContent = "";
-  if (auth.config && auth.config.signupEnabled === false && mode === "signup") $("authError").textContent = "Sign-ups are turned off on this server.";
+  updateAuthPolicy();
   if (!dlg.open) dlg.showModal(); setTimeout(() => (mode === "signup" ? f.name : f.email).focus(), 30);
 }
 async function submitAuth(e) {
   e.preventDefault(); const f = $("authForm"); const err = $("authError");
-  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim(), signupKey = f.signupKey?.value || "";
+  const mode = authMode;
+  if (authPending || (mode === "signup" && auth.config?.signupEnabled === false)) return;
+  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim(), signupKey = f.signupKey.value;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = "Enter a valid email address."; f.email.focus(); return; }
-  if (authMode === "signup" && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) { err.textContent = "Use at least 8 characters with a letter and a number."; f.password.focus(); return; }
+  if (mode === "signup" && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) { err.textContent = "Use at least 8 characters with a letter and a number."; f.password.focus(); return; }
   if (!password) { err.textContent = "Enter your password."; f.password.focus(); return; }
-  const btn = $("authSubmit"); btn.disabled = true; btn.textContent = authMode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
+  if (mode === "signup" && auth.config?.signupKeyRequired && !signupKey.trim()) { err.textContent = "Enter the signup key provided by your server owner."; f.signupKey.focus(); return; }
+  const btn = $("authSubmit");
+  authPending = true;
+  f.setAttribute("aria-busy", "true");
+  qsa("button", f).forEach(button => { button.disabled = true; });
+  btn.textContent = mode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
   try {
-    const r = await api(`/api/auth/${authMode}`, { json: authMode === "signup" ? { email, password, name, signupKey } : { email, password } });
+    const r = await api(`/api/auth/${mode}`, { json: mode === "signup" ? { email, password, name, signupKey } : { email, password } });
     setAuth(r.token, r.user); auth.admin = r.user?.role === "admin";
     f.reset(); $("authDialog").close();
-    await pullSync({ initial: authMode === "login" });
-    if (authMode === "signup") await pushSync();
-    onAuthChanged();
-    toast(authMode === "signup" ? `Welcome to Veyra, ${r.user.name || r.user.email}` : `Signed in as ${r.user.email}`);
+    toast(mode === "signup" ? `Welcome to Veyra, ${r.user.name || r.user.email}` : `Signed in as ${r.user.email}`);
     if (!$("landing").classList.contains("hidden")) B.goRoute("/browse");
-  } catch (ex) { err.textContent = ex.message; }
-  finally { btn.disabled = false; btn.textContent = authMode === "signup" ? "Create account" : "Sign in"; }
+    if (mode === "signup") void pushSync().catch(() => toast("Account created, but your settings haven’t synced yet.", { kind: "warn" }));
+    else void pullSync();
+  } catch (ex) {
+    if (ex.code === "AUTH_SIGNUP_KEY_REQUIRED" || ex.code === "AUTH_SIGNUP_DISABLED") {
+      auth.config = { ...auth.config, ...(ex.code === "AUTH_SIGNUP_KEY_REQUIRED" ? { signupKeyRequired: true } : { signupEnabled: false }) };
+      updateAuthPolicy();
+      if (ex.code === "AUTH_SIGNUP_KEY_REQUIRED") f.signupKey.focus();
+    }
+    err.textContent = ex.message;
+  } finally {
+    authPending = false; f.removeAttribute("aria-busy");
+    qsa("button", f).forEach(button => { button.disabled = false; });
+    btn.textContent = mode === "signup" ? "Create account" : "Sign in";
+    updateAuthPolicy();
+  }
 }
 export async function signOut({ everywhere = false, forgetLocal = false } = {}) {
   let remoteSignedOut = true;
@@ -221,6 +247,7 @@ export async function signOut({ everywhere = false, forgetLocal = false } = {}) 
   const v = B.activeTab()?.view; if (v === "dev" || v === "console") B.goHome();
 }
 function onAuthChanged() {
+  updateAuthPolicy();
   const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user && !INCOGNITO); a.classList.toggle("incog", INCOGNITO);
   $("avatarText").innerHTML = INCOGNITO ? `<svg><use href="#i-incognito"/></svg><span class="incog-label">Incognito</span>` : auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
   a.title = INCOGNITO ? "You're incognito" : auth.user ? `${auth.user.name || ""} ${auth.user.email}`.trim() : "Sign in";
@@ -258,8 +285,9 @@ const pushSoon = debounce(() => { void pushSync().catch(e => addLog("warn", `Bac
 hooks.scheduleSync = () => { if (auth.token && !syncing) pushSoon(); };
 export async function pullSync() {
   if (!auth.token) return;
+  const token = auth.token;
   try {
-    const r = await api("/api/auth/data"); const d = r.data; if (!d || typeof d !== "object") return;
+    const r = await api("/api/auth/data"); const d = r.data; if (auth.token !== token || !d || typeof d !== "object") return;
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
@@ -279,9 +307,18 @@ export async function pullSync() {
   finally { syncing = false; }
 }
 async function verifyAuth() {
-  if (!auth.token) return;
-  try { const r = await api("/api/auth/me"); setAuth(auth.token, r.user); auth.admin = r.user?.role === "admin" || auth.admin; onAuthChanged(); }
-  catch (e) { if (e.status === 401) { setAuth("", null); onAuthChanged(); } }
+  const token = auth.token;
+  if (!token) return false;
+  try {
+    const r = await api("/api/auth/me");
+    if (auth.token !== token) return false;
+    auth.admin = r.user?.role === "admin";
+    setAuth(token, r.user);
+    return true;
+  } catch (e) {
+    if (e.status === 401 && auth.token === token) { auth.admin = false; setAuth("", null); }
+    return false;
+  }
 }
 
 
@@ -393,20 +430,28 @@ function wireOmnibox() {
 }
 
 
+function openBookmark(bookmark, newTab = false, background = false) {
+  if (!bookmark) return;
+  const account = accountDestination(bookmark.url);
+  if (account) { window.open(account.url, "_blank", "noopener,noreferrer"); return; }
+  if (background) B.newTab({ url: bookmark.url, background: true });
+  else B.go(bookmark.url, { newTab });
+}
+
 function renderBookmarksBar() {
   const bar = $("bookmarksBar"); if (!settings.showBookmarksBar) { bar.classList.add("hidden"); return; }
   bar.classList.remove("hidden");
   bar.classList.toggle("empty", !B.state.bookmarks.length);
   bar.innerHTML = B.state.bookmarks.length ? B.state.bookmarks.map((b, i) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")
     : `<span class="muted" style="font-size:.84em;padding:0 10px">Bookmark pages with ${esc(kbdFor("bookmark"))} and they'll appear here.</span>`;
-  bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) B.go(B.state.bookmarks[Number(b.dataset.i)].url, { newTab: e.ctrlKey || e.metaKey }); };
-  bar.onauxclick = e => { const b = e.target.closest("[data-i]"); if (b && e.button === 1) B.newTab({ url: B.state.bookmarks[Number(b.dataset.i)].url, background: true }); };
+  bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], e.ctrlKey || e.metaKey); };
+  bar.onauxclick = e => { const b = e.target.closest("[data-i]"); if (b && e.button === 1) openBookmark(B.state.bookmarks[Number(b.dataset.i)], true, true); };
   bar.oncontextmenu = e => { const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
-    import("./core.js").then(({ ctxMenu }) => ctxMenu(e.clientX, e.clientY, [
-      { label: "Open in new tab", action: () => B.newTab({ url: bm.url }) },
+    ctxMenu(e.clientX, e.clientY, [
+      { label: "Open in new tab", action: () => openBookmark(bm, true) },
       { label: "Edit…", action: async () => { const r = await promptDialog({ title: "Edit bookmark", fields: [{ name: "title", label: "Name", value: bm.title }, { name: "url", label: "URL", value: bm.url }] }); if (r) { bm.title = r.title; bm.url = r.url; B.saveBookmarks(); renderBookmarksBar(); } } },
       { label: "Copy link", action: () => copyText(bm.url) }, "-",
-      { label: "Delete", action: () => { B.state.bookmarks.splice(i, 1); B.saveBookmarks(); renderBookmarksBar(); B.updateIdentity(); } }])); };
+      { label: "Delete", action: () => { B.state.bookmarks.splice(i, 1); B.saveBookmarks(); renderBookmarksBar(); B.updateIdentity(); } }]); };
 }
 hooks.renderBookmarksBar = renderBookmarksBar;
 
@@ -431,6 +476,7 @@ function openMainMenu() {
     menuItem("i-find", "Find in page", "find", () => B.openFind(), { disabled: !onPage || t?.browserMode === "BROWSER_ENGINE" }),
     "-",
     menuItem("i-vpn", "Veyra VPN", "vpn", () => B.openInternal("vpn"), { badge: B.state.vpn.connected ? "ON" : "" }),
+    menuItem("i-link", "Google sign-in options", "", () => B.showAccountOptions()),
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
@@ -476,10 +522,10 @@ async function openSiteInfo() {
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>
-    <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra — click a site's sign-in button and it loads through the fast proxy in this session's own cookie jar.</p>`, anchor, p => {
+    <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra when they support Fast Proxy. Google and GitHub account pages open directly for verification.</p>`, anchor, p => {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
-    p.querySelector("#popDirect").onclick = () => { window.open(t.url, "_blank", "noopener"); closeFloating(); };
+    p.querySelector("#popDirect").onclick = () => { if (!B.showAccountOptions(t.url)) window.open(t.url, "_blank", "noopener,noreferrer"); closeFloating(); };
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
     else p.querySelector("#popCookies").textContent = "0";
@@ -550,14 +596,15 @@ export function initUI(b) {
   $("mainMenu").addEventListener("keydown", menuKeys);
   $("siteChip").onclick = openSiteInfo; $("profileBtn").onclick = openProfilePop;
   $("authForm").addEventListener("submit", submitAuth);
-  $("authSubmit").addEventListener("click", e => { e.preventDefault(); submitAuth(e); });
+  $("authForm").querySelector('button[value="cancel"]').onclick = () => $("authDialog").close();
+  $("authDialog").addEventListener("cancel", e => { if (authPending) e.preventDefault(); });
   qsa("#authForm .seg button").forEach(b => b.onclick = () => openAuth(b.dataset.mode));
   document.addEventListener("click", e => { const a = e.target.closest("[data-auth]"); if (a) { e.preventDefault(); openAuth(a.dataset.auth); } const x = e.target.closest("[data-explore]"); if (x) B.goRoute(`/browse?url=${encodeURIComponent(x.dataset.explore)}`); });
   setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
   if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
   initExtensions(B); initSettings(B);
-  onAuthChanged(); verifyAuth().then(() => auth.token && pullSync());
+  onAuthChanged(); verifyAuth().then(verified => verified && pullSync());
   addLog("debug", `UI ready (${COMMANDS.length} commands)`);
 }
 export { B as browser };

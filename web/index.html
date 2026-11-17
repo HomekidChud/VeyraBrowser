@@ -14,7 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.28.38-extension-folders"></script>
+  <script src="./src/bootstrap.js?v=8.28.41-account-notices"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -143,7 +143,7 @@
   <!-- ================================================================ AUTH MODAL -->
   <dialog id="authDialog" class="modal auth-modal">
     <form method="dialog" class="modal-card" id="authForm" novalidate>
-      <button class="icon-btn modal-x" value="cancel" formnovalidate aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <button type="button" class="icon-btn modal-x" value="cancel" aria-label="Close"><svg><use href="#i-x"/></svg></button>
       <svg class="auth-mark"><use href="#logo"/></svg>
       <h2 id="authTitle">Welcome back</h2>
       <p class="muted" id="authSub">Sign in to sync your Veyra settings.</p>
@@ -394,7 +394,7 @@
     </div>
   </div>
 
-  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="toasts" id="toasts" aria-label="Browser notifications"></div>
 
   <dialog id="promptDialog" class="modal">
     <form method="dialog" class="modal-card sm" id="promptForm">

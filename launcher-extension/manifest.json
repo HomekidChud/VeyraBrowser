@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Veyra Browser Launcher",
+  "version": "1.0.0",
+  "description": "Open Veyra and official account pages in your browser. No site permissions, content scripts, or background process.",
+  "action": {
+    "default_title": "Veyra Browser Launcher",
+    "default_popup": "popup.html"
+  }
+}
