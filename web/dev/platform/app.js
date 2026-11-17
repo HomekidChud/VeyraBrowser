@@ -49,9 +49,11 @@ async function copyText(text) {
 /* ---------- state ---------- */
 const state = { overview: null, workspaces: [], selectedWorkspaceId: "" };
 
-/* ---------- boot ---------- */
-boot();
-
+/* ---------- boot ----------
+   boot() is invoked at the END of the module: it wires the playground and
+   reference UI, which read the V1_ENDPOINTS catalog declared further down —
+   calling it before those const declarations are evaluated throws a
+   temporal-dead-zone ReferenceError and leaves the portal on "Loading…". */
 async function boot() {
   wireEvents();
   if (authToken) {
@@ -92,8 +94,11 @@ function wireEvents() {
   $("usageRefresh").addEventListener("click", () => { refreshOverview().then(renderUsage).catch(() => {}); });
   $("waitlistForm").addEventListener("submit", onJoinWaitlist);
 
-  $("secretCopy").addEventListener("click", () => copyText($("secretValue").textContent));
-  $("secretDone").addEventListener("click", () => { $("secretOverlay").hidden = true; });
+  $("secretCopy").addEventListener("click", () => copyText(currentSecret));
+  $("secretDone").addEventListener("click", () => { $("secretOverlay").hidden = true; currentSecret = ""; });
+  wireSecretEye();
+  wirePlayground();
+  wireReferenceFilter();
 }
 
 /* ---------- portal ---------- */
@@ -271,13 +276,51 @@ async function rotateKey(w, keyId) {
   } catch (err) { toast(err.message, true); }
 }
 
+/* ---------- secret modal: eye mode ----------
+   The raw key is kept in a closure-scoped variable only; the visible
+   element shows a masked form until the eye toggle reveals it. Copy
+   always uses the real secret. */
+let currentSecret = "";
+function maskSecret(secret) {
+  const i = secret.indexOf("_");
+  return i >= 0 ? secret.slice(0, i + 1) + "•".repeat(Math.max(4, secret.length - i - 1)) : "•".repeat(secret.length);
+}
 function showSecret(secret, title) {
+  currentSecret = secret;
   $("secretTitle").textContent = title;
-  $("secretValue").textContent = secret;
+  $("secretEye")?.classList.remove("revealed");
+  $("secretValue").textContent = maskSecret(secret);
   $("secretOverlay").hidden = false;
+}
+function wireSecretEye() {
+  const eye = $("secretEye"); if (!eye) return;
+  eye.addEventListener("click", () => {
+    const revealed = eye.classList.toggle("revealed");
+    $("secretValue").textContent = revealed ? currentSecret : maskSecret(currentSecret);
+  });
 }
 
 /* ---------- usage ---------- */
+function renderUsageChart(keys) {
+  const wrap = $("usageChartWrap"); if (!wrap) return;
+  // Aggregate the rolling 24h byHour buckets across every key.
+  const buckets = {};
+  for (const k of keys) for (const [hour, n] of Object.entries(k.usage?.byHour || {})) buckets[hour] = (buckets[hour] || 0) + n;
+  const hours = [];
+  const now = Date.now();
+  for (let i = 23; i >= 0; i--) hours.push(new Date(now - i * 3600000).toISOString().slice(0, 13) + ":00:00Z");
+  const series = hours.map(h => buckets[h] || 0);
+  if (!series.some(n => n > 0)) { wrap.innerHTML = `<div class="empty">No usage yet — create an API key and call the public API.</div>`; return; }
+  const max = Math.max(1, ...series);
+  const W = 720, H = 160, padB = 22, padT = 10;
+  const bw = Math.max(4, Math.floor((W - 20) / series.length) - 3);
+  const bars = series.map((n, i) => {
+    const x = 10 + i * ((W - 20) / series.length);
+    const h = Math.round((n / max) * (H - padB - padT));
+    return `<g><rect x="${x.toFixed(1)}" y="${(H - padB - h).toFixed(1)}" width="${bw}" height="${h}" rx="2" class="chart-bar${n === max ? " peak" : ""}"><title>${hours[i]} — ${n} request${n === 1 ? "" : "s"}</title></rect>${i % 3 === 0 ? `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" class="chart-label">${hours[i].slice(11, 13)}</text>` : ""}</g>`;
+  }).join("");
+  wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Requests per hour over the last 24 hours">${bars}</svg>`;
+}
 function renderUsage() {
   const rows = $("usageRows");
   const keys = [];
@@ -286,6 +329,7 @@ function renderUsage() {
   const last24 = keys.reduce((n, k) => n + (k.usage?.last24h || 0), 0);
   $("usageTotal").textContent = total; $("usage24h").textContent = last24;
   $("usageKeys").textContent = keys.length;
+  renderUsageChart(keys);
   const top = keys.slice().sort((a, b) => (b.usage?.requests || 0) - (a.usage?.requests || 0))[0];
   $("usageTop").textContent = top ? top.name : "—";
   $("usageTopNote").textContent = top ? `vyr_live_••••${top.last4 || "????"}` : "no keys yet";
@@ -345,6 +389,143 @@ function renderWaitlistEntry(entry, prefix = "You're on the waitlist.") {
   $("waitlistStatus").innerHTML = `${esc(prefix)} ${status} — position #${entry.position ?? "?"}, plan ${esc(entry.plan)}.`;
 }
 
+/* ---------- API playground ----------
+   Endpoint catalog for the public /api/v1 surface — the single source of
+   truth for the endpoint picker, the request sender and the live code
+   generator. The pasted key lives in the input only; it is never stored. */
+const V1_ENDPOINTS = [
+  { id: "status", method: "GET", path: "/api/v1/status", label: "GET /api/v1/status — API status (public)", auth: "none", desc: "API liveness, version and rate limits.", params: [] },
+  { id: "verify", method: "GET", path: "/api/v1/verify", label: "GET /api/v1/verify — verify the key", auth: "key", desc: "Key check: identity + usage snapshot.", params: [] },
+  { id: "me", method: "GET", path: "/api/v1/me", label: "GET /api/v1/me — key identity", auth: "key", desc: "The key’s workspace, metadata and usage.", params: [] },
+  { id: "keys", method: "GET", path: "/api/v1/keys", label: "GET /api/v1/keys — list workspace keys", auth: "key", desc: "The active keys in this key’s workspace.", params: [] },
+  { id: "key", method: "GET", path: "/api/v1/keys/:id", label: "GET /api/v1/keys/:id — key detail", auth: "key", desc: "One key’s metadata and usage.", params: [{ name: "id", place: "path", required: true, placeholder: "key UUID from GET /api/v1/keys", example: "c1d2e3f4-…" }] },
+  { id: "usage", method: "GET", path: "/api/v1/usage", label: "GET /api/v1/usage — key usage", auth: "key", desc: "Usage totals and per-hour buckets.", params: [] },
+  { id: "usage-hours", method: "GET", path: "/api/v1/usage/hours", label: "GET /api/v1/usage/hours — 24 hourly buckets", auth: "key", desc: "Zero-filled hourly buckets for the rolling 24h.", params: [] },
+  { id: "search", method: "GET", path: "/api/v1/search", label: "GET /api/v1/search — search the Veyra index", auth: "key", desc: "Search the Veyra index.", params: [{ name: "q", place: "query", required: true, placeholder: "search term", example: "veyra" }, { name: "limit", place: "query", required: false, placeholder: "max results (1-20)", example: "5" }] },
+  { id: "suggest", method: "GET", path: "/api/v1/suggest", label: "GET /api/v1/suggest — search suggestions", auth: "key", desc: "Autocomplete suggestions.", params: [{ name: "q", place: "query", required: true, placeholder: "partial term", example: "vey" }] },
+  { id: "fetch", method: "POST", path: "/api/v1/fetch", label: "POST /api/v1/fetch — fetch a URL through Veyra", auth: "key", desc: "Fetch any public URL through Veyra’s proxy.", params: [{ name: "url", place: "body", required: true, placeholder: "https://example.com/", example: "https://example.com/" }, { name: "format", place: "body", required: false, placeholder: "text or json", example: "text" }] }
+];
+function pgEndpoint() { return V1_ENDPOINTS.find(e => e.id === $("pgEndpoint").value) || V1_ENDPOINTS[0]; }
+function pgParams() {
+  const ep = pgEndpoint(), out = {};
+  for (const p of ep.params) {
+    const el = document.querySelector(`#pgParams [data-pg-param="${p.name}"]`);
+    if (el && el.value.trim()) out[p.name] = el.value.trim();
+  }
+  return out;
+}
+function pgBuildRequest() {
+  const ep = pgEndpoint(), params = pgParams();
+  let path = ep.path;
+  for (const [k, v] of Object.entries(params)) if (ep.params.find(p => p.name === k)?.place === "path") path = path.replace(`:${k}`, encodeURIComponent(v));
+  const query = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (ep.params.find(p => p.name === k)?.place === "query") query.set(k, v);
+  const body = {};
+  for (const [k, v] of Object.entries(params)) if (ep.params.find(p => p.name === k)?.place === "body") body[k] = v;
+  return { ep, url: `${API}${path}${query.toString() ? `?${query}` : ""}`, body: Object.keys(body).length ? body : null, needsKey: ep.auth === "key" };
+}
+async function pgSend() {
+  const { ep, url, body } = pgBuildRequest();
+  const key = $("pgKey").value.trim();
+  if (ep.auth === "key" && !key) { toast("Paste an API key first — create one in the API keys tab", true); $("pgKey").focus(); return; }
+  const started = performance.now();
+  $("pgResponseMeta").textContent = "Sending…";
+  $("pgResponseBody").textContent = "";
+  try {
+    const headers = { "content-type": "application/json" };
+    if (ep.auth === "key") headers.authorization = `Bearer ${key}`;
+    const r = await fetch(url, { method: ep.method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+    const ms = Math.round(performance.now() - started);
+    let data = null; try { data = await r.json(); } catch {}
+    $("pgResponseMeta").innerHTML = `<span class="pill ${r.ok ? "ok" : "err"}">${r.status} ${r.statusText || ""}</span> · ${ms} ms`;
+    $("pgResponseBody").textContent = JSON.stringify(data, null, 2) || "(empty response)";
+  } catch (err) {
+    $("pgResponseMeta").textContent = "";
+    $("pgResponseBody").textContent = `Request failed: ${err.message}`;
+  }
+}
+function pgCode(lang) {
+  const { ep, url, body } = pgBuildRequest();
+  const key = $("pgKey").value.trim() || "$VYR_KEY";
+  const keyLiteral = key.startsWith("$") ? key : "vyr_live_…"; // never print a real key into samples
+  const auth = ep.auth === "key" ? `authorization: Bearer ${keyLiteral}` : "";
+  if (lang === "curl") {
+    return [`curl -s ${ep.method === "GET" ? "" : `-X ${ep.method} `}"${url}"`,
+      auth ? `  -H "authorization: Bearer ${keyLiteral}"` : "",
+      body ? `  -H 'content-type: application/json' \\\n  -d '${JSON.stringify(body)}'` : ""].filter(Boolean).join(" \\\n");
+  }
+  if (lang === "js" || lang === "node") {
+    return [`const API = "${API}";`,
+      `const key = "${keyLiteral}";`,
+      ``,
+      `const r = await fetch("${url}", {`,
+      `  method: "${ep.method}",`,
+      ep.auth === "key" ? `  headers: { authorization: \`Bearer \${key}\`${body ? `, "content-type": "application/json"` : ""} },` : (body ? `  headers: { "content-type": "application/json" },` : ""),
+      body ? `  body: JSON.stringify(${JSON.stringify(body)})` : "",
+      `});`,
+      `console.log(await r.json());`].filter(l => l !== "").join("\n");
+  }
+  // python
+  return [`import requests`, ``, `API = "${API}"`, `key = "${keyLiteral}"`, ``, `r = requests.${ep.method.toLowerCase()}(`,
+    `    "${url}",`,
+    ep.auth === "key" ? `    headers={"authorization": f"Bearer {key}"},` : "",
+    body ? `    json=${JSON.stringify(body).replace(/"(\w+)":/g, '"$1": ')} ,` : "",
+    `)`, `print(r.json())`].filter(l => l !== "").join("\n");
+}
+function pgRenderCode() {
+  $("pgCodeCurl").textContent = pgCode("curl");
+  $("pgCodeJs").textContent = pgCode("js");
+  $("pgCodePython").textContent = pgCode("python");
+  $("pgCodeNode").textContent = pgCode("node");
+}
+function pgRenderParams() {
+  const ep = pgEndpoint(), host = $("pgParams");
+  host.innerHTML = ep.params.length ? ep.params.map(p => `
+    <div class="field"><label for="pgp-${esc(p.name)}">${esc(p.name)} <span class="muted">(${esc(p.place)}${p.required ? ", required" : ", optional"}) — ${esc(p.placeholder)}</span></label>
+      <input id="pgp-${esc(p.name)}" data-pg-param="${esc(p.name)}" class="mono" placeholder="${esc(p.example || p.placeholder || "")}"></div>`).join("") : "";
+  host.querySelectorAll("input").forEach(el => el.addEventListener("input", pgRenderCode));
+}
+function wirePlayground() {
+  if (!$("pgEndpoint")) return;
+  $("pgEndpoint").innerHTML = V1_ENDPOINTS.map(e => `<option value="${esc(e.id)}">${esc(e.label)}</option>`).join("");
+  $("pgEndpoint").addEventListener("change", () => { pgRenderParams(); pgRenderCode(); });
+  $("pgKey").addEventListener("input", pgRenderCode);
+  $("pgSend").addEventListener("click", pgSend);
+  $("pgCopyCode").addEventListener("click", () => {
+    const active = document.querySelector('[data-code-tabs="playground"] .code-tab.active')?.dataset.lang || "curl";
+    copyText(pgCode(active));
+  });
+  // Eye mode for the pasted key: password field until the eye reveals it.
+  $("pgKeyEye").addEventListener("click", () => {
+    const input = $("pgKey");
+    const revealed = $("pgKeyEye").classList.toggle("revealed");
+    input.type = revealed ? "text" : "password";
+  });
+  pgRenderParams(); pgRenderCode();
+}
+
+/* ---------- code tabs (quickstart + playground) ---------- */
+function wireCodeTabs() {
+  document.querySelectorAll("[data-code-tabs]").forEach(group => {
+    group.querySelectorAll(".code-tab").forEach(tab => tab.addEventListener("click", () => {
+      group.querySelectorAll(".code-tab").forEach(t => t.classList.toggle("active", t === tab));
+      group.querySelectorAll(":scope > .code-block").forEach(block => { block.hidden = block.dataset.lang !== tab.dataset.lang; });
+    }));
+  });
+}
+
+/* ---------- API reference filter ---------- */
+function wireReferenceFilter() {
+  const input = $("referenceFilter"); if (!input) return;
+  input.addEventListener("input", () => {
+    const q = input.value.trim().toLowerCase();
+    document.querySelectorAll("#referenceGroups .endpoint").forEach(el => {
+      const hay = `${el.dataset.search || ""} ${el.querySelector("code")?.textContent || ""}`.toLowerCase();
+      el.hidden = !!q && !hay.includes(q);
+    });
+  });
+}
+
 /* ---------- errors surfaced globally ---------- */
 window.addEventListener("unhandledrejection", e => {
   const err = e.reason;
@@ -353,3 +534,7 @@ window.addEventListener("unhandledrejection", e => {
     $("portal").hidden = true; $("authShell").hidden = false;
   }
 });
+wireCodeTabs();
+
+/* boot the portal once every declaration above has been evaluated. */
+boot();

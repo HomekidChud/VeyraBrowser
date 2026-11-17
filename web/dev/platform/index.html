@@ -9,8 +9,8 @@
   <meta name="robots" content="noindex">
   <meta name="description" content="Veyra Developer Platform — manage workspaces, API keys and usage for the Veyra API.">
   <title>Veyra Developer Platform</title>
-  <link rel="stylesheet" href="./styles.css?v=1">
-  <script type="module" src="./app.js?v=1"></script>
+  <link rel="stylesheet" href="./styles.css?v=2">
+  <script type="module" src="./app.js?v=2"></script>
 </head>
 <body>
   <!-- Sign-in: reuses the Veyra account session token (same origin as the main app). -->
@@ -48,8 +48,9 @@
       <button class="tab" role="tab" aria-selected="false" data-view="workspaces">Workspaces</button>
       <button class="tab" role="tab" aria-selected="false" data-view="keys">API keys</button>
       <button class="tab" role="tab" aria-selected="false" data-view="usage">Usage</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="reference">API reference</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="playground">Playground</button>
       <button class="tab" role="tab" aria-selected="false" data-view="plans">Plans & waitlist</button>
-      <button class="tab" role="tab" aria-selected="false" data-view="docs">API docs</button>
     </nav>
 
     <!-- Overview -->
@@ -125,6 +126,10 @@
         <article class="metric"><span>Busiest key</span><b id="usageTop">—</b><small id="usageTopNote">—</small></article>
       </div>
       <section class="panel">
+        <div class="panel-head"><div><h2>Requests per hour</h2><p class="small muted">Key-authenticated calls to the public API, aggregated across all workspaces over the rolling 24h window.</p></div></div>
+        <div class="chart-wrap" id="usageChartWrap"><div class="empty">No usage yet — create an API key and call the public API.</div></div>
+      </section>
+      <section class="panel">
         <div class="panel-head"><div><h2>Per-key usage</h2><p class="small muted">Counts come from key-authenticated calls to the public API (<span class="mono">/api/v1/*</span>).</p></div><button class="btn" id="usageRefresh" type="button">Refresh</button></div>
         <div class="table-wrap"><table>
           <thead><tr><th>Workspace</th><th>Key</th><th>Requests</th><th>Share</th><th>24h</th><th>Last used</th></tr></thead>
@@ -153,32 +158,193 @@
       </section>
     </section>
 
-    <!-- API docs -->
-    <section class="view" id="view-docs" role="tabpanel">
+    <!-- API reference -->
+    <section class="view" id="view-reference" role="tabpanel">
       <section class="panel">
-        <div class="panel-head"><h2>Authentication</h2></div>
-        <p class="small muted">Two token types: your <b>Veyra account session</b> (from <span class="mono">POST /api/auth/login</span>) manages workspaces and keys; an <b>API key</b> (<span class="mono">vyr_live_…</span>) calls the public API. Both travel as <span class="mono">Authorization: Bearer <token></span>.</p>
-        <pre class="docs"><span class="c"># 1. Sign in to get a session token (management API)</span>
-curl -s -X POST $API/api/auth/login \
-  -H <b>'content-type: application/json'</b> \
+        <div class="panel-head"><div><h2>Quickstart</h2><p class="small muted">From zero to your first API call in three steps. Create a workspace and key in the tabs above, then use the key from your own code.</p></div></div>
+        <ol class="steps">
+          <li><b>Create a workspace and an API key.</b> The secret (<span class="mono">vyr_live_…</span>) is revealed once — the eye toggle in the modal keeps it hidden until you click it, and Veyra stores only a hash.</li>
+          <li><b>Send it as a Bearer token.</b> Every <span class="mono">/api/v1</span> call carries <span class="mono">Authorization: Bearer $VYR_KEY</span>.</li>
+          <li><b>Watch usage climb.</b> Every authenticated call is counted per key on the Usage tab and via <span class="mono">GET /api/v1/usage</span>.</li>
+        </ol>
+        <div class="code-tabs" data-code-tabs="quickstart">
+          <div class="code-tabbar">
+            <button class="code-tab active" type="button" data-lang="curl">curl</button>
+            <button class="code-tab" type="button" data-lang="js">JavaScript</button>
+            <button class="code-tab" type="button" data-lang="python">Python</button>
+            <button class="code-tab" type="button" data-lang="node">Node</button>
+          </div>
+          <pre class="docs code-block" data-lang="curl"><span class="c"># Sign in for a session token, create a workspace, mint a key</span>
+curl -s -X POST $API/api/auth/login -H <b>'content-type: application/json'</b> \
   -d '{"email":"you@example.com","password":"•••"}'
-<span class="c"># → {"ok":true,"token":"v1.…","user":{…}}</span>
 
-<span class="c"># 2. Create a workspace with that session token</span>
 curl -s -X POST $API/api/platform/workspaces \
   -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
   -d '{"name":"My Dev Workspace","description":"docs crawler"}'
-<span class="c"># → {"ok":true,"workspace":{"id":"…","slug":"my-dev-workspace",…}}</span>
 
-<span class="c"># 3. Create an API key — the secret is returned exactly once</span>
 curl -s -X POST $API/api/platform/workspaces/$WS_ID/keys \
   -H "authorization: Bearer $TOKEN" -H <b>'content-type: application/json'</b> \
   -d '{"name":"Production key"}'
-<span class="c"># → {"ok":true,"key":"vyr_live_•••","keyInfo":{"id":"…","last4":"abcd"},…}</span>
 
-<span class="c"># 4. Call the public API with the key</span>
-curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c"># → {"ok":true,"workspace":{…},"key":{…},"usage":{"requests":1,…}}</span></pre>
+<span class="c"># Then call the public API with the key</span>
+curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b></pre>
+          <pre class="docs code-block" data-lang="js" hidden><span class="c">// Browser or Deno — same shape everywhere.</span>
+const API = "https://veyraserver-xscy.onrender.com";
+const key = "vyr_live_…"; <span class="c">// created in the API keys tab — shown once</span>
+
+const r = await fetch(`${API}/api/v1/me`, {
+  headers: { authorization: `Bearer ${key}` }
+});
+console.log(await r.json());</pre>
+          <pre class="docs code-block" data-lang="python" hidden><span class="c"># pip install requests</span>
+import requests
+
+API = "https://veyraserver-xscy.onrender.com"
+key = "vyr_live_…"  <span class="c"># created in the API keys tab — shown once</span>
+
+r = requests.get(f"{API}/api/v1/me", headers={"authorization": f"Bearer {key}"})
+print(r.json())</pre>
+          <pre class="docs code-block" data-lang="node" hidden><span class="c">// Node 18+ has global fetch.</span>
+const API = "https://veyraserver-xscy.onrender.com";
+const key = "vyr_live_…";
+
+const r = await fetch(`${API}/api/v1/search?q=veyra`, {
+  headers: { authorization: `Bearer ${key}` }
+});
+console.log(await r.json());</pre>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2>Authentication</h2><p class="small muted">Two token types: your <b>Veyra account session</b> (from <span class="mono">POST /api/auth/login</span>) manages workspaces and keys; an <b>API key</b> (<span class="mono">vyr_live_…</span>) calls the public API. Both travel as <span class="mono">Authorization: Bearer <token></span>. All platform routes are rate limited (120 requests/minute per IP; the waitlist form allows 5 per hour). Key-authenticated calls count towards that key’s usage.</p></div></div>
+        <div class="error-grid">
+          <div><span class="pill err">401</span> <code>PLATFORM_KEY_REQUIRED</code> — no Bearer key on a protected route</div>
+          <div><span class="pill err">401</span> <code>PLATFORM_KEY_INVALID</code> — revoked or unknown key</div>
+          <div><span class="pill warn">429</span> <code>PLATFORM_RATE_LIMITED</code> — too many requests this minute</div>
+          <div><span class="pill warn">402</span> <code>BILLING_REQUIRED</code> — set up billing before issuing keys</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2>Public API reference</h2><p class="small muted">Every <span class="mono">/api/v1</span> endpoint, what it takes, what it returns. Click an endpoint to expand its parameters and examples.</p></div>
+          <input id="referenceFilter" class="ref-filter" type="search" placeholder="Filter endpoints… e.g. usage, fetch, keys" aria-label="Filter endpoints">
+        </div>
+        <div class="ref-groups" id="referenceGroups">
+
+          <h3 class="ref-group">Status & identity</h3>
+          <details class="endpoint" data-search="status liveness version health public uptime">
+            <summary><span class="method get">GET</span><code>/api/v1/status</code><span class="pill">public</span><span class="ref-hint">API liveness, version and rate limits — no key needed</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">Liveness check for the public API. Returns the server version, uptime and the documented rate limit. The one endpoint that needs no authentication.</p>
+              <pre class="docs">curl -s $API/api/v1/status
+<span class="c">→ {"ok":true,"api":"veyra","version":"8.21.0","uptimeSeconds":3600,
+   "rateLimit":{"max":120,"windowMs":60000},"docs":"…"}</span></pre>
+            </div>
+          </details>
+          <details class="endpoint" data-search="verify key valid check identity">
+            <summary><span class="method get">GET</span><code>/api/v1/verify</code><span class="pill">api key</span><span class="ref-hint">Key check: identity + usage snapshot</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">Lightweight key validation. Returns the key’s identity, its workspace and current usage counters. Perfect for a “connection test” button in your app.</p>
+              <pre class="docs">curl -s $API/api/v1/verify -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"valid":true,"key":{"id":"…","name":"Production key","last4":"abcd",…},
+   "workspace":{"id":"…","name":"My Dev Workspace","slug":"my-dev-workspace"},
+   "usage":{"requests":7,"last24h":2}}</span></pre>
+            </div>
+          </details>
+          <details class="endpoint" data-search="me identity whoami workspace key metadata usage">
+            <summary><span class="method get">GET</span><code>/api/v1/me</code><span class="pill">api key</span><span class="ref-hint">The key’s full identity and usage counters</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">Identity of the calling key: workspace, key metadata and usage counters.</p>
+              <pre class="docs">curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"workspace":{…},"key":{…},"usage":{"requests":1,"last24h":1,"lastUsedAt":"…"}}</span></pre>
+            </div>
+          </details>
+
+          <h3 class="ref-group">Keys</h3>
+          <details class="endpoint" data-search="keys list workspace">
+            <summary><span class="method get">GET</span><code>/api/v1/keys</code><span class="pill">api key</span><span class="ref-hint">List the keys in this key’s workspace</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">The active keys in the workspace the calling key belongs to. Only public metadata — hashed secrets never leave the server.</p>
+              <pre class="docs">curl -s $API/api/v1/keys -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"workspace":{"id":"…","slug":"my-dev-workspace"},"total":2,
+   "keys":[{"id":"…","name":"Production key","last4":"abcd","usage":{…}},…]}</span></pre>
+            </div>
+          </details>
+          <details class="endpoint" data-search="key detail one metadata usage">
+            <summary><span class="method get">GET</span><code>/api/v1/keys/:id</code><span class="pill">api key</span><span class="ref-hint">One key’s metadata and usage counters</span></summary>
+            <div class="endpoint-body">
+              <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
+                <tr><td><code>id</code></td><td>path</td><td>The key’s UUID (from <code>GET /api/v1/keys</code>).</td></tr>
+              </tbody></table>
+              <pre class="docs">curl -s $API/api/v1/keys/$KEY_ID -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"key":{"id":"…","name":"Production key","last4":"abcd",…},"usage":{…}}</span>
+<span class="c"># 404 {"error":"API key not found.","code":"API_KEY_NOT_FOUND"}</span></pre>
+            </div>
+          </details>
+
+          <h3 class="ref-group">Usage</h3>
+          <details class="endpoint" data-search="usage requests counters 24h window buckets">
+            <summary><span class="method get">GET</span><code>/api/v1/usage</code><span class="pill">api key</span><span class="ref-hint">Usage totals, rolling 24h window and per-hour buckets</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">Usage for the calling key: totals, the rolling 24h window and per-hour buckets.</p>
+              <pre class="docs">curl -s $API/api/v1/usage -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"keyId":"…","usage":{"requests":12,"last24h":3,…},
+   "byHour":{"2026-11-13T20:00:00Z":2,…}}</span></pre>
+            </div>
+          </details>
+          <details class="endpoint" data-search="usage hours hourly buckets chart 24">
+            <summary><span class="method get">GET</span><code>/api/v1/usage/hours</code><span class="pill">api key</span><span class="ref-hint">Exactly 24 hourly buckets, zero-filled</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">The last 24 hours of requests for the calling key as hourly buckets — every hour present, zero-filled, ready to chart.</p>
+              <pre class="docs">curl -s $API/api/v1/usage/hours -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"keyId":"…","windowHours":24,
+   "hours":{"2026-11-16T17:00:00Z":0,…,"2026-11-17T16:00:00Z":4}}</span></pre>
+            </div>
+          </details>
+
+          <h3 class="ref-group">Search</h3>
+          <details class="endpoint" data-search="search index query results">
+            <summary><span class="method get">GET</span><code>/api/v1/search</code><span class="pill">api key</span><span class="ref-hint">Search the Veyra index</span></summary>
+            <div class="endpoint-body">
+              <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
+                <tr><td><code>q</code></td><td>query</td><td>Required. The search term.</td></tr>
+                <tr><td><code>limit</code></td><td>query</td><td>Max results (1–20, default 10).</td></tr>
+                <tr><td><code>offset</code></td><td>query</td><td>Result offset for paging.</td></tr>
+              </tbody></table>
+              <pre class="docs">curl -s "$API/api/v1/search?q=veyra&limit=5" -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"results":[…],"provider":"veyra-index","responseTimeMs":3}
+<span class="c"># 400 {"error":"Provide a search term: ?q=…","code":"SEARCH_QUERY_REQUIRED"}</span></span></pre>
+            </div>
+          </details>
+          <details class="endpoint" data-search="suggest suggestions autocomplete">
+            <summary><span class="method get">GET</span><code>/api/v1/suggest</code><span class="pill">api key</span><span class="ref-hint">Search suggestions</span></summary>
+            <div class="endpoint-body">
+              <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
+                <tr><td><code>q</code></td><td>query</td><td>The partial term to complete.</td></tr>
+              </tbody></table>
+              <pre class="docs">curl -s "$API/api/v1/suggest?q=vey" -H <b>"authorization: Bearer $VYR_KEY"</b>
+<span class="c">→ {"ok":true,"suggestions":["veyra browser","veyra api",…]}</span></pre>
+            </div>
+          </details>
+
+          <h3 class="ref-group">Fetch</h3>
+          <details class="endpoint" data-search="fetch url proxy retrieve page html json">
+            <summary><span class="method post">POST</span><code>/api/v1/fetch</code><span class="pill">api key</span><span class="ref-hint">Fetch any public URL through Veyra’s proxy infrastructure</span></summary>
+            <div class="endpoint-body">
+              <p class="small muted">Fetches a public URL server-side through the same infrastructure as the fast proxy (SSRF guards, DNS checks, caching) and returns the body as text or parsed JSON. The body is capped at 256KB.</p>
+              <table class="params"><thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead><tbody>
+                <tr><td><code>url</code></td><td>body</td><td>Required. A public http(s) URL. Private addresses are blocked.</td></tr>
+                <tr><td><code>format</code></td><td>body</td><td><code>"text"</code> (default) or <code>"json"</code> — parse the body as JSON and return it inline.</td></tr>
+              </tbody></table>
+              <pre class="docs">curl -s -X POST $API/api/v1/fetch -H <b>"authorization: Bearer $VYR_KEY"</b> \
+  -H 'content-type: application/json' -d '{"url":"https://example.com/"}'
+<span class="c">→ {"ok":true,"status":200,"finalUrl":"https://example.com/",
+   "contentType":"text/html; charset=UTF-8","body":"<!doctype html>…"}</span>
+<span class="c"># 400 {"code":"FETCH_URL_INVALID"} · 422 {"code":"FETCH_NOT_JSON"}
+# 502 {"code":"FETCH_FAILED"} — includes Veyra’s SSRF guard message</span></pre>
+            </div>
+          </details>
+        </div>
       </section>
 
       <section class="panel">
@@ -201,23 +367,57 @@ curl -s $API/api/v1/me -H <b>"authorization: Bearer $VYR_KEY"</b>
           </tbody>
         </table></div>
       </section>
+    </section>
+
+    <!-- Playground -->
+    <section class="view" id="view-playground" role="tabpanel">
+      <section class="panel">
+        <div class="panel-head"><div><h2>API playground</h2><p class="small muted">Pick an endpoint, paste an API key, and send real requests against the live API. The key stays in this tab only — it is never stored by the portal.</p></div></div>
+        <div class="field">
+          <label for="pgKey">Your API key</label>
+          <div class="key-field">
+            <input id="pgKey" type="password" class="mono" placeholder="vyr_live_…" autocomplete="off" spellcheck="false" aria-label="API key">
+            <button class="btn eye-btn" id="pgKeyEye" type="button" aria-label="Show or hide the API key" title="Show / hide the key">
+              <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="m1 1 22 22"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="pgEndpoint">Endpoint</label>
+            <select id="pgEndpoint"></select>
+          </div>
+          <div class="field pg-send-field">
+            <label for="pgSend">&nbsp;</label>
+            <button class="btn primary" id="pgSend" type="button">Send request</button>
+          </div>
+        </div>
+        <div id="pgParams"></div>
+        <div class="pg-response">
+          <div class="pg-response-head">
+            <h3>Response</h3>
+            <span id="pgResponseMeta" class="small muted">Send a request to see the response here.</span>
+          </div>
+          <pre class="docs pg-response-body" id="pgResponseBody" aria-live="polite"></pre>
+        </div>
+      </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>Public API</h2><span class="pill">api key</span></div>
-        <div class="table-wrap docs-table"><table>
-          <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><code>GET /api/v1/me</code></td><td>Identity of the key: workspace, key metadata and usage counters.</td></tr>
-            <tr><td><code>GET /api/v1/usage</code></td><td>Usage for the key: totals, rolling 24h window and per-hour buckets.</td></tr>
-          </tbody>
-        </table></div>
-        <pre class="docs"><span class="c"># Usage with hourly buckets (requires the key)</span>
-curl -s $API/api/v1/usage -H <b>"authorization: Bearer $VYR_KEY"</b>
-<span class="c"># → {"ok":true,"keyId":"…","usage":{"requests":12,"last24h":3,…},"byHour":{"2026-11-13T20:00:00Z":2,…}}</span>
-
-<span class="c"># Errors use a consistent envelope: {"error":"…","code":"…"}</span>
-<span class="c"># 401 PLATFORM_KEY_REQUIRED / PLATFORM_KEY_INVALID · 429 PLATFORM_RATE_LIMITED</span></pre>
-        <p class="small muted">All platform routes are rate limited (120 requests/minute per IP; the waitlist form allows 5 per hour). Key-authenticated calls count towards that key’s usage.</p>
+        <div class="panel-head"><div><h2>Code for this request</h2><p class="small muted">Generated live from the endpoint and parameters above — copy it straight into your project.</p></div></div>
+        <div class="code-tabs" data-code-tabs="playground">
+          <div class="code-tabbar">
+            <button class="code-tab active" type="button" data-lang="curl">curl</button>
+            <button class="code-tab" type="button" data-lang="js">JavaScript</button>
+            <button class="code-tab" type="button" data-lang="python">Python</button>
+            <button class="code-tab" type="button" data-lang="node">Node</button>
+            <button class="code-copy btn" id="pgCopyCode" type="button">Copy</button>
+          </div>
+          <pre class="docs code-block" data-lang="curl" id="pgCodeCurl"></pre>
+          <pre class="docs code-block" data-lang="js" id="pgCodeJs" hidden></pre>
+          <pre class="docs code-block" data-lang="python" id="pgCodePython" hidden></pre>
+          <pre class="docs code-block" data-lang="node" id="pgCodeNode" hidden></pre>
+        </div>
       </section>
     </section>
   </main>
@@ -227,7 +427,7 @@ curl -s $API/api/v1/usage -H <b>"authorization: Bearer $VYR_KEY"</b>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="secretTitle">
       <h2 id="secretTitle">Your API key</h2>
       <p class="small muted" id="secretNote">Copy this secret now. Veyra stores only a hash — it will never be shown again.</p>
-      <div class="secret-box"><code id="secretValue" class="mono"></code><button class="btn" id="secretCopy" type="button">Copy</button></div>
+      <div class="secret-box"><code id="secretValue" class="mono"></code><button class="btn eye-btn" id="secretEye" type="button" aria-label="Show or hide the API key" title="Show / hide the key"><svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="m1 1 22 22"/></svg></button><button class="btn" id="secretCopy" type="button">Copy</button></div>
       <div class="actions"><button class="btn primary" id="secretDone" type="button">I saved it somewhere safe</button></div>
     </div>
   </div>
