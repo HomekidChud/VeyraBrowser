@@ -2,12 +2,36 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.41-account-notices";
-import { initExtensions } from "./extensions.js?v=8.28.41-account-notices";
-import { initSettings } from "./settings.js?v=8.28.41-account-notices";
+} from "./core.js?v=8.28.42-session-privacy";
+import { initExtensions } from "./extensions.js?v=8.28.42-session-privacy";
+import { initSettings } from "./settings.js?v=8.28.42-session-privacy";
 import { accountDestination } from "./account-navigation.js?v=2";
 
 let B;
+
+function initPrivacyCover() {
+  if (!INCOGNITO) return;
+  const cover = document.createElement("dialog");
+  cover.className = "privacy-cover";
+  cover.setAttribute("aria-labelledby", "privacyCoverTitle");
+  cover.innerHTML = `<div class="privacy-cover-content"><svg aria-hidden="true"><use href="#i-shield"/></svg><h2 id="privacyCoverTitle">Incognito screen hidden</h2><p>Reveal the screen only when it’s safe to view. This cover can’t block operating-system capture or an external camera while the screen is visible.</p><button class="btn primary" autofocus>Reveal screen</button></div>`;
+  document.body.append(cover);
+  const lock = () => {
+    if (cover.open) return;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    cover.showModal();
+  };
+  cover.addEventListener("cancel", event => event.preventDefault());
+  cover.querySelector("button").onclick = () => { if (!document.hidden) cover.close(); };
+  hooks.lockPrivacyCover = lock;
+  hooks.privacyCoverOpen = () => cover.open;
+  document.addEventListener("visibilitychange", () => { if (document.hidden) lock(); });
+  window.addEventListener("blur", () => {
+    setTimeout(() => { if (!document.hasFocus()) lock(); }, 0);
+  });
+  window.addEventListener("pagehide", lock);
+  if (document.hidden) lock();
+}
 
 
 export function applyTheme() {
@@ -97,6 +121,7 @@ function commandForCombo(combo) { if (!combo) return null; return COMMANDS.find(
 function isEditable(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
 export let recordingShortcut = null; export function setRecording(fn) { recordingShortcut = fn; }
 function runCombo(combo, { fromPage = false, editable = false } = {}) {
+  if (hooks.privacyCoverOpen?.()) return false;
   if (!$("landing").classList.contains("hidden")) return false;
   const c = commandForCombo(combo); if (!c) return false;
   const bare = !/Mod|Alt|Ctrl|Meta/.test(combo) && !/^F\d/.test(combo) && combo !== "Esc";
@@ -107,6 +132,7 @@ function runCombo(combo, { fromPage = false, editable = false } = {}) {
   return true;
 }
 function onKeyDown(e) {
+  if (hooks.privacyCoverOpen?.()) return;
   if (recordingShortcut) { e.preventDefault(); e.stopPropagation(); const combo = comboFromEvent(e); if (combo) recordingShortcut(combo, e); return; }
   if (e.defaultPrevented) return;
   const combo = comboFromEvent(e);
@@ -463,7 +489,7 @@ function openMainMenu() {
   const items = [
     menuItem("i-tab", "New tab", "newTab", () => B.newTab()),
     menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
-    ...(INCOGNITO ? [menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
+    ...(INCOGNITO ? [menuItem("i-shield", "Hide incognito screen", "", () => hooks.lockPrivacyCover?.()), menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
     menuItem("i-grid", "Tab groups", "", () => { const t = B.activeTab(); if (t) B.createTabGroup?.(t.title || "Group"); }),
@@ -480,7 +506,7 @@ function openMainMenu() {
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
-    menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast")),
+    ...(!INCOGNITO ? [menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast"))] : []),
     menuItem("i-vpn", "Internet Connection", "", () => B.openInternal("internet")),
     "-",
     menuItem("i-inspect", "Inspect element", "picker", () => hooks.dt?.inspect(), { disabled: !onPage }),
@@ -544,17 +570,22 @@ function openSessionPop() {
   });
 }
 async function openVpnPop() {
-  pop(`<h4>Veyra VPN</h4><p class="pop-sub">Loading…</p>`, $("vpnBtn"));
-  const v = await B.refreshVpnStatus(); const st = v.status; const p = $("popover"); if (p.classList.contains("hidden")) return;
+  pop(`<div id="vpnPopoverContent"><h4>Veyra VPN</h4><p class="pop-sub">Loading exits…</p></div>`, $("vpnBtn"));
+  const outer = $("popover"), p = $("vpnPopoverContent");
+  const render = v => {
+  if (!p.isConnected || outer.classList.contains("hidden")) return;
+  const st = v.status;
   const profiles = st?.profiles || [];
-  p.innerHTML = `<h4>Veyra VPN · ${v.connected ? "On" : "Off"}</h4><p class="pop-sub">${!st ? esc(v.error || "Unavailable") : v.connected ? `Using ${esc(v.profile?.name || "")}${v.profile?.region ? ` (${esc(v.profile.region)})` : ""}` : !st.enabled ? "VPN is disabled on this server." : profiles.length ? "Pick an exit for this session." : "No exits configured on the server."}</p>
-    <div class="vpn-list">${profiles.slice(0, 6).map(x => `<div class="ext-pop-row"><span class="pill ${x.health?.healthy === false ? "err" : x.health?.healthy ? "ok" : ""}">${esc(x.protocol || x.type || "")}</span><div class="n"><b>${esc(x.name)}</b><small>${esc(x.region || x.country || "")}${x.health?.latencyMs ? ` · ${x.health.latencyMs} ms` : ""}</small></div>${v.profile?.id === x.id ? `<button class="btn ghost sm" data-off>Disconnect</button>` : `<button class="btn ghost sm" data-c="${esc(x.id)}" ${st.enabled ? "" : "disabled"}>Connect</button>`}</div>`).join("")}</div>
+  p.innerHTML = `<h4>Veyra VPN${v.sessionError ? "" : v.connected ? " · On" : " · Off"}</h4><p class="pop-sub">${!st || v.error ? esc(v.error || "Unavailable") : v.connected ? `Using ${esc(v.profile?.name || "")}${v.profile?.region ? ` (${esc(v.profile.region)})` : ""}` : st.enabled === false ? "VPN is disabled on this server." : v.sessionError ? esc(v.sessionError) : profiles.length ? "Pick an exit for this session." : "No exits configured on the server."}</p>
+    <div class="vpn-list">${profiles.slice(0, 6).map(x => `<div class="ext-pop-row"><span class="pill ${x.health?.healthy === false ? "err" : x.health?.healthy ? "ok" : ""}">${esc(x.protocol || x.type || "")}</span><div class="n"><b>${esc(x.name)}</b><small>${esc(x.region || x.country || "")}${x.health?.latencyMs ? ` · ${x.health.latencyMs} ms` : ""}</small></div>${v.profile?.id === x.id ? `<button class="btn ghost sm" data-off>Disconnect</button>` : `<button class="btn ghost sm" data-c="${esc(x.id)}" ${st.enabled !== false && x.health?.healthy !== false ? "" : "disabled"}>Connect</button>`}</div>`).join("")}</div>
     <div style="margin-top:10px"><button class="btn ghost sm block" data-go="/vpn">Open VPN page</button></div>`;
   p.onclick = async e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.go) { closeFloating(); return; } b.disabled = true; try { if (b.dataset.c) await B.connectVpn(b.dataset.c); else if ("off" in b.dataset) await B.disconnectVpn(); closeFloating(); } catch (err) { toast(err.message, { kind: "err" }); b.disabled = false; } };
+  };
+  render(await B.refreshVpnStatus(render));
 }
 function openProfilePop() {
   if (INCOGNITO) {
-    pop(`<h4>You're incognito</h4><p class="pop-sub">History, downloads, notes and sign-in stay in this window's memory only. The server marks your session incognito: it isn't logged by site and pages aren't kept in the shared cache.</p><div style="display:flex;gap:8px"><button class="btn primary sm" id="ppExitIncog">Exit incognito</button><button class="btn ghost sm" id="ppNewIncog">New incognito window</button></div>`, $("profileBtn"), p => { p.querySelector("#ppExitIncog").onclick = () => { closeFloating(); exitIncognito(); }; p.querySelector("#ppNewIncog").onclick = () => { closeFloating(); openIncognitoWindow(); }; });
+    pop(`<h4>You're incognito</h4><p class="pop-sub">Veyra doesn’t keep a browsing history or cache pages for this session. Device Cast is off. The screen hides when this window loses focus.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" id="ppHideIncog">Hide screen</button><button class="btn ghost sm" id="ppExitIncog">Exit incognito</button></div>`, $("profileBtn"), p => { p.querySelector("#ppHideIncog").onclick = () => { closeFloating(); hooks.lockPrivacyCover?.(); }; p.querySelector("#ppExitIncog").onclick = () => { closeFloating(); exitIncognito(); }; });
     return;
   }
   if (!auth.user) {
@@ -603,6 +634,7 @@ export function initUI(b) {
   setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
   if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
+  initPrivacyCover();
   initExtensions(B); initSettings(B);
   onAuthChanged(); verifyAuth().then(verified => verified && pullSync());
   addLog("debug", `UI ready (${COMMANDS.length} commands)`);

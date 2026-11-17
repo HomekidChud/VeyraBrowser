@@ -18,7 +18,7 @@
     if (saved.fontScale) document.documentElement.style.setProperty("--ui-scale", saved.fontScale);
   } catch {}
   const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.28.41-account-notices`; document.head.appendChild(stylesheet);
+  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.28.42-session-privacy`; document.head.appendChild(stylesheet);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
@@ -28,13 +28,14 @@
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.41-account-notices`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.42-session-privacy`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
+      const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
+      if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.41-account-notices`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.42-session-privacy`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();

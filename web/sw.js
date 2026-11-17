@@ -1,12 +1,12 @@
-const CACHE = "veyra-browser-shell-v8.28.41-account-notices";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.41-account-notices", "./src/bootstrap.js?v=8.28.41-account-notices"];
+const CACHE = "veyra-browser-shell-v8.28.42-session-privacy";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.42-session-privacy", "./src/bootstrap.js?v=8.28.42-session-privacy"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith("veyra-browser-shell-") && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener("fetch", event => {
@@ -14,6 +14,10 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.includes("/api/")) return;
+  if (url.searchParams.get("incognito") === "1" || url.searchParams.has("private")) return;
+  const scope = new URL(self.registration.scope).pathname;
+  const shellPath = url.pathname.slice(scope.length);
+  if (!url.pathname.startsWith(scope) || (request.mode !== "navigate" && !/^(?:src|styles|assets)\//.test(shellPath) && shellPath !== "manifest.webmanifest")) return;
   const staticAsset = request.destination === "script" || request.destination === "style" || request.destination === "image" || request.destination === "font" || url.pathname.endsWith("manifest.webmanifest");
   if (!staticAsset && request.mode !== "navigate") return;
   event.respondWith((async () => {

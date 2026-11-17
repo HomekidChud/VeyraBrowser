@@ -1,6 +1,6 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.41-account-notices";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.41-account-notices";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.42-session-privacy";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.42-session-privacy";
 
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -91,7 +91,9 @@ function newtabSection() {
 function privacySection() {
   return section("privacy", "Privacy and security", "", `
     ${button("Clear browsing data", "History, downloads, cookies and engine cache.", "clearData", "Clear data")}
-    ${button("Incognito window", "History, downloads, notes and sign-in stay in memory; the server skips site logging and shared caching. Ctrl+Shift+N.", "incognito", "Open incognito window")}
+    ${button("Incognito window", "Hide the screen from the browser menu or by switching away. Device Cast is disabled. The web app can’t block external cameras or OS-level capture.", "incognito", "Open incognito window")}
+    ${row("Session cache", "Signed-in, non-incognito sessions may keep eligible responses in server memory until the session ends. Guest and incognito sessions skip the cache.", `<span class="chip">Session-scoped</span>`)}
+    ${row("Global cache", "Only eligible public static files may be shared. MongoDB is optional and is not used to save temporary session cookies or page snapshots.", `<span class="chip">Public assets</span>`)}
     ${toggle("challengeHandoff", "Hand security checks to real Chromium", "When a site shows a Cloudflare or captcha check, reopen it in Chromium so you can complete it yourself. Veyra never solves checks for you.")}
     ${toggle("blockTrackers", "Block trackers", "The server refuses requests to known ad and tracking hosts.")}
     ${toggle("doNotTrack", "Send a Do Not Track request", "Sends the preference to the active session. Veyra warns if the server does not acknowledge support.")}
@@ -105,7 +107,7 @@ function sessionsSection() {
     ${row("Session time limit", lim ? `Set by the server: sessions end after ${fmtClock(lim)} and are deleted.` : "The server did not report a limit.", `<span class="chip">${lim ? fmtClock(lim) : "—"}</span>`)}
     ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? fmtClock(left) + " left" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
     ${toggle("sessionWarnings", "Warn before a session ends", "Shows a warning 30 and 10 seconds before the limit.")}
-    ${toggle("autoRestartSession", "Start a new session automatically", "When the timer ends, reopen your tabs in a fresh session.")}
+    ${toggle("autoRestartSession", "Start a new session automatically", "When a signed-in, non-incognito session ends, reopen its tabs in a fresh session. Guest and incognito tabs aren’t restored.")}
     ${row("Sign-in method", "Compatible sites use this Fast Proxy session. Google and GitHub account pages offer a direct browser tab instead. No login session is copied back into Veyra.", `<span class="chip">Site dependent</span>`)}
     ${toggle("clearHistoryOnSessionEnd", "Clear local history when a session ends", "Server session cookies are always deleted when the session closes.")}`);
 }

@@ -14,7 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.28.41-account-notices"></script>
+  <script src="./src/bootstrap.js?v=8.28.42-session-privacy"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -199,7 +199,7 @@
             <div class="ntp-brand"><svg><use href="#logo"/></svg><span>Veyra</span></div>
             <div class="ntp-incognito hidden" id="ntpIncognito" role="note">
               <span class="ntp-incog-ic"><svg><use href="#i-incognito"/></svg></span>
-              <div><b>You've gone incognito</b><p>Veyra won't keep your history, downloads, notes or sign-in after you close this window, and the server won't log which sites your session visits or cache them for others. Bookmarks and settings changes are kept. Sites you visit, your network and a VPN exit can still see your activity.</p></div>
+              <div><b>You've gone incognito</b><p>Veyra skips browsing caches and keeps temporary browsing data in memory. The screen hides when you switch away, and Device Cast is off. You can also hide the screen from the profile menu. This can't block a camera or system capture, and sites, networks, and VPN providers can still see activity.</p></div>
             </div>
             <form class="ntp-search" id="ntpForm" autocomplete="off">
               <svg><use href="#i-search"/></svg>

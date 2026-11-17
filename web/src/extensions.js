@@ -1,6 +1,6 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.41-account-notices";
-import { dtCall, isRemote } from "./bridge.js?v=8.28.41-account-notices";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.28.42-session-privacy";
+import { dtCall, isRemote } from "./bridge.js?v=8.28.42-session-privacy";
 import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.28.38-extension-folders";
 
 let B;
@@ -396,11 +396,23 @@ function closeNotes() { B.state.tabs.forEach(t => t.notesOpen = false); $("sideP
 function renderSidePanel(t) {
   const p = $("sidePanel");
   if (!(t?.view === "page" && t.notesOpen && isOn("notes"))) { p.classList.add("hidden"); return; }
-  const notes = load("veyra-notes", {}); const k = notesKey(t);
+  const temporary = hooks.isEphemeralSession?.();
+  const notes = temporary ? { [notesKey(t)]: t.noteDraft } : load("veyra-notes", {});
+  const k = notesKey(t);
   p.classList.remove("hidden");
   p.innerHTML = `<header><h3>Notes · ${esc(k)}</h3><div><button class="icon-btn sm" id="noteCopy" title="Copy"><svg><use href="#i-copy"/></svg></button><button class="icon-btn sm" id="noteClose" title="Close"><svg><use href="#i-x"/></svg></button></div></header><textarea id="noteText" placeholder="Notes for ${esc(k)}. Saved automatically."></textarea><small class="muted" style="padding:0 14px 12px" id="noteState">${notes[k] ? `Saved` : ""}</small>`;
   const ta = $("noteText"); ta.value = notes[k] || "";
-  let timer; ta.oninput = () => { clearTimeout(timer); $("noteState").textContent = "Saving…"; timer = setTimeout(() => { const n = load("veyra-notes", {}); if (ta.value.trim()) n[k] = ta.value.slice(0, 20000); else delete n[k]; save("veyra-notes", n); hooks.scheduleSync?.(); $("noteState").textContent = "Saved"; }, 400); };
+  const noteState = $("noteState");
+  let timer; ta.oninput = () => {
+    if (temporary) { t.noteDraft = ta.value.slice(0, 20000); noteState.textContent = "This tab only"; return; }
+    clearTimeout(timer); noteState.textContent = "Saving…";
+    timer = setTimeout(() => {
+      if (hooks.isEphemeralSession?.() || !B.state.tabs.includes(t)) return;
+      const n = load("veyra-notes", {});
+      if (ta.value.trim()) n[k] = ta.value.slice(0, 20000); else delete n[k];
+      save("veyra-notes", n); hooks.scheduleSync?.(); noteState.textContent = "Saved";
+    }, 400);
+  };
   $("noteClose").onclick = () => { t.notesOpen = false; p.classList.add("hidden"); };
   $("noteCopy").onclick = () => copyText(ta.value);
 }
