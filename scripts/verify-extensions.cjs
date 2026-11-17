@@ -78,6 +78,45 @@ assert.match(manifest, /document_end/);
 assert.match(manifest, /document_idle/);
 assert.match(manifest, /all_frames/);
 
+// Unpacked-folder loading: pure folder reader + UI wiring.
+assert.match(manifest, /readExtensionFolder/);
+assert.match(manifest, /FOLDER_LIMITS/);
+assert.match(manifest, /isBinaryPath/);
+assert.match(manifest, /more than one manifest\.json/);
+assert.match(ext, /loadUnpackedFolder/);
+assert.match(ext, /readExtensionFolder/);
+assert.match(html, /webkitdirectory/);
+assert.match(html, /loadFolderBtn/);
+assert.match(html, /extensionFolder/);
+
+// _locales i18n: __MSG_ substitution + chrome.i18n in both shims.
+assert.match(manifest, /__MSG_/);
+assert.match(manifest, /loadLocaleMessages/);
+assert.match(manifest, /substituteMessages/);
+assert.match(manifest, /getMessage/);
+assert.match(manifest, /defaultLocale/);
+
+// Web-accessible resources: embedded + served through a working getURL.
+assert.match(manifest, /var RESOURCES = /);
+assert.match(manifest, /createObjectURL/);
+assert.match(manifest, /data:image\/svg\+xml,/);
+
+// chrome.tabs / chrome.scripting / action.onClicked over host RPC.
+assert.match(manifest, /rpc\("tabs\.query/);
+assert.match(manifest, /rpc\("tabs\.create/);
+assert.match(manifest, /rpc\("scripting\.executeScript/);
+assert.match(manifest, /__veyraActionClick/);
+assert.match(ext, /veyraTabsQuery/);
+assert.match(ext, /veyraTabCreate/);
+assert.match(ext, /veyraExecuteScript/);
+assert.match(ext, /fireActionClick/);
+assert.match(ext, /data-action-ext/);
+
+// Real extension icons render in the UI.
+assert.match(manifest, /iconData/);
+assert.match(ext, /iconData/);
+assert.match(ext, /unpacked-folder/);
+
 // Extension list UI shows Chrome metadata and the warning badge.
 assert.match(ext, /chromeCardMeta/);
 assert.match(ext, /backgroundStatusOf/);
@@ -85,4 +124,4 @@ assert.match(ext, /manifestVersion/);
 assert.match(html, /\.user\.js/);
 assert.match(html, /manifest/);
 assert.match(html, /MV2\/MV3/);
-console.log('Extension regression checks passed: CSS, userscripts, Chrome MV2/MV3 manifests, chrome.* shims, permission warnings, lifecycle, isolation, and cache-safe imports.');
+console.log('Extension regression checks passed: CSS, userscripts, Chrome MV2/MV3 manifests, unpacked folders, _locales i18n, web-accessible resources, tabs/scripting/action shims, permission warnings, lifecycle, isolation, and cache-safe imports.');

@@ -47,6 +47,92 @@ export function classifyPermissions(list) {
   return { granted, denied, unsupported };
 }
 
+// --- Unpacked-folder reading ("Load unpacked", Chrome-style) ---------------
+//
+// The browser app reads a picked folder into {path, text|dataUrl} entries
+// (text for source files, data URLs for binaries like icons); this pure
+// reader locates manifest.json (root or a single subfolder), strips junk,
+// enforces size caps, and returns the manifest + file map the existing
+// Chrome pipeline already consumes.
+
+export const FOLDER_LIMITS = { maxFiles: 300, maxFileKb: 150, maxTotalKb: 900 };
+
+const JUNK_FOLDER = /(^|\/)(\.git|__MACOSX|node_modules|\.DS_Store|\.idea|\.vscode)(\/|$)/i;
+
+export function isBinaryPath(p) {
+  return /\.(?:png|jpe?g|gif|webp|bmp|ico|avif|woff2?|ttf|otf|eot|mp3|wav|ogg|mp4|webm)$/i.test(String(p || ""));
+}
+
+export function readExtensionFolder(entries) {
+  const clean = [];
+  for (const e of arr(entries)) {
+    const p = String(e?.path || "").replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+    if (!p || JUNK_FOLDER.test(p) || /\.(?:zip|crx|apk)$/i.test(p)) continue;
+    const content = typeof e?.dataUrl === "string" && e.dataUrl.startsWith("data:")
+      ? e.dataUrl
+      : typeof e?.text === "string" ? e.text : null;
+    if (content == null) continue;
+    clean.push({ path: p, content });
+  }
+  if (!clean.length) throw new Error("The folder doesn't contain any readable files.");
+  if (clean.length > FOLDER_LIMITS.maxFiles) throw new Error(`Too many files (${clean.length}); Veyra reads at most ${FOLDER_LIMITS.maxFiles} files per extension.`);
+
+  // manifest.json at the root, or in exactly one subfolder (user picked a
+  // parent directory) — the manifest's folder becomes the bundle root.
+  let root = "";
+  if (!clean.some(e => e.path === "manifest.json")) {
+    const cands = [...new Set(clean
+      .filter(e => /(^|\/)manifest\.json$/.test(e.path) && (e.path.match(/\//g) || []).length <= 2)
+      .map(e => e.path.slice(0, e.path.length - "manifest.json".length)))];
+    if (cands.length === 1) root = cands[0];
+    else if (cands.length > 1) throw new Error("The folder contains more than one manifest.json — pick the extension's own folder.");
+    else throw new Error("No manifest.json found in that folder.");
+  }
+
+  const files = {};
+  let total = 0;
+  for (const e of clean) {
+    if (root && !e.path.startsWith(root)) continue; // file outside the extension folder
+    const rel = root ? e.path.slice(root.length) : e.path;
+    if (e.content.length > FOLDER_LIMITS.maxFileKb * 1024) throw new Error(`File "${e.path}" is larger than ${FOLDER_LIMITS.maxFileKb} KB.`);
+    total += e.content.length;
+    files[rel] = e.content;
+  }
+  if (total > FOLDER_LIMITS.maxTotalKb * 1024) throw new Error(`The unpacked extension is too large (${Math.round(total / 1024)} KB; ${FOLDER_LIMITS.maxTotalKb} KB max).`);
+
+  let manifest = null;
+  try { manifest = JSON.parse(files["manifest.json"]); } catch { throw new Error("manifest.json is not valid JSON."); }
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("manifest.json must contain a JSON object.");
+  return { manifest, files, rootPath: root };
+}
+
+// --- i18n (_locales) --------------------------------------------------------
+
+function loadLocaleMessages(files, locale) {
+  const raw = files[`_locales/${locale}/messages.json`];
+  if (typeof raw !== "string") return null;
+  try {
+    const m = JSON.parse(raw);
+    if (!m || typeof m !== "object" || Array.isArray(m)) return null;
+    const out = {};
+    for (const [k, v] of Object.entries(m)) if (v && typeof v === "object" && typeof v.message === "string") out[k] = v.message;
+    return out;
+  } catch { return null; }
+}
+
+function substituteMessages(value, messages) {
+  return String(value ?? "").replace(/__MSG_([A-Za-z0-9_@]+)__/g, (whole, k) =>
+    messages && Object.prototype.hasOwnProperty.call(messages, k) ? messages[k] : whole);
+}
+
+function resolveLocaleMessages(files, defaultLocale) {
+  if (!defaultLocale) return null;
+  return loadLocaleMessages(files, defaultLocale)
+    || loadLocaleMessages(files, defaultLocale.split(/[-_]/)[0])
+    || loadLocaleMessages(files, "en")
+    || loadLocaleMessages(files, "en_US");
+}
+
 export function isHostPattern(p) {
   const v = String(p || "");
   return v === "<all_urls>" || v.includes("://") || v.includes("/") || v.startsWith("*.");
@@ -118,17 +204,31 @@ export function parseChromeManifest(manifest, files = {}) {
     if (mv === 1) throw new Error("Manifest version 1 is obsolete; Veyra supports Chrome MV2 and MV3 extensions.");
     throw new Error(`Unsupported manifest_version ${str(manifest.manifest_version, 20) || "(missing)"}; Veyra supports Chrome MV2 and MV3 extensions.`);
   }
-  const name = str(manifest.name, 80);
-  if (!name) throw new Error("The extension manifest is missing a name.");
   const warnings = [];
+  // i18n: _locales/<default_locale>/messages.json + __MSG_key__ substitution
+  // in name/description, exactly like Chrome resolves localized manifest strings.
+  const defaultLocale = str(manifest.default_locale, 40);
+  let messages = null;
+  if (defaultLocale) {
+    messages = resolveLocaleMessages(files, defaultLocale);
+    if (!messages) warnings.push(`No _locales messages found for default_locale "${defaultLocale}"; __MSG_ keys stay literal.`);
+  }
+  const name = substituteMessages(str(manifest.name, 80), messages);
+  if (!name) throw new Error("The extension manifest is missing a name.");
   const version = str(manifest.version, 20);
   if (!version) warnings.push("Manifest has no version; defaulting to 1.0.0.");
 
-  // icons (metadata only; missing icon files are a warning, not an error)
+  // icons: paths kept as metadata, plus ready-to-render data URLs (binaries
+  // arrive as data URLs; SVG text is encoded on the fly) so the UI can show
+  // the extension's real icon like Chrome's extension page does.
   const icons = {};
+  const iconData = {};
   for (const [size, path] of Object.entries(manifest.icons && typeof manifest.icons === "object" ? manifest.icons : {})) {
     icons[size] = String(path);
-    if (typeof files[String(path)] !== "string") warnings.push(`Icon file "${path}" is missing from the bundle.`);
+    const content = files[String(path)];
+    if (typeof content !== "string") { warnings.push(`Icon file "${path}" is missing from the bundle.`); continue; }
+    if (content.startsWith("data:")) iconData[size] = content;
+    else if (/\.svg$/i.test(String(path))) iconData[size] = "data:image/svg+xml," + encodeURIComponent(content.slice(0, 65536));
   }
 
   // content_scripts: multiple entries, each with its own match/run_at rules
@@ -193,10 +293,27 @@ export function parseChromeManifest(manifest, files = {}) {
   for (const p of [...new Set([...classified.unsupported, ...optionalClassified.unsupported])]) warnings.push(`Permission "${p}" has no Veyra implementation; calls to that API throw a helpful error.`);
   const denied = [...new Set([...classified.denied, ...optionalClassified.denied])];
 
-  // web_accessible_resources (MV3 objects / MV2 strings)
+  // web_accessible_resources (MV3 objects / MV2 strings). The referenced
+  // files are embedded into the record so chrome.runtime.getURL() can serve
+  // real, working URLs (data URLs for binaries, blob URLs for text) inside
+  // the proxied page — the one Chrome resource rule Veyra can honor fully.
   const war = arr(manifest.web_accessible_resources).map(r => r && typeof r === "object"
     ? { resources: arr(r.resources).map(String), matches: arr(r.matches).map(String) }
     : String(r));
+  const warPaths = [];
+  for (const r of war) {
+    if (typeof r === "string") warPaths.push(r);
+    else for (const res of r.resources) warPaths.push(res);
+  }
+  const resources = {};
+  let resBytes = 0;
+  for (const p of [...new Set(warPaths)].slice(0, 40)) {
+    const content = files[p];
+    if (typeof content !== "string") { if (p !== "") warnings.push(`Web-accessible resource "${p}" is missing from the bundle.`); continue; }
+    if (resBytes + content.length > 250000) { warnings.push("Too many web-accessible resources to embed; some runtime.getURL() paths will not resolve."); break; }
+    resources[p] = content;
+    resBytes += content.length;
+  }
 
   // action / browser_action metadata
   const actionMeta = manifest.action || manifest.browser_action || null;
@@ -222,8 +339,8 @@ export function parseChromeManifest(manifest, files = {}) {
     manifestVersion: mv,
     name,
     version: version || "1.0.0",
-    description: str(manifest.description, 300) || `Imported Chrome MV${mv} extension`,
-    icons,
+    description: substituteMessages(str(manifest.description, 300), messages) || `Imported Chrome MV${mv} extension`,
+    icons, iconData,
     contentScripts,
     css: cssParts.join("\n"),
     script: jsParts.join("\n\n"),
@@ -238,6 +355,8 @@ export function parseChromeManifest(manifest, files = {}) {
     },
     hostPermissions: hosts,
     webAccessibleResources: war,
+    resources,
+    i18n: { defaultLocale: defaultLocale || "en", messages: messages || {} },
     action,
     minimumChromeVersion,
     warnings,
@@ -271,6 +390,8 @@ export function buildContentScriptShim(ext) {
   return `var chrome = (function () {
   var EXT_ID = ${JSON.stringify(ext.id)};
   var MANIFEST = ${JSON.stringify(manifest)};
+  var RESOURCES = ${JSON.stringify(ext.resources || {})};
+  var MESSAGES = ${JSON.stringify(ext.i18n?.messages || {})};
   var NS = "veyra-ext:" + EXT_ID + ":";
   var here = function () { return typeof location !== "undefined" ? location.href : ""; };
 
@@ -348,7 +469,18 @@ export function buildContentScriptShim(ext) {
     id: EXT_ID,
     get lastError() { return lastError; },
     getManifest: function () { return JSON.parse(JSON.stringify(MANIFEST)); },
-    getURL: function (path) { return "chrome-extension://" + EXT_ID + "/" + String(path || "").replace(/^\\/+/, ""); },
+    getURL: function (path) {
+      var p = String(path || "").replace(/^\\/+/, "");
+      if (Object.prototype.hasOwnProperty.call(RESOURCES, p)) {
+        var c = RESOURCES[p];
+        if (/^data:/.test(c)) return c;
+        try {
+          var mime = /\\.html?$/i.test(p) ? "text/html" : /\\.js$/i.test(p) ? "text/javascript" : /\\.css$/i.test(p) ? "text/css" : "text/plain";
+          return URL.createObjectURL(new Blob([c], { type: mime }));
+        } catch (e) {}
+      }
+      return "chrome-extension://" + EXT_ID + "/" + p;
+    },
     sendMessage: function () {
       var args = Array.prototype.slice.call(arguments);
       var msg = args[0], cb = null;
@@ -394,6 +526,20 @@ export function buildContentScriptShim(ext) {
   var PASSTHRU = { then: 1, toJSON: 1, constructor: 1, valueOf: 1, toString: 1 };
   var base = {
     runtime: runtime,
+    i18n: {
+      getMessage: function (msgName, substitutions) {
+        var k = String(msgName || "");
+        var m = Object.prototype.hasOwnProperty.call(MESSAGES, k) ? MESSAGES[k] : "";
+        if (!m) return "";
+        if (substitutions != null) {
+          var subs = Array.isArray(substitutions) ? substitutions : [substitutions];
+          m = m.replace(/\\$([1-9])/g, function (_, n) { var v = subs[Number(n) - 1]; return v == null ? "" : String(v); });
+        }
+        return m;
+      },
+      getUILanguage: function () { return String((typeof navigator !== "undefined" && navigator.language) || "en").replace(/-/g, "_"); },
+      getAcceptLanguages: function (cb) { var l = [String(navigator.language || "en")]; if (cb) cb(l); return undefined; }
+    },
     storage: {
       local: storageArea("local", 5 * 1024 * 1024),
       sync: storageArea("sync", 8192),
@@ -463,6 +609,8 @@ export function buildBackgroundWorkerSource(ext) {
   return `${`self.chrome = (function () {
   var EXT_ID = ${JSON.stringify(ext.id)};
   var MANIFEST = ${JSON.stringify(manifest)};
+  var RESOURCES = ${JSON.stringify(ext.resources || {})};
+  var MESSAGES = ${JSON.stringify(ext.i18n?.messages || {})};
   var NS = "veyra-ext:" + EXT_ID + ":";
   var seq = 0;
   var pending = new Map();
@@ -483,7 +631,18 @@ export function buildBackgroundWorkerSource(ext) {
     id: EXT_ID,
     get lastError() { return lastError; },
     getManifest: function () { return JSON.parse(JSON.stringify(MANIFEST)); },
-    getURL: function (path) { return "chrome-extension://" + EXT_ID + "/" + String(path || "").replace(/^\\/+/, ""); },
+    getURL: function (path) {
+      var p = String(path || "").replace(/^\\/+/, "");
+      if (Object.prototype.hasOwnProperty.call(RESOURCES, p)) {
+        var c = RESOURCES[p];
+        if (/^data:/.test(c)) return c;
+        try {
+          var mime = /\\.html?$/i.test(p) ? "text/html" : /\\.js$/i.test(p) ? "text/javascript" : /\\.css$/i.test(p) ? "text/css" : "text/plain";
+          return URL.createObjectURL(new Blob([c], { type: mime }));
+        } catch (e) {}
+      }
+      return "chrome-extension://" + EXT_ID + "/" + p;
+    },
     sendMessage: function (msg, cb) {
       lastError = null;
       rpc("sendMessage", msg).then(function (r) {
@@ -533,8 +692,54 @@ export function buildBackgroundWorkerSource(ext) {
     });
   }
   var PASSTHRU = { then: 1, toJSON: 1, constructor: 1, valueOf: 1, toString: 1 };
+  var actionListeners = new Set();
+  var tabs = {
+    query: function (q, cb) {
+      return rpc("tabs.query", q || {}).then(function (ts) { if (cb) { cb(ts); return undefined; } return ts; }, function (e) { if (cb) { lastError = { message: e.message }; cb([]); } });
+    },
+    get: function (tabId, cb) {
+      return rpc("tabs.get", tabId).then(function (t) { if (cb) { cb(t); return undefined; } return t; }, function (e) { if (cb) { lastError = { message: e.message }; cb(); } });
+    },
+    create: function (props, cb) {
+      return rpc("tabs.create", props || {}).then(function (t) { if (cb) { cb(t); return undefined; } return t; }, function (e) { if (cb) { lastError = { message: e.message }; cb(); } });
+    },
+    sendMessage: function (tabId, msg, cb) {
+      return rpc("tabs.sendMessage", { tabId: tabId, message: msg }).then(function (r) { if (cb) { lastError = r && r.lastError ? r.lastError : null; cb(r ? r.response : undefined); } }, function (e) { if (cb) { lastError = { message: e.message }; cb(); } });
+    },
+    onUpdated: { addListener: function () {}, removeListener: function () {}, hasListener: function () { return false; } },
+    onActivated: { addListener: function () {}, removeListener: function () {}, hasListener: function () { return false; } },
+    onRemoved: { addListener: function () {}, removeListener: function () {}, hasListener: function () { return false; } }
+  };
+  var scripting = {
+    executeScript: function (details, cb) {
+      return rpc("scripting.executeScript", details || {}).then(function (r) { if (cb) { cb(r || []); return undefined; } return r || []; }, function (e) { if (cb) { lastError = { message: e.message }; cb([]); } });
+    }
+  };
   var base = {
     runtime: runtime,
+    tabs: tabs,
+    scripting: scripting,
+    action: {
+      onClicked: {
+        addListener: function (fn) { if (typeof fn === "function") actionListeners.add(fn); },
+        removeListener: function (fn) { actionListeners.delete(fn); },
+        hasListener: function (fn) { return actionListeners.has(fn); }
+      }
+    },
+    i18n: {
+      getMessage: function (msgName, substitutions) {
+        var k = String(msgName || "");
+        var m = Object.prototype.hasOwnProperty.call(MESSAGES, k) ? MESSAGES[k] : "";
+        if (!m) return "";
+        if (substitutions != null) {
+          var subs = Array.isArray(substitutions) ? substitutions : [substitutions];
+          m = m.replace(/\\$([1-9])/g, function (_, n) { var v = subs[Number(n) - 1]; return v == null ? "" : String(v); });
+        }
+        return m;
+      },
+      getUILanguage: function () { return String((typeof navigator !== "undefined" && navigator.language) || "en").replace(/-/g, "_"); },
+      getAcceptLanguages: function (cb) { var l = [String(navigator.language || "en")]; if (cb) cb(l); return undefined; }
+    },
     storage: {
       local: deliver("local"),
       sync: deliver("sync"),
@@ -557,6 +762,13 @@ export function buildBackgroundWorkerSource(ext) {
       var respond = function (response) { self.postMessage({ __veyraSendResponse: m.__veyraMessage, response: response }); };
       listeners.forEach(function (fn) {
         try { fn(m.message, { id: EXT_ID }, respond); } catch (e) {}
+      });
+    }
+    // The host fires this when the user clicks the extension's entry in
+    // Veyra's puzzle popover — Chrome's toolbar-icon click, no popup case.
+    if (m.__veyraActionClick) {
+      actionListeners.forEach(function (fn) {
+        try { fn({ id: EXT_ID }); } catch (e) {}
       });
     }
   };
