@@ -18,7 +18,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, isAdmin, confirmDialog, copyText } from "./core.js?v=8.28.43-admin-console";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, confirmDialog, copyText } from "./core.js?v=8.28.44-admin-entry";
 
 let refreshTimer = null;
 let currentTab = "access";
@@ -43,7 +43,7 @@ const statusDate = value => value ? new Date(value).toLocaleString(undefined, { 
 const badge = (label, tone) => `<span class="adm-badge ${tone}"><i aria-hidden="true"></i>${esc(label)}</span>`;
 
 export function renderAdmin(section = "") {
-  if (!isAdmin()) return;
+  if (!hooks.canOpenAdminPanel?.()) return;
   if (section && TABS.some(([id]) => id === section)) currentTab = section;
   const box = $("adminPanel") || $("view-admin");
   if (!box) return;

@@ -32,6 +32,8 @@
 .adm-board{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:16px;align-items:start}
 .adm-side{display:grid;gap:16px;min-width:0}
 .adm-panel{min-width:0;background:var(--surface);border:1px solid var(--line-2);border-radius:14px;padding:clamp(14px,2.2vw,24px)}
+.adm-entry{display:grid;gap:16px;max-width:580px}
+[data-admin-bookmark] svg{width:14px;height:14px;color:var(--info);flex:none}
 .adm-panel h2{font:760 1.37rem/1.15 var(--font-display);margin:5px 0 4px;letter-spacing:-.012em}
 .adm-panel header{margin-bottom:16px}
 .adm-panel header>div{min-width:0}

@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.43-admin-console";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.44-admin-entry";
 
 const pending = new Map();
 const listeners = new Set();
