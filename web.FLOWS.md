@@ -1,5 +1,12 @@
 # Developer portal QA
 
+## Web workspace and tab layout
+
+- In Customize workspace choose Pulse, switch the tabs to the left and then right, change the rail width, and check the top layout still works. Check the compact mobile rail and reload to verify the chosen theme and layout are saved.
+- Create a named, coloured group from the browser menu or tab context menu. Add another tab; expand, collapse, rename and ungroup it. Verify group membership and order survive reload.
+- Open two Fast Proxy pages, then split them. Resize by mouse and keyboard, stack the panes, swap sides and choose a different partner. A running page must not reload when the split layout changes. Exit the split and confirm the active page remains clickable.
+- Toggle Game Focus and verify that animations and background diagnostics are reduced without dropping the visible page or session.
+
 ## Public documentation
 - Open `/dev/platform/` signed out. The old live portal shows only a sign-in form; the new entry should show the fetch guide first without signing in.
 - Switch the request language, copy an example, open the embed guide, and follow its direct reference link. The API key belongs only in a server-side environment variable.
@@ -30,3 +37,15 @@
 - In incognito, open the profile menu and select **Hide screen**. Check that Escape doesn't reveal the screen, and **Reveal screen** restores it. Switch browser tabs to check the automatic cover at desktop and phone widths. Check that Device Cast is absent from the menu and cannot be opened by route.
 - Open the VPN popover and full VPN panel. Verify a configured exit remains visible when the session-status request fails, that status is marked unknown, and that catalog failure is not described as zero configured exits.
 - Open the downloads page and verify the launcher ZIP link. Check the official GitHub signup bookmark in a new context without entering credentials.
+
+## Browser admin access
+
+- Baseline: `veyra://admin` exposes overview, sessions, crawls, requests, logs, ads, config and tools. Confirm the upgraded panel keeps them available from both browser entry pages.
+- Open `/web/admin` directly and reload `/web/admin/`. Expect a sign-in prompt signed out, a clear denial as a member, and the console as an administrator. Follow the sign-in button and verify successful sign-in opens the console without navigating away.
+- A verified administrator should see one **Admin panel** bookmark in the Veyra bookmarks bar. Click it to reopen the panel, and sign out with the panel open. The console and bookmark should disappear immediately. A stale saved session must not show the console or shortcut.
+- Simulate a failed access check and a failed download of the admin module. Verify a visible Retry button restores the console when the request can succeed.
+- With a disposable administrator, switch Public → Staff only, cancel once, and confirm again. The summary should show only saved settings. A fresh visitor and a valid invite holder should see the lock screen, and their API requests should fail. Administrator recovery sign-in should still open the panel; a regular account should not pass it.
+- While locked, turn new browser waitlist signups off and on. Check that the gate form reflects the setting and that the queue keeps its entries. The separate developer-platform waitlist must not be changed by this switch.
+- Enable access test mode, run read-only checks, then disable it. Confirm the checks match public, invite holder and staff behavior, and that nobody gains an account, credential or access from test mode.
+- Return to Invite only, redeem an existing invite, then switch Public. Reload in a fresh context; restart the fixture API and verify the persisted settings. Simulate a stale revision, rejected save and older server; expect clear errors or read-only status without showing a false save.
+- Review a disposable browser waitlist entry, rotate a link, and verify no live mail is sent during QA. Test the policy form and confirmation with the keyboard. At 375 px, status text and controls must wrap without horizontal page overflow.

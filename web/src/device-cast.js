@@ -13,7 +13,7 @@
  *   - Network quality indicator
  */
 
-import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.42-session-privacy";
+import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.29.1-session-privacy";
 import { qrSvg } from "./qr.js";
 
 let B;

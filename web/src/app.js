@@ -2,26 +2,34 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.42-session-privacy";
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
+} from "./core.js?v=8.29.1-session-privacy";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.42-session-privacy";
-import { initUI } from "./ui.js?v=8.28.42-session-privacy";
-import { initDevtools } from "./devtools.js?v=8.28.42-session-privacy";
-import { maybeOfferRenew } from "./renew.js?v=8.28.42-session-privacy";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.29.1-session-privacy";
+import { initUI } from "./ui.js?v=8.29.1-session-privacy";
+import { initDevtools } from "./devtools.js?v=8.29.1-session-privacy";
+import { maybeOfferRenew } from "./renew.js?v=8.29.1-session-privacy";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
+import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=1";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.28.42-session-privacy").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.29.1-session-privacy").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
+let adminModuleRetries = 0;
 function ensureAdminModule() {
-  adminModulePromise ||= import("./admin.js?v=8.28.42-session-privacy");
+  // A failed module fetch can be sticky for this document. Retry at a new URL.
+  const url = "./admin.js?v=8.29.1-session-privacy";
+  adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
+    adminModulePromise = null;
+    adminModuleRetries++;
+    throw error;
+  });
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
@@ -62,7 +70,7 @@ const INTERNAL = {
   "console-labs": { title: "Veyra Console Lab", icon: "i-terminal", path: "/console-labs", admin: true },
   dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
   platform: { title: "Developer platform", icon: "i-platform", path: "/dev/platform" },
-  admin: { title: "Admin panel", icon: "i-shield", path: "/admin", admin: true },
+  admin: { title: "Admin panel", icon: "i-shield", path: "/admin/", admin: true },
   cast: { title: "Device Cast", icon: "i-globe", path: "/cast" },
   internet: { title: "Internet", icon: "i-vpn", path: "/internet" }
 };
@@ -94,6 +102,7 @@ function persistTabGroups() {
 // writes; internal views are cheap to recreate so only page tabs are kept,
 // and the new-tab view is only kept when it is the single tab (so the first
 // boot after install still looks like a first boot).
+let lastSavedTabState = "";
 function persistTabState() {
   if (ephemeralSession()) return;
   const pageTabs = state.tabs.filter(t => t.view === "page" && t.url);
@@ -101,7 +110,11 @@ function persistTabState() {
   const tabs = (keepNewTab ? [state.tabs[0]] : pageTabs).map(t => ({
     id: t.id, url: t.url, title: t.title, view: t.view, groupId: t.groupId || null, pinned: !!t.pinned
   }));
-  save("veyra-tab-state", { tabs, activeId: state.activeId, seq: state.seq, savedAt: Date.now() });
+  const snapshot = { tabs, activeId: state.activeId, seq: state.seq };
+  const serialized = JSON.stringify(snapshot);
+  if (lastSavedTabState === serialized) return;
+  lastSavedTabState = serialized;
+  save("veyra-tab-state", { ...snapshot, savedAt: Date.now() });
 }
 function restoreTabState() {
   if (ephemeralSession()) return false;
@@ -115,8 +128,8 @@ function restoreTabState() {
   let restored = 0;
   for (const s of snap.tabs) {
     if (!s || typeof s.url !== "string" || !/^https?:\/\//i.test(s.url)) continue;
-    if (s.groupId && !validGroupIds.has(s.groupId)) s.groupId = null;
-    const t = makeTab({ id: s.id, url: s.url, view: "page", pinned: !!s.pinned, groupId: s.groupId || undefined, title: s.title || hostOf(s.url) || "New tab" });
+    if (s.groupId && (s.pinned || !validGroupIds.has(s.groupId))) s.groupId = null;
+    const t = makeTab({ id: s.id, url: s.url, view: "page", pinned: !!s.pinned, groupId: s.groupId || undefined, title: s.title || hostOf(s.url) || "New tab", needsInitialLoad: true });
     const n = Number(String(s.id || "").replace(/^t/, "")) || 0;
     if (n > seq) seq = n;
     state.tabs.push(t);
@@ -145,14 +158,13 @@ export function clearLocalAccountData() {
 }
 
 
-const GROUP_COLORS = ["#5b7fd6", "#c2566b", "#3f9a78", "#b0772f", "#8a5cc9", "#2f8fa8"];
-export function createTabGroup(name = "New Group") {
-  const group = { id: uid(), name, color: GROUP_COLORS[state.tabGroups.length % GROUP_COLORS.length], collapsed: false };
+export function createTabGroup(name = "New Group", color = "") {
+  const group = { id: uid(), name: String(name).trim().slice(0, 48) || "New group", color: validColour(color) ? color : GROUP_COLOURS[state.tabGroups.length % GROUP_COLOURS.length], collapsed: false };
   state.tabGroups.push(group); saveTabGroups(); return group;
 }
 export function assignTabToGroup(tabId, groupId) {
-  const t = tabById(tabId); if (!t) return;
-  t.groupId = groupId; persistTabGroups(); renderTabs();
+  const t = tabById(tabId); if (!t || !state.tabGroups.some(g => g.id === groupId)) return;
+  t.groupId = groupId; t.pinned = false; persistTabGroups(); renderTabs();
 }
 export function removeTabFromGroup(tabId) {
   const t = tabById(tabId); if (!t) return;
@@ -167,118 +179,187 @@ export function toggleGroupCollapse(groupId) {
   const g = state.tabGroups.find(g => g.id === groupId); if (!g) return;
   g.collapsed = !g.collapsed; saveTabGroups(); renderTabs();
 }
-export function renameTabGroup(groupId, name) {
+export function renameTabGroup(groupId, name, color = "") {
   const g = state.tabGroups.find(g => g.id === groupId); if (!g) return;
-  g.name = name; saveTabGroups(); renderTabs();
+  g.name = String(name).trim().slice(0, 48) || g.name;
+  if (validColour(color)) g.color = color;
+  saveTabGroups(); renderTabs();
+}
+async function groupTab(t, group = null) {
+  if (!t && !group) return;
+  const r = await promptDialog({ title: group ? "Edit tab group" : "Create tab group", ok: group ? "Save group" : "Create group", fields: [
+    { name: "name", label: "Group name", value: group?.name || "", placeholder: "Games, work, research…" },
+    { name: "color", label: "Group colour", type: "color", value: validColour(group?.color) ? group.color : GROUP_COLOURS[state.tabGroups.length % GROUP_COLOURS.length] }
+  ] });
+  if (!r || !state.tabs.includes(t) && !group) return;
+  if (group) renameTabGroup(group.id, r.name, r.color);
+  else assignTabToGroup(t.id, createTabGroup(r.name, r.color).id);
+}
+function openGroupMenu(id, x, y) {
+  const group = state.tabGroups.find(g => g.id === id); if (!group) return;
+  const pages = state.tabs.filter(t => t.groupId === id && splitEligible(t));
+  ctxMenu(x, y, [
+    { label: "Rename or recolour…", action: () => groupTab(null, group) },
+    { label: group.collapsed ? "Expand group" : "Collapse group", action: () => toggleGroupCollapse(id) },
+    { label: "Split first two pages", disabled: pages.length < 2, action: () => {
+      if (state.splitScreen.active) teardownSplitScreen();
+      switchTab(pages[0].id); toggleSplitScreen(pages[1].id);
+    } },
+    { label: "Ungroup tabs", action: () => deleteTabGroup(id) }
+  ]);
 }
 
+const splitEligible = t => t?.view === "page" && !!t.url && !isRemote(t);
+const splitMobile = matchMedia("(max-width:768px)");
+function loadRestoredTab(t) {
+  if (!t.needsInitialLoad || !t.url) return;
+  t.needsInitialLoad = false;
+  void loadInTab(t, t.url);
+}
 
 export function toggleSplitScreen(partnerId = null) {
   const ss = state.splitScreen;
   if (ss.active) { teardownSplitScreen(); renderActive({ push: false, replace: true }); return; }
 
   const t = activeTab();
-  if (!t || t.view !== "page") return;
+  if (!t || t.view !== "page") return toast("Open a page before starting split screen.", { kind: "warn" });
   if (isRemote(t)) return toast("Split view currently supports Fast proxy tabs only. Streamed Chromium tabs use one secure surface.", { kind: "warn", ms: 5000 });
-
-  // Prefer the tab the user asked to split with (right-click → "Split screen
-  // with this tab"); otherwise fall back to another proxy page tab, or a
-  // background duplicate of the current tab.
-  let rightTab = null;
+  if (!t.url) return;
   const partner = partnerId ? tabById(partnerId) : null;
-  if (partner && partner.id !== t.id && partner.view === "page" && !isRemote(partner)) rightTab = partner;
-  if (!rightTab) {
-    const otherTabs = state.tabs.filter(x => x.id !== t.id && x.view === "page" && !isRemote(x));
-    rightTab = otherTabs[0] || newTab({ url: t.url, background: true });
-  }
-  ss.active = true; ss.leftTabId = t.id; ss.rightTabId = rightTab.id;
+  const rightTab = splitEligible(partner) && partner !== t ? partner : state.tabs.find(x => x !== t && splitEligible(x));
+  if (!rightTab) return toast("Open two Fast proxy pages to use split screen.", { kind: "warn" });
+  Object.assign(ss, { active: true, leftTabId: t.id, rightTabId: rightTab.id, axis: paneLayout(settings.splitLayout), ratio: paneRatio(settings.splitRatio) });
+  getOrCreateFrame(t); getOrCreateFrame(rightTab);
+  loadRestoredTab(t); loadRestoredTab(rightTab);
   renderSplitScreen();
   renderTabs();
 }
 let splitDragCleanup = null;
 function teardownSplitScreen() {
   const ss = state.splitScreen;
-  const wrap = $("frameWrap");
-  if (wrap) qsa("#splitContainer .tab-frame").forEach(frame => wrap.insertBefore(frame, $("frameLoader")));
   ss.active = false; ss.leftTabId = null; ss.rightTabId = null;
   splitDragCleanup?.(); splitDragCleanup = null;
-  // Remove the whole container: it is an absolute, full-viewport, z-indexed
-  // overlay, so leaving it (or only its panes) behind blocks the page below.
   document.getElementById("splitContainer")?.remove();
-  document.getElementById("viewport")?.classList.remove("split-active");
+  $("viewport")?.classList.remove("split-active");
+  $("frameWrap")?.removeAttribute("data-split-axis");
+  qsa("#frameWrap .tab-frame").forEach(frame => frame.removeAttribute("data-split-pane"));
   renderTabs();
+}
+function syncSplitFrames() {
+  const ss = state.splitScreen; if (!ss.active) return;
+  const wrap = $("frameWrap");
+  const axis = splitMobile.matches ? "stack" : ss.axis;
+  wrap.dataset.splitAxis = axis;
+  wrap.style.setProperty("--split-position", `${ss.ratio}%`);
+  const divider = $("splitDivider");
+  divider?.setAttribute("aria-orientation", axis === "stack" ? "horizontal" : "vertical");
+  divider?.setAttribute("aria-valuenow", ss.ratio);
+  const axisButton = $("splitAxis");
+  if (axisButton) {
+    axisButton.disabled = splitMobile.matches;
+    axisButton.setAttribute("aria-pressed", String(axis === "stack"));
+    axisButton.title = splitMobile.matches ? "Small screens stack the panes automatically" : "Change split orientation";
+  }
+  const partner = $("splitPartner");
+  if (partner) {
+    const options = state.tabs.filter(t => t.id !== ss.leftTabId && splitEligible(t))
+      .map(t => [t.id, t.title, t.url]);
+    const signature = JSON.stringify(options);
+    if (partner.dataset.options !== signature) {
+      partner.dataset.options = signature;
+      partner.replaceChildren(...options.map(([id, title, url]) => Object.assign(new Option(title, id), { title: url })));
+    }
+    partner.value = ss.rightTabId;
+  }
+  for (const [id, pane] of [[ss.leftTabId, "first"], [ss.rightTabId, "second"]]) {
+    const tab = tabById(id);
+    const f = tab && frameFor(tab); if (f) f.dataset.splitPane = pane;
+    const picker = $(`splitTitle-${pane}`);
+    if (picker) { picker.textContent = tab?.title || "Page"; picker.setAttribute("aria-pressed", String(activeTab()?.id === id)); }
+  }
+  qsa("#frameWrap .tab-frame[data-split-pane]").forEach(frame => {
+    if (frame.id !== `frame-${ss.leftTabId}` && frame.id !== `frame-${ss.rightTabId}`) frame.removeAttribute("data-split-pane");
+  });
 }
 function renderSplitScreen() {
   const ss = state.splitScreen;
   if (!ss.active) return;
-  const viewport = document.getElementById("viewport");
-  if (!viewport) return;
-  viewport.classList.add("split-active");
-  
-  let splitContainer = document.getElementById("splitContainer");
+  $("viewport").classList.add("split-active");
+  const wrap = $("frameWrap");
+  let splitContainer = $("splitContainer");
   if (!splitContainer) {
     splitContainer = document.createElement("div");
     splitContainer.id = "splitContainer";
     splitContainer.className = "split-container";
-    viewport.appendChild(splitContainer);
+    wrap.appendChild(splitContainer);
   }
-  const leftTab = tabById(ss.leftTabId);
-  const rightTab = tabById(ss.rightTabId);
-  
-  
-  const leftFrame = leftTab ? frameFor(leftTab) : null;
-  const rightFrame = rightTab ? frameFor(rightTab) : null;
-  const preservedFrames = document.createDocumentFragment();
-  if (leftFrame) preservedFrames.appendChild(leftFrame);
-  if (rightFrame) preservedFrames.appendChild(rightFrame);
+  // Frames stay attached to #frameWrap. Swapping or resizing only changes
+  // their CSS bounds, not their browsing context or running game.
+  splitDragCleanup?.();
   splitContainer.innerHTML = `
-    <div class="split-pane split-left" id="splitLeft">
-      <div class="split-header"><span class="split-title">${esc(leftTab?.title || "Left")}</span><button class="icon-btn sm" id="splitClose" title="Close split view"><svg><use href="#i-x"/></svg></button></div>
-      <div class="split-content" id="splitLeftContent"></div>
-    </div>
-    <div class="split-divider" id="splitDivider"></div>
-    <div class="split-pane split-right" id="splitRight">
-      <div class="split-header"><span class="split-title">${esc(rightTab?.title || "Right")}</span><button class="icon-btn sm" id="splitSwap" title="Swap panes"><svg><use href="#i-reload"/></svg></button></div>
-      <div class="split-content" id="splitRightContent"></div>
-    </div>
-  `;
-  
-  if (leftFrame) document.getElementById("splitLeftContent")?.appendChild(leftFrame);
-  if (rightFrame) document.getElementById("splitRightContent")?.appendChild(rightFrame);
-  document.getElementById("splitClose")?.addEventListener("click", () => toggleSplitScreen());
-  document.getElementById("splitSwap")?.addEventListener("click", () => {
-    const tmp = ss.leftTabId; ss.leftTabId = ss.rightTabId; ss.rightTabId = tmp;
-    renderSplitScreen(); renderTabs();
-  });
-  
-  const divider = document.getElementById("splitDivider");
-  if (divider) {
-    // Pointer events on the divider itself (with capture) — no document-level
-    // listeners are leaked between re-renders, and touch dragging works.
-    // On the <=768px layout the panes stack in rows, so drag vertically.
-    divider.addEventListener("pointerdown", e => {
-      e.preventDefault();
-      const mobile = window.matchMedia("(max-width:768px)").matches;
-      const move = ev => {
-        const rect = splitContainer.getBoundingClientRect();
-        const pct = mobile ? ((ev.clientY - rect.top) / rect.height) * 100 : ((ev.clientX - rect.left) / rect.width) * 100;
-        const clamped = Math.max(20, Math.min(80, pct));
-        if (mobile) splitContainer.style.gridTemplateRows = `${clamped}fr 6px ${100 - clamped}fr`;
-        else splitContainer.style.gridTemplateColumns = `${clamped}fr 6px ${100 - clamped}fr`;
-      };
-      const up = () => {
-        splitDragCleanup = null;
-        divider.removeEventListener("pointermove", move);
-        divider.removeEventListener("pointerup", up);
-        divider.removeEventListener("pointercancel", up);
-      };
-      splitDragCleanup = up;
-      try { divider.setPointerCapture(e.pointerId); } catch {}
-      divider.addEventListener("pointermove", move);
-      divider.addEventListener("pointerup", up);
-      divider.addEventListener("pointercancel", up);
-    });
-  }
+    <div class="split-pane split-left"><div class="split-header">
+      <button type="button" class="split-title" id="splitTitle-first" title="Use first pane in the address bar"></button>
+      <div class="split-tools">
+        <button type="button" class="icon-btn sm" id="splitAxis" aria-label="Change split orientation" title="Change split orientation"><svg><use href="#i-layers"/></svg></button>
+        <button type="button" class="icon-btn sm" id="splitSwap" aria-label="Swap panes" title="Swap panes"><svg><use href="#i-reload"/></svg></button>
+        <button type="button" class="icon-btn sm" id="splitClose" aria-label="Close split view" title="Close split view"><svg><use href="#i-x"/></svg></button>
+      </div>
+    </div></div>
+    <div class="split-divider" id="splitDivider" role="separator" tabindex="0" aria-label="Resize split panes" aria-valuemin="20" aria-valuemax="80"></div>
+    <div class="split-pane split-right"><div class="split-header">
+      <button type="button" class="split-title" id="splitTitle-second" title="Use second pane in the address bar"></button>
+      <select id="splitPartner" aria-label="Replace second pane"></select>
+    </div></div>`;
+  $("splitClose").onclick = () => toggleSplitScreen();
+  $("splitAxis").onclick = () => {
+    ss.axis = ss.axis === "stack" ? "columns" : "stack";
+    settings.splitLayout = ss.axis; saveSettings(); syncSplitFrames();
+  };
+  $("splitSwap").onclick = () => {
+    [ss.leftTabId, ss.rightTabId] = [ss.rightTabId, ss.leftTabId];
+    renderSplitScreen(); $("splitSwap")?.focus();
+  };
+  $("splitTitle-first").onclick = () => switchTab(ss.leftTabId);
+  $("splitTitle-second").onclick = () => switchTab(ss.rightTabId);
+  $("splitPartner").onchange = e => {
+    const tab = tabById(e.target.value); if (!splitEligible(tab) || tab.id === ss.leftTabId) return;
+    const wasActive = state.activeId === ss.rightTabId;
+    ss.rightTabId = tab.id;
+    getOrCreateFrame(tab);
+    loadRestoredTab(tab);
+    if (wasActive) switchTab(tab.id);
+    renderSplitScreen(); $("splitPartner")?.focus();
+  };
+  const divider = $("splitDivider");
+  const resize = (value, persist = false) => {
+    ss.ratio = paneRatio(value); syncSplitFrames();
+    if (persist && settings.splitRatio !== ss.ratio) { settings.splitRatio = ss.ratio; saveSettings(); }
+  };
+  divider.onkeydown = e => {
+    const stack = wrap.dataset.splitAxis === "stack";
+    const change = { [stack ? "ArrowUp" : "ArrowLeft"]: -5, [stack ? "ArrowDown" : "ArrowRight"]: 5 }[e.key];
+    if (change == null && !["Home", "End"].includes(e.key)) return;
+    e.preventDefault(); resize(e.key === "Home" ? 20 : e.key === "End" ? 80 : ss.ratio + change, true);
+  };
+  divider.onpointerdown = e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); divider.focus(); splitDragCleanup?.();
+    const stack = wrap.dataset.splitAxis === "stack", rect = wrap.getBoundingClientRect();
+    const move = ev => resize(stack ? 100 * (ev.clientY - rect.top) / rect.height : 100 * (ev.clientX - rect.left) / rect.width);
+    const end = ev => { cleanup(); if (ev.type === "pointerup") resize(ss.ratio, true); };
+    const cleanup = () => {
+      splitDragCleanup = null;
+      divider.removeEventListener("pointermove", move);
+      divider.removeEventListener("pointerup", end);
+      divider.removeEventListener("lostpointercapture", end);
+    };
+    splitDragCleanup = cleanup;
+    divider.setPointerCapture(e.pointerId);
+    divider.addEventListener("pointermove", move);
+    divider.addEventListener("pointerup", end);
+    divider.addEventListener("lostpointercapture", end);
+  };
+  syncSplitFrames();
 }
 
 
@@ -299,9 +380,16 @@ function tabIconHtml(t) {
   if (t.favicon && state.session) return `<img src="${esc(proxyUrl(t.favicon, "resource", state.session.id))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'${esc(letterIcon(t.url).letter)}'}))">`;
   const li = letterIcon(t.url); return `<b style="display:grid;place-items:center;width:16px;height:16px;border-radius:4px;background:${li.color};color:#fff;font-size:10px">${esc(li.letter)}</b>`;
 }
+let renderedTabMarkup = null;
 export function renderTabs() {
   const list = $("tabsList"); if (!list) return;
-  const ordered = [...state.tabs.filter(t => t.pinned), ...state.tabs.filter(t => !t.pinned)];
+  const split = state.splitScreen;
+  if (split.active && (!splitEligible(tabById(split.leftTabId)) || !splitEligible(tabById(split.rightTabId)) ||
+    ![split.leftTabId, split.rightTabId].includes(state.activeId))) {
+    teardownSplitScreen(); return;
+  }
+  if (split.active) syncSplitFrames();
+  const ordered = arrangeTabs(state.tabs, state.tabGroups);
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
   let html = "";
   // Groups are rendered as contiguous blocks that always open and close with
@@ -313,12 +401,14 @@ export function renderTabs() {
   const renderedCollapsed = new Set();
   const headerFor = g => {
     const groupTabs = state.tabs.filter(x => x.groupId === g.id);
-    return `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${g.color}">
-          <div class="tab-group-header" data-group="${g.id}" title="Click to collapse/expand">
-            <span class="tab-group-dot" style="background:${g.color}"></span>
+    const color = validColour(g.color) ? g.color : GROUP_COLOURS[0];
+    return `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${color}">
+          <div class="tab-group-header" data-group="${esc(g.id)}">
+            <button class="tab-group-toggle" type="button" aria-label="${esc(g.name)}, ${groupTabs.length} tabs" aria-expanded="${!g.collapsed}" title="Expand or collapse group">
+            <span class="tab-group-dot"></span>
             <span class="tab-group-name">${esc(g.name)}</span>
-            <span class="tab-group-count">${groupTabs.length}</span>
-            <button class="tab-group-close" data-group-close="${g.id}" title="Remove group"><svg><use href="#i-x"/></svg></button>
+            <span class="tab-group-count">${groupTabs.length}</span></button>
+            <button class="tab-group-close" data-group-menu="${esc(g.id)}" aria-label="Options for ${esc(g.name)}" title="Group options"><svg><use href="#i-menu"/></svg></button>
           </div>`;
   };
   const groupFor = t => (t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null) || null;
@@ -333,13 +423,13 @@ export function renderTabs() {
         renderedCollapsed.add(gid);
         html += `<div class="tab-group-collapsed">`;
         for (const gt of groupTabs) {
-          html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
+          html += `<div class="tab tab-collapsed ${gt.id === state.activeId ? "active" : ""}" role="tab" aria-selected="${gt.id === state.activeId}" aria-label="${esc(gt.title)}" tabindex="${gt.id === state.activeId ? 0 : -1}" data-tab="${gt.id}" title="${esc(gt.title)}"><span class="tab-fav">${tabIconHtml(gt)}</span></div>`;
         }
         html += `</div></div>`;
       } else openGroupId = gid;
     }
     if (g && g.collapsed) continue;
-    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${g ? "grouped" : ""}" style="${g ? `--group-color:${g.color}` : ""}" role="tab" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
+    html += `<div class="tab ${t.id === state.activeId ? "active" : ""} ${t.pinned ? "pinned" : ""} ${g ? "grouped" : ""}" style="${g && validColour(g.color) ? `--group-color:${g.color}` : ""}" role="tab" aria-label="${esc(t.title || "New tab")}" aria-selected="${t.id === state.activeId}" tabindex="${t.id === state.activeId ? 0 : -1}" data-tab="${t.id}" draggable="true" title="${esc(t.title)}${t.url ? "\n" + esc(t.url) : ""}">
       <span class="tab-fav">${tabIconHtml(t)}</span><span class="tab-title">${esc(t.title || "New tab")}</span>${t.browserMode === "BROWSER_ENGINE" && t.view === "page" ? `<span class="tab-badge" title="Real Chromium tab">CR</span>` : ""}
       <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
   }
@@ -348,14 +438,18 @@ export function renderTabs() {
   // persisted state) does not keep collecting empty groups.
   const emptyGroups = state.tabGroups.filter(g => !state.tabs.some(t => t.groupId === g.id));
   if (emptyGroups.length) { state.tabGroups = state.tabGroups.filter(g => !emptyGroups.includes(g)); saveTabGroups(); }
-  list.innerHTML = html;
   persistTabState();
+  if (html === renderedTabMarkup) return;
+  renderedTabMarkup = html;
+  list.innerHTML = html;
   list.querySelectorAll(".tab").forEach(el => {
     el.onmousedown = e => { if (e.button === 1) { e.preventDefault(); closeTab(el.dataset.tab); } };
     el.onclick = e => { if (!e.target.closest("[data-close]")) switchTab(el.dataset.tab); };
     el.onkeydown = e => {
       const tabs = [...list.querySelectorAll(".tab[data-tab]")]; const i = tabs.indexOf(el);
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length]?.focus(); return; }
+      const vertical = list.getAttribute("aria-orientation") === "vertical";
+      const next = vertical ? "ArrowDown" : "ArrowRight", prev = vertical ? "ArrowUp" : "ArrowLeft";
+      if (e.key === next || e.key === prev) { e.preventDefault(); tabs[(i + (e.key === next ? 1 : -1) + tabs.length) % tabs.length]?.focus(); return; }
       if (e.key === "Home" || e.key === "End") { e.preventDefault(); tabs[e.key === "Home" ? 0 : tabs.length - 1]?.focus(); return; }
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); switchTab(el.dataset.tab); }
     };
@@ -368,12 +462,18 @@ export function renderTabs() {
   list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
   
   list.querySelectorAll("[data-group]").forEach(el => {
-    el.onclick = e => { if (!e.target.closest("[data-group-close]")) toggleGroupCollapse(el.dataset.group); };
+    el.querySelector(".tab-group-toggle").onclick = () => {
+      toggleGroupCollapse(el.dataset.group);
+      [...list.querySelectorAll("[data-group]")].find(x => x.dataset.group === el.dataset.group)?.querySelector(".tab-group-toggle")?.focus();
+    };
+    el.oncontextmenu = e => { e.preventDefault(); openGroupMenu(el.dataset.group, e.clientX, e.clientY); };
     // Drop a tab onto a group header to add it to that group.
     el.ondragover = e => e.preventDefault();
     el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); if (from) assignTabToGroup(from, el.dataset.group); };
   });
-  list.querySelectorAll("[data-group-close]").forEach(b => b.onclick = e => { e.stopPropagation(); deleteTabGroup(b.dataset.groupClose); });
+  list.querySelectorAll("[data-group-menu]").forEach(b => b.onclick = e => {
+    e.stopPropagation(); const bounds = b.getBoundingClientRect(); openGroupMenu(b.dataset.groupMenu, bounds.left, bounds.bottom);
+  });
   list.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function moveTab(fromId, toId) {
@@ -387,7 +487,7 @@ function moveTab(fromId, toId) {
   // placed inside a group — the old drop handler silently ignored groups.
   const anchor = tabById(toId);
   if (anchor) {
-    if (anchor.groupId && anchor.groupId !== t.groupId) { t.groupId = anchor.groupId; persistTabGroups(); }
+    if (anchor.groupId && anchor.groupId !== t.groupId) { t.groupId = anchor.groupId; t.pinned = false; persistTabGroups(); }
     else if (!anchor.groupId && t.groupId) { delete t.groupId; persistTabGroups(); }
   }
   renderTabs();
@@ -402,27 +502,22 @@ function tabContextMenu(id, x, y) {
         if (state.tabGroups.length === 1) { assignTabToGroup(id, state.tabGroups[0].id); }
         else {
           const items = state.tabGroups.map(g => ({ label: g.name, action: () => assignTabToGroup(id, g.id) }));
-          items.push("-", { label: "New group…", action: async () => {
-            const r = await promptDialog({ title: "New tab group", ok: "Create", fields: [{ name: "name", label: "Group name", value: "", placeholder: "Work, Research…" }] });
-            if (r && r.name) { const g = createTabGroup(r.name); assignTabToGroup(id, g.id); }
-          } });
+          items.push("-", { label: "New group…", action: () => groupTab(t) });
           ctxMenu(x + 30, y + 30, items);
         }
       }
     } },
-    ...(t.groupId ? [{ label: "Ungroup all tabs in this group", action: () => { const gid = t.groupId; state.tabs.forEach(tab => { if (tab.groupId === gid) delete tab.groupId; }); deleteTabGroup(gid); } }] : []),
+    { label: "Create tab group…", action: () => groupTab(t) },
+    ...(t.groupId ? [{ label: "Ungroup all tabs in this group", action: () => deleteTabGroup(t.groupId) }] : []),
   ] : [
-    { label: "Add to new group…", action: async () => {
-      const r = await promptDialog({ title: "New tab group", ok: "Create", fields: [{ name: "name", label: "Group name", value: "", placeholder: "Work, Research…" }] });
-      if (r && r.name) { const g = createTabGroup(r.name); assignTabToGroup(id, g.id); }
-    } }
+    { label: "Create tab group…", action: () => groupTab(t) }
   ];
   ctxMenu(x, y, [
     { label: "New tab to the right", action: () => newTab({ index: i + 1 }) },
     "-",
     { label: "Reload", kbd: "Ctrl+R", action: () => { switchTab(id); reload(); } },
     { label: "Duplicate", action: () => duplicateTab(t) },
-    { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; renderTabs(); } },
+    { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; if (t.pinned) delete t.groupId; persistTabGroups(); renderTabs(); } },
     "-",
     ...groupItems,
     { label: "Split screen with this tab", action: () => { const prev = state.activeId; switchTab(id); toggleSplitScreen(prev && prev !== id ? prev : null); } },
@@ -538,7 +633,7 @@ function applyRoute() {
   if (!state.tabs.length) { const t = makeTab(); state.tabs.push(t); state.activeId = t.id; renderTabs(); }
   const t = activeTab();
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
-  if (location.hash === "#console") return openInternal("console", { push: false });
+  if (location.hash === "#console" && !/^\/admin(?:\/|$)/.test(route)) return openInternal("console", { push: false });
   const [, first, second, third] = route.split("/");
   const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
@@ -575,7 +670,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
     if (currentRoute() === "/cast") history.replaceState({}, "", routeUrl("/browse") + "?incognito=1");
     return renderActive({ push: false });
   }
-  if (INTERNAL[view]?.admin && !isAdmin()) {
+  if (view !== "admin" && INTERNAL[view]?.admin && !isAdmin()) {
     toast("That page is only available to Veyra administrators", { kind: "warn" });
     if (currentRoute() === "/dev" || location.hash === "#console") { try { history.replaceState({}, "", routeUrl("/browse")); } catch {} }
     renderActive({ push: false }); return;
@@ -598,6 +693,76 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
 }
 function pushTabHistory(t, entry) { if (t.history[t.histIndex] === entry) return; t.history = t.history.slice(0, t.histIndex + 1); t.history.push(entry); t.histIndex = t.history.length - 1; }
 
+let adminAccess = null;
+function canOpenAdminPanel() {
+  return adminAccess?.status === "allowed" && adminAccess.token === auth.token && adminAccess.adminToken === settings.adminToken;
+}
+hooks.canOpenAdminPanel = canOpenAdminPanel;
+
+function syncAdminAccess({ force = false } = {}) {
+  const token = auth.token, adminToken = settings.adminToken;
+  if (!force && adminAccess?.token === token && adminAccess.adminToken === adminToken) return;
+  const access = { token, adminToken, status: token || adminToken ? "checking" : "signed-out" };
+  adminAccess = access;
+  auth.admin = false;
+  renderAdminAccessChange();
+  void api("/api/auth/config", { timeoutMs: 10000 }).then(config => {
+    if (adminAccess !== access || auth.token !== token || settings.adminToken !== adminToken) return;
+    auth.config = config;
+    auth.admin = !!((token || adminToken) && config.admin === true);
+    access.status = auth.admin ? "allowed" : token || adminToken ? "denied" : "signed-out";
+    state.serverLimitMs = Number(config.sessionTimeLimitMs) || 0;
+    tickSession();
+    hooks.onAuthChanged?.();
+    if (token || adminToken) renderAdminAccessChange();
+  }).catch(e => {
+    if (adminAccess !== access) return;
+    addLog("warn", `Could not verify administrator access: ${e.message}`);
+    if (token || adminToken) { access.status = "unavailable"; renderAdminAccessChange(); }
+  });
+}
+
+function renderAdminAccessChange() {
+  hooks.renderBookmarksBar?.();
+  const tab = activeTab();
+  if (tab?.view === "admin") renderAdminEntry(tab);
+  else if (!canOpenAdminPanel()) $("adminPanel")?.replaceChildren();
+}
+
+function adminMessage(box, message, actions = "") {
+  box.innerHTML = `<div class="adm-console"><header class="adm-masthead"><div class="adm-title">
+    <span class="adm-emblem" aria-hidden="true"><svg><use href="#i-shield"/></svg></span>
+    <div><div class="adm-kicker">VEYRA / OPERATIONS</div><h1>Admin panel</h1></div></div></header>
+    <div class="adm-panel adm-entry"><p role="status">${message}</p>${actions ? `<div class="adm-actions">${actions}</div>` : ""}</div></div>`;
+}
+
+function renderAdminEntry(tab) {
+  const box = $("adminPanel"); if (!box) return;
+  const retry = '<button type="button" class="btn primary" id="retryAdmin">Retry</button>';
+  if (!canOpenAdminPanel()) {
+    const status = adminAccess?.status;
+    if (status === "checking") return adminMessage(box, "Checking administrator access…");
+    const signIn = `<button type="button" class="btn primary" data-auth="login">${auth.token ? "Sign in with another account" : "Sign in"}</button>`;
+    const back = '<button type="button" class="btn ghost" id="leaveAdmin">Back to browsing</button>';
+    if (status === "unavailable") adminMessage(box, "Could not verify administrator access. Check the connection to VeyraServer and try again.", retry + back);
+    else if (status === "denied") adminMessage(box, "This session does not have administrator access. Sign in with a Veyra administrator account.", signIn + back);
+    else adminMessage(box, "Sign in with a Veyra administrator account to open the admin panel.", signIn + back);
+    if ($("retryAdmin")) $("retryAdmin").onclick = () => syncAdminAccess({ force: true });
+    $("leaveAdmin").onclick = goHome;
+    return;
+  }
+  const access = adminAccess;
+  adminMessage(box, "Loading the admin console…");
+  void ensureAdminModule().then(m => {
+    if (activeTab() === tab && tab.view === "admin" && adminAccess === access && canOpenAdminPanel()) m.renderAdmin(tab.section);
+  }).catch(e => {
+    if (activeTab() !== tab || tab.view !== "admin" || adminAccess !== access || !canOpenAdminPanel()) return;
+    addLog("warn", `Could not load the admin console: ${e.message}`);
+    adminMessage(box, "The admin console could not load. Try again.", retry);
+    $("retryAdmin").onclick = () => renderAdminEntry(tab);
+  });
+}
+
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
   // Split view overlays the whole viewport; if the active pane tab stops
@@ -611,7 +776,7 @@ export function renderActive({ push = true, replace = false } = {}) {
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => ensureAdminModule().then(m => m.renderAdmin(t.section)),
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdminEntry(t),
     cast: () => ensureCastModule().then(() => hooks.renderCast?.()), internet: () => ensureCastModule().then(() => hooks.renderInternet?.())
   }[t.view]; r?.();
   if (t.view !== "dev") clearInterval(state.devTimer);
@@ -719,14 +884,8 @@ function getOrCreateFrame(t) {
     ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
     : "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
-  // While split view is active, a pane tab's frame must live inside its pane —
-  // #frameWrap is hidden behind the split overlay, so a frame created there
-  // (e.g. the background duplicate opened when split starts) would never show.
-  const ss = state.splitScreen;
-  const pane = ss.active && (t.id === ss.leftTabId || t.id === ss.rightTabId)
-    ? document.getElementById(t.id === ss.leftTabId ? "splitLeftContent" : "splitRightContent")
-    : null;
-  if (pane) pane.appendChild(f); else $("frameWrap").insertBefore(f, $("frameLoader"));
+  $("frameWrap").insertBefore(f, $("frameLoader"));
+  syncSplitFrames();
   return f;
 }
 // Escape watchdog: when a proxied page's own scripts navigate the frame to a
@@ -1005,7 +1164,9 @@ function showFrameForTab(t) {
   surf.classList.toggle("frame-active", remote);
   if (!remote) clearRemoteSurface();
   if (remote) refreshRemote(t, true);
+  syncSplitFrames();
   setLoading(!!t.loading, 50, `Loading ${hostOf(t.url)}…`);
+  loadRestoredTab(t);
 }
 
 
@@ -1357,6 +1518,7 @@ function openCrawl(t, url, session, enabled = true) {
   });
 }
 async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "" } = {}) {
+  t.needsInitialLoad = false;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
   const previousUrl = t.url;
@@ -1661,12 +1823,19 @@ function renderError(t, kind, error) {
 function startPolling(t) { if (t.poll) clearInterval(t.poll); pollJob(t); t.poll = setInterval(() => pollJob(t), 1200); }
 async function pollJob(t) {
   if (!state.tabs.includes(t) || !t.jobId) { if (t.poll) clearInterval(t.poll); return; }
+  const split = state.splitScreen;
+  const visible = t === activeTab() || (split.active && (split.leftTabId === t.id || split.rightTabId === t.id));
+  if (t.pollInFlight || (settings.gameFocus && (document.hidden || !visible) && activeTab()?.view !== "console")) return;
+  const jobId = t.jobId;
+  t.pollInFlight = true;
   try {
-    const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}`, { timeoutMs: 8000 });
+    const b = await api(`/api/crawl/${encodeURIComponent(jobId)}`, { timeoutMs: 8000 });
+    if (t.jobId !== jobId || !state.tabs.includes(t)) return;
     for (const x of b.logs || []) { if (t.remoteLogIds.has(x.id)) continue; t.remoteLogIds.add(x.id); logs.push({ time: new Date(x.time).getTime(), level: x.level, message: `[${hostOf(t.url)}] ${x.message}` }); }
     if (activeTab()?.view === "console") renderConsole();
     if (b.done) { clearInterval(t.poll); t.poll = null; t.done = true; await Promise.all([loadResources(t), loadLinks(t)]); }
-  } catch (e) { if (e.status === 404 || e.code === "SESSION_EXPIRED") { clearInterval(t.poll); t.poll = null; } }
+  } catch (e) { if (t.jobId === jobId && (e.status === 404 || e.code === "SESSION_EXPIRED")) { clearInterval(t.poll); t.poll = null; } }
+  finally { t.pollInFlight = false; }
 }
 async function stopJob(id) { try { await api(`/api/crawl/${encodeURIComponent(id)}/stop`, { method: "POST" }); } catch {} }
 async function loadResources(t) { if (!t?.jobId) return; try { const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}/resources`); t.resources = b.resources || []; if (activeTab()?.view === "resources") renderResources(); } catch {} }
@@ -3014,6 +3183,7 @@ window.addEventListener("message", e => { handleMessage(e).catch(err => addLog("
 
 
 function wire() {
+  splitMobile.addEventListener("change", syncSplitFrames);
   ["pointerdown", "keydown", "wheel", "touchstart", "focus"].forEach(type => window.addEventListener(type, markUserActivity, { passive: true }));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") markUserActivity(); });
   window.addEventListener("pagehide", () => {
@@ -3060,7 +3230,8 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions,
+  syncAdminAccess, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab())
 };
 hooks.B = B;
 
@@ -3089,7 +3260,14 @@ async function boot() {
     const params = new URLSearchParams(location.search);
     const r = params.get("veyra_route");
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
-    if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
+    if (r) try {
+      const path = r.startsWith("/") ? r : "/" + r;
+      if (/^\/admin(?:\/[a-z-]+)?\/?$/.test(path)) {
+        params.delete("veyra_route");
+        const query = params.toString();
+        history.replaceState({}, "", routeUrl(path.endsWith("/") ? path : `${path}/`) + (query ? `?${query}` : "") + location.hash);
+      } else history.replaceState({}, "", APP_BASE + path);
+    } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B);
     // Rebuild the tab strip from the last snapshot (URLs, groups, pin state)
@@ -3097,13 +3275,12 @@ async function boot() {
     // replaced unless the snapshot says the strip was a single empty newtab.
     restoreTabState();
     renderTabs(); tickSession();
-    await revisitSavedSession();
+    if (!/^\/admin(?:\/|$)/.test(currentRoute())) await revisitSavedSession();
     applyRoute();
     applyStartup(params);
     // (Removed) the veyra_handoff return-trip param: with the cookie
     // handoff gone, nothing navigates back into the app with a target URL
     // anymore. Sign-in happens inside the fast proxy.
-    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }

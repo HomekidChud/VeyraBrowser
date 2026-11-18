@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.28.42-session-privacy";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.28.42-session-privacy", "./src/bootstrap.js?v=8.28.42-session-privacy"];
+const CACHE = "veyra-browser-shell-v8.29.1-session-privacy";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.29.1-session-privacy", "./src/bootstrap.js?v=8.29.1-session-privacy"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

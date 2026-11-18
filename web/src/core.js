@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.42";
+export const VERSION = "8.29.1";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -90,6 +90,8 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.user
 
 export const DEFAULT_SETTINGS = {
   theme: "dark", accent: "#8fb0f0", fontScale: 1, compact: false, showBookmarksBar: true, showHomeButton: true,
+  workspacePreset: "glacier", tabLayout: "top", tabRailWidth: 212, tabRailCompact: false, chromeShape: "soft",
+  newTabBackdrop: "glow", gameFocus: false, splitLayout: "columns", splitRatio: 50,
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   ntpShortcuts: true, ntpRecent: true, ntpClock: true,
@@ -216,8 +218,9 @@ export async function api(path, options = {}) {
   }
   const start = performance.now();
   const headers = new Headers(options.headers || {});
+  const requestToken = auth.token;
   headers.set("X-Veyra-Request-ID", requestId);
-  if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
+  if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);
   if (settings.adminToken) headers.set("X-Veyra-Admin-Token", settings.adminToken);
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
@@ -235,7 +238,7 @@ export async function api(path, options = {}) {
     if (!response.ok) {
       const err = new ApiError(data?.error || (typeof data === "string" ? data.slice(0, 300) : `HTTP ${response.status}`), response.status, data?.code || "HTTP_ERROR", rid, data);
       if (err.code === "SESSION_EXPIRED") hooks.onSessionExpired?.("server");
-      if (response.status === 401 && auth.token && /^\/api\/auth\/(me|data)/.test(path)) setAuth("", null);
+      if (response.status === 401 && requestToken && auth.token === requestToken && /^\/api\/auth\/(me|data)/.test(path)) setAuth("", null);
       throw err;
     }
     return data;
@@ -305,19 +308,6 @@ export async function getNeuralStats() {
   try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
-
-export async function testAdminLogin() {
-  try {
-    const cfg = await api("/api/auth/config", { timeoutMs: 5000 });
-    if (!cfg.testMode) return { ok: false, reason: "Test mode is off on this server" };
-    const result = await api("/api/auth/test-login", { method: "POST", json: {}, timeoutMs: 10000 });
-    if (result.ok && result.token) {
-      setAuth(result.token, result.user);
-      auth.admin = true;
-    }
-    return result;
-  } catch (e) { return { ok: false, reason: e.message }; }
-}
 
 
 export const logs = [];
