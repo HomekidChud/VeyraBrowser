@@ -2,9 +2,9 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.41-account-notices";
-import { initExtensions } from "./extensions.js?v=8.28.41-account-notices";
-import { initSettings } from "./settings.js?v=8.28.41-account-notices";
+} from "./core.js?v=8.28.44-admin-entry";
+import { initExtensions } from "./extensions.js?v=8.28.44-admin-entry";
+import { initSettings } from "./settings.js?v=8.28.44-admin-entry";
 import { accountDestination } from "./account-navigation.js?v=2";
 
 let B;
@@ -217,7 +217,7 @@ async function submitAuth(e) {
   btn.textContent = mode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
   try {
     const r = await api(`/api/auth/${mode}`, { json: mode === "signup" ? { email, password, name, signupKey } : { email, password } });
-    setAuth(r.token, r.user); auth.admin = r.user?.role === "admin";
+    setAuth(r.token, r.user);
     f.reset(); $("authDialog").close();
     toast(mode === "signup" ? `Welcome to Veyra, ${r.user.name || r.user.email}` : `Signed in as ${r.user.email}`);
     if (!$("landing").classList.contains("hidden")) B.goRoute("/browse");
@@ -238,15 +238,18 @@ async function submitAuth(e) {
   }
 }
 export async function signOut({ everywhere = false, forgetLocal = false } = {}) {
-  let remoteSignedOut = true;
-  try { await api("/api/auth/logout", { json: { everywhere } }); } catch (e) { remoteSignedOut = false; addLog("warn", `Remote sign-out was not confirmed: ${e.message}`); }
+  const revoke = api("/api/auth/logout", { json: { everywhere } }).then(() => true, e => {
+    addLog("warn", `Remote sign-out was not confirmed: ${e.message}`);
+    return false;
+  });
   if (forgetLocal) B.clearLocalAccountData?.();
-  setAuth("", null); auth.admin = false;
-  try { const c = await api("/api/auth/config"); auth.config = c; auth.admin = !!c.admin; } catch {}
-  onAuthChanged(); toast(remoteSignedOut ? (forgetLocal ? "Signed out and local account data removed" : "Signed out") : "Signed out locally. Server sign-out was not confirmed.", { kind: remoteSignedOut ? "" : "warn", ms: 5000 });
+  setAuth("", null);
   const v = B.activeTab()?.view; if (v === "dev" || v === "console") B.goHome();
+  const remoteSignedOut = await revoke;
+  toast(remoteSignedOut ? (forgetLocal ? "Signed out and local account data removed" : "Signed out") : "Signed out locally. Server sign-out was not confirmed.", { kind: remoteSignedOut ? "" : "warn", ms: 5000 });
 }
 function onAuthChanged() {
+  B.syncAdminAccess();
   updateAuthPolicy();
   const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user && !INCOGNITO); a.classList.toggle("incog", INCOGNITO);
   $("avatarText").innerHTML = INCOGNITO ? `<svg><use href="#i-incognito"/></svg><span class="incog-label">Incognito</span>` : auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
@@ -302,7 +305,7 @@ export async function pullSync() {
     if (d.extensions) save("veyra-extensions", d.extensions);
     if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);
     if (d.notes) save("veyra-notes", d.notes);
-    applyTheme(); B.renderActive({ push: false }); hooks.lastSync = Date.now();
+    applyTheme(); renderBookmarksBar(); B.renderActive({ push: false }); hooks.lastSync = Date.now();
   } catch (e) { addLog("warn", `Couldn't load synced data: ${e.message}`); }
   finally { syncing = false; }
 }
@@ -312,11 +315,10 @@ async function verifyAuth() {
   try {
     const r = await api("/api/auth/me");
     if (auth.token !== token) return false;
-    auth.admin = r.user?.role === "admin";
     setAuth(token, r.user);
     return true;
   } catch (e) {
-    if (e.status === 401 && auth.token === token) { auth.admin = false; setAuth("", null); }
+    if (e.status === 401 && auth.token === token) setAuth("", null);
     return false;
   }
 }
@@ -440,13 +442,32 @@ function openBookmark(bookmark, newTab = false, background = false) {
 
 function renderBookmarksBar() {
   const bar = $("bookmarksBar"); if (!settings.showBookmarksBar) { bar.classList.add("hidden"); return; }
+  const adminShortcut = !INCOGNITO && B.canOpenAdminPanel();
+  const bookmarks = B.state.bookmarks.map((b, i) => ({ b, i })).filter(({ b }) => !/^veyra:\/\/admin(?:[/?#]|$)/i.test(b.url));
+  const openAdmin = (newTab, background = false) => {
+    if (!B.canOpenAdminPanel()) return;
+    if (newTab) B.newTab({ view: "admin", background });
+    else B.openInternal("admin");
+  };
   bar.classList.remove("hidden");
-  bar.classList.toggle("empty", !B.state.bookmarks.length);
-  bar.innerHTML = B.state.bookmarks.length ? B.state.bookmarks.map((b, i) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")
+  bar.classList.toggle("empty", !adminShortcut && !bookmarks.length);
+  bar.innerHTML = adminShortcut || bookmarks.length ? `${adminShortcut ? '<button type="button" class="bm" data-admin-bookmark title="Admin panel"><svg aria-hidden="true"><use href="#i-shield"/></svg><span>Admin panel</span></button>' : ""}${bookmarks.map(({ b, i }) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")}`
     : `<span class="muted" style="font-size:.84em;padding:0 10px">Bookmark pages with ${esc(kbdFor("bookmark"))} and they'll appear here.</span>`;
-  bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], e.ctrlKey || e.metaKey); };
-  bar.onauxclick = e => { const b = e.target.closest("[data-i]"); if (b && e.button === 1) openBookmark(B.state.bookmarks[Number(b.dataset.i)], true, true); };
-  bar.oncontextmenu = e => { const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
+  bar.onclick = e => {
+    if (e.target.closest("[data-admin-bookmark]")) return openAdmin(e.ctrlKey || e.metaKey);
+    const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], e.ctrlKey || e.metaKey);
+  };
+  bar.onauxclick = e => {
+    if (e.button !== 1) return;
+    if (e.target.closest("[data-admin-bookmark]")) return openAdmin(true, true);
+    const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], true, true);
+  };
+  bar.oncontextmenu = e => {
+    if (e.target.closest("[data-admin-bookmark]")) {
+      e.preventDefault();
+      return ctxMenu(e.clientX, e.clientY, [{ label: "Open in new tab", action: () => openAdmin(true) }]);
+    }
+    const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
     ctxMenu(e.clientX, e.clientY, [
       { label: "Open in new tab", action: () => openBookmark(bm, true) },
       { label: "Edit…", action: async () => { const r = await promptDialog({ title: "Edit bookmark", fields: [{ name: "title", label: "Name", value: bm.title }, { name: "url", label: "URL", value: bm.url }] }); if (r) { bm.title = r.title; bm.url = r.url; B.saveBookmarks(); renderBookmarksBar(); } } },
@@ -588,7 +609,7 @@ hooks.openClearData = openClearData;
 
 export function initUI(b) {
   B = b;
-  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); renderBookmarksBar(); };
+  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); B.syncAdminAccess(); renderBookmarksBar(); };
   document.addEventListener("keydown", onKeyDown, true);
   wireOmnibox();
   $("menuBtn").onclick = () => $("mainMenu").classList.contains("hidden") ? openMainMenu() : closeFloating();

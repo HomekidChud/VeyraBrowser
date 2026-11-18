@@ -1,4 +1,92 @@
 /* Veyra — browser UI */
+/* Admin console layout is scoped to the dedicated browser view. */
+#adminPanel{max-width:1336px;margin-inline:auto;min-width:0}
+.adm-console{--adm-blue:color-mix(in oklab,var(--info) 12%,var(--surface));font-variant-numeric:tabular-nums lining-nums}
+.adm-masthead,.adm-title,.adm-actions,.adm-statusline,.adm-statusline>div,.adm-save,.adm-queue-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
+.adm-masthead{justify-content:space-between;padding:8px 0 22px;gap:16px}
+.adm-title{gap:14px;flex-wrap:nowrap}
+.adm-emblem,.adm-mode-top svg{color:var(--info)}
+.adm-emblem{display:grid;place-items:center;width:48px;height:48px;background:var(--adm-blue);border:1px solid color-mix(in oklab,var(--info) 28%,var(--line));border-radius:13px;flex:none}
+.adm-emblem svg{width:24px;height:24px}
+.adm-kicker{color:var(--text-2);font-size:.69rem;font-weight:750;letter-spacing:.12em}
+.adm-title h1{font:800 clamp(1.65rem,3vw,2.35rem)/1.05 var(--font-display);letter-spacing:-.025em;margin:4px 0}
+.adm-title p,.adm-panel p{margin:0;color:var(--text-2);line-height:1.55}
+.adm-actions{gap:8px}
+.adm-actions .btn svg{width:15px;height:15px}
+.adm-actions select{width:auto}
+.adm-tabs{display:flex;flex-wrap:wrap;gap:4px 10px;border-bottom:1px solid var(--line-2);padding-bottom:4px;margin-bottom:18px}
+.adm-tabs button{min-height:40px;padding:8px 10px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font:650 .86rem var(--font-ui);cursor:pointer;text-align:left}
+.adm-tabs button:hover{background:var(--surface-2);color:var(--text)}
+.adm-tabs button[aria-current]{background:var(--adm-blue);color:var(--info);box-shadow:inset 0 -2px var(--info)}
+.adm-section-picker{display:none}
+.adm-console :focus-visible{outline:2px solid var(--info);outline-offset:3px}
+.adm-statusline{justify-content:space-between;gap:8px 14px;color:var(--text-2);font-size:.78rem;margin-bottom:16px}
+.adm-statusline>div,.adm-inline-badges{display:flex;flex-wrap:wrap;gap:6px}
+.adm-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);border-radius:999px;font:650 .75rem/1.2 var(--font-ui);padding:5px 8px;color:var(--text-2);white-space:nowrap;width:max-content}
+.adm-badge i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.adm-badge.info{color:var(--info);background:var(--adm-blue)}
+.adm-badge.ok{color:var(--text);background:color-mix(in oklab,var(--ok) 12%,var(--surface))}
+.adm-badge.ok i{background:var(--ok)}
+.adm-badge.warn{color:var(--text);background:color-mix(in oklab,var(--warn) 16%,var(--surface))}
+.adm-badge.warn i{background:var(--warn)}
+.adm-board{display:grid;grid-template-columns:minmax(0,1.85fr) minmax(0,1fr);gap:16px;align-items:start}
+.adm-side{display:grid;gap:16px;min-width:0}
+.adm-panel{min-width:0;background:var(--surface);border:1px solid var(--line-2);border-radius:14px;padding:clamp(14px,2.2vw,24px)}
+.adm-entry{display:grid;gap:16px;max-width:580px}
+[data-admin-bookmark] svg{width:14px;height:14px;color:var(--info);flex:none}
+.adm-panel h2{font:760 1.37rem/1.15 var(--font-display);margin:5px 0 4px;letter-spacing:-.012em}
+.adm-panel header{margin-bottom:16px}
+.adm-panel header>div{min-width:0}
+.adm-modes{border:0;margin:0 0 16px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;min-width:0}
+.adm-sr,.adm-mode input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.adm-mode{position:relative;display:block;cursor:pointer;min-width:0}
+.adm-mode-card{display:grid;gap:4px;height:100%;padding:11px;border-radius:9px;border:1px solid var(--line-2);background:var(--bg-2)}
+.adm-mode-card:hover{border-color:var(--info)}
+.adm-mode input:checked+.adm-mode-card{border-color:var(--info);background:var(--adm-blue)}
+.adm-mode input:focus-visible+.adm-mode-card{outline:2px solid var(--info);outline-offset:2px}
+.adm-mode-card b{font-size:.91rem}
+.adm-mode-card small,.adm-setting span,.adm-save span,.adm-queue-row small{color:var(--text-2);line-height:1.45;font-size:.79rem;display:block;overflow-wrap:anywhere}
+.adm-mode-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
+.adm-mode-top svg{width:19px;height:19px}
+.adm-radio{width:15px;height:15px;border:1px solid var(--text-2);border-radius:50%}
+.adm-mode input:checked+.adm-mode-card .adm-radio{border:4px solid var(--info)}
+.adm-setting{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;border-top:1px solid var(--line);padding:13px 0}
+.adm-setting label{display:block;font-size:.94rem;font-weight:700;margin-bottom:2px;cursor:pointer}
+.adm-setting .switch{margin:0 2px 0 0;cursor:pointer}
+.adm-save{padding-top:14px;border-top:1px solid var(--line)}
+.adm-save .is-error{color:var(--err)}
+.adm-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0 0 14px}
+.adm-stats>div+div{border-left:1px solid var(--line-2);padding-left:12px}
+.adm-stats dt,.adm-checks dt{color:var(--text-2);font-size:.8rem}
+.adm-stats dd{font:800 1.75rem/1 var(--font-display);margin:5px 0 0}
+.adm-checks{display:grid;gap:5px;margin:12px 0}
+.adm-checks>div{display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid var(--line);padding:4px 0}
+.adm-checks dd{margin:0;font-weight:650;font-size:.8rem}
+#admCheckResults:not(:empty){margin-top:10px;color:var(--text-2);font-size:.8rem}
+.adm-queue-head{justify-content:space-between}
+.adm-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.adm-queue-row b{overflow-wrap:anywhere}
+#admQueueStatus:not(:empty){background:var(--bg-2);padding:12px;border-radius:8px;margin-bottom:10px;overflow-wrap:anywhere}
+.adm-console .table-wrap{max-width:100%;overflow:auto;overscroll-behavior:contain}
+@media(max-width:800px){.adm-board{grid-template-columns:minmax(0,1fr)}.adm-side{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){
+  #adminPanel{padding:14px 12px}
+  .adm-side{grid-template-columns:minmax(0,1fr)}
+  .adm-masthead{padding:4px 0 14px;position:relative}
+  .adm-title{padding-right:38px;gap:10px}
+  .adm-emblem{width:39px;height:39px}
+  .adm-emblem svg{width:20px;height:20px}
+  #adminRefresh{position:absolute;right:0;top:4px;width:36px;min-height:36px;padding:5px;justify-content:center}
+  #adminRefresh span,.adm-tabs{display:none}
+  .adm-section-picker{display:grid;gap:5px;margin-bottom:14px;font-size:.79rem;color:var(--text-2)}
+  .adm-section-picker select{min-height:44px}
+  .adm-mode-card{padding:8px}
+  .adm-mode-card b{font-size:.82rem}
+  .adm-mode-card small{font-size:.74rem}
+  .adm-queue-row{grid-template-columns:minmax(0,1fr) auto}
+  .adm-queue-row .adm-actions{grid-column:1/-1}
+  .adm-console .btn{min-height:40px}
+}
 :root{
   --accent:#8fb0f0;
   --ui-scale:1;

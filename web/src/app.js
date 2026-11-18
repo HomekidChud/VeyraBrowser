@@ -3,24 +3,31 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.41-account-notices";
+} from "./core.js?v=8.28.44-admin-entry";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.41-account-notices";
-import { initUI } from "./ui.js?v=8.28.41-account-notices";
-import { initDevtools } from "./devtools.js?v=8.28.41-account-notices";
-import { maybeOfferRenew } from "./renew.js?v=8.28.41-account-notices";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.44-admin-entry";
+import { initUI } from "./ui.js?v=8.28.44-admin-entry";
+import { initDevtools } from "./devtools.js?v=8.28.44-admin-entry";
+import { maybeOfferRenew } from "./renew.js?v=8.28.44-admin-entry";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.28.41-account-notices").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.28.44-admin-entry").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
+let adminModuleRetries = 0;
 function ensureAdminModule() {
-  adminModulePromise ||= import("./admin.js?v=8.28.41-account-notices");
+  // A failed module fetch can be sticky for this document. Retry at a new URL.
+  const url = "./admin.js?v=8.28.44-admin-entry";
+  adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
+    adminModulePromise = null;
+    adminModuleRetries++;
+    throw error;
+  });
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
@@ -61,7 +68,7 @@ const INTERNAL = {
   "console-labs": { title: "Veyra Console Lab", icon: "i-terminal", path: "/console-labs", admin: true },
   dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
   platform: { title: "Developer platform", icon: "i-platform", path: "/dev/platform" },
-  admin: { title: "Admin panel", icon: "i-shield", path: "/admin", admin: true },
+  admin: { title: "Admin panel", icon: "i-shield", path: "/admin/", admin: true },
   cast: { title: "Device Cast", icon: "i-globe", path: "/cast" },
   internet: { title: "Internet", icon: "i-vpn", path: "/internet" }
 };
@@ -535,7 +542,7 @@ function applyRoute() {
   if (!state.tabs.length) { const t = makeTab(); state.tabs.push(t); state.activeId = t.id; renderTabs(); }
   const t = activeTab();
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
-  if (location.hash === "#console") return openInternal("console", { push: false });
+  if (location.hash === "#console" && !/^\/admin(?:\/|$)/.test(route)) return openInternal("console", { push: false });
   const [, first, second, third] = route.split("/");
   const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
@@ -567,7 +574,7 @@ window.addEventListener("popstate", () => applyRoute());
 
 
 export function openInternal(view, { tab = null, push = true, section = "", calc = "" } = {}) {
-  if (INTERNAL[view]?.admin && !isAdmin()) {
+  if (view !== "admin" && INTERNAL[view]?.admin && !isAdmin()) {
     toast("That page is only available to Veyra administrators", { kind: "warn" });
     if (currentRoute() === "/dev" || location.hash === "#console") { try { history.replaceState({}, "", routeUrl("/browse")); } catch {} }
     renderActive({ push: false }); return;
@@ -590,6 +597,76 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
 }
 function pushTabHistory(t, entry) { if (t.history[t.histIndex] === entry) return; t.history = t.history.slice(0, t.histIndex + 1); t.history.push(entry); t.histIndex = t.history.length - 1; }
 
+let adminAccess = null;
+function canOpenAdminPanel() {
+  return adminAccess?.status === "allowed" && adminAccess.token === auth.token && adminAccess.adminToken === settings.adminToken;
+}
+hooks.canOpenAdminPanel = canOpenAdminPanel;
+
+function syncAdminAccess({ force = false } = {}) {
+  const token = auth.token, adminToken = settings.adminToken;
+  if (!force && adminAccess?.token === token && adminAccess.adminToken === adminToken) return;
+  const access = { token, adminToken, status: token || adminToken ? "checking" : "signed-out" };
+  adminAccess = access;
+  auth.admin = false;
+  renderAdminAccessChange();
+  void api("/api/auth/config", { timeoutMs: 10000 }).then(config => {
+    if (adminAccess !== access || auth.token !== token || settings.adminToken !== adminToken) return;
+    auth.config = config;
+    auth.admin = !!((token || adminToken) && config.admin === true);
+    access.status = auth.admin ? "allowed" : token || adminToken ? "denied" : "signed-out";
+    state.serverLimitMs = Number(config.sessionTimeLimitMs) || 0;
+    tickSession();
+    hooks.onAuthChanged?.();
+    if (token || adminToken) renderAdminAccessChange();
+  }).catch(e => {
+    if (adminAccess !== access) return;
+    addLog("warn", `Could not verify administrator access: ${e.message}`);
+    if (token || adminToken) { access.status = "unavailable"; renderAdminAccessChange(); }
+  });
+}
+
+function renderAdminAccessChange() {
+  hooks.renderBookmarksBar?.();
+  const tab = activeTab();
+  if (tab?.view === "admin") renderAdminEntry(tab);
+  else if (!canOpenAdminPanel()) $("adminPanel")?.replaceChildren();
+}
+
+function adminMessage(box, message, actions = "") {
+  box.innerHTML = `<div class="adm-console"><header class="adm-masthead"><div class="adm-title">
+    <span class="adm-emblem" aria-hidden="true"><svg><use href="#i-shield"/></svg></span>
+    <div><div class="adm-kicker">VEYRA / OPERATIONS</div><h1>Admin panel</h1></div></div></header>
+    <div class="adm-panel adm-entry"><p role="status">${message}</p>${actions ? `<div class="adm-actions">${actions}</div>` : ""}</div></div>`;
+}
+
+function renderAdminEntry(tab) {
+  const box = $("adminPanel"); if (!box) return;
+  const retry = '<button type="button" class="btn primary" id="retryAdmin">Retry</button>';
+  if (!canOpenAdminPanel()) {
+    const status = adminAccess?.status;
+    if (status === "checking") return adminMessage(box, "Checking administrator access…");
+    const signIn = `<button type="button" class="btn primary" data-auth="login">${auth.token ? "Sign in with another account" : "Sign in"}</button>`;
+    const back = '<button type="button" class="btn ghost" id="leaveAdmin">Back to browsing</button>';
+    if (status === "unavailable") adminMessage(box, "Could not verify administrator access. Check the connection to VeyraServer and try again.", retry + back);
+    else if (status === "denied") adminMessage(box, "This session does not have administrator access. Sign in with a Veyra administrator account.", signIn + back);
+    else adminMessage(box, "Sign in with a Veyra administrator account to open the admin panel.", signIn + back);
+    if ($("retryAdmin")) $("retryAdmin").onclick = () => syncAdminAccess({ force: true });
+    $("leaveAdmin").onclick = goHome;
+    return;
+  }
+  const access = adminAccess;
+  adminMessage(box, "Loading the admin console…");
+  void ensureAdminModule().then(m => {
+    if (activeTab() === tab && tab.view === "admin" && adminAccess === access && canOpenAdminPanel()) m.renderAdmin(tab.section);
+  }).catch(e => {
+    if (activeTab() !== tab || tab.view !== "admin" || adminAccess !== access || !canOpenAdminPanel()) return;
+    addLog("warn", `Could not load the admin console: ${e.message}`);
+    adminMessage(box, "The admin console could not load. Try again.", retry);
+    $("retryAdmin").onclick = () => renderAdminEntry(tab);
+  });
+}
+
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
   // Split view overlays the whole viewport; if the active pane tab stops
@@ -603,7 +680,7 @@ export function renderActive({ push = true, replace = false } = {}) {
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => ensureAdminModule().then(m => m.renderAdmin(t.section)),
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdminEntry(t),
     cast: () => ensureCastModule().then(() => hooks.renderCast?.()), internet: () => ensureCastModule().then(() => hooks.renderInternet?.())
   }[t.view]; r?.();
   if (t.view !== "dev") clearInterval(state.devTimer);
@@ -2992,7 +3069,8 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions,
+  syncAdminAccess, canOpenAdminPanel
 };
 hooks.B = B;
 
@@ -3021,7 +3099,14 @@ async function boot() {
     const params = new URLSearchParams(location.search);
     const r = params.get("veyra_route");
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
-    if (r) try { history.replaceState({}, "", APP_BASE + (r.startsWith("/") ? r : "/" + r)); } catch {}
+    if (r) try {
+      const path = r.startsWith("/") ? r : "/" + r;
+      if (/^\/admin(?:\/[a-z-]+)?\/?$/.test(path)) {
+        params.delete("veyra_route");
+        const query = params.toString();
+        history.replaceState({}, "", routeUrl(path.endsWith("/") ? path : `${path}/`) + (query ? `?${query}` : "") + location.hash);
+      } else history.replaceState({}, "", APP_BASE + path);
+    } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B);
     // Rebuild the tab strip from the last snapshot (URLs, groups, pin state)
@@ -3029,13 +3114,12 @@ async function boot() {
     // replaced unless the snapshot says the strip was a single empty newtab.
     restoreTabState();
     renderTabs(); tickSession();
-    await revisitSavedSession();
+    if (!/^\/admin(?:\/|$)/.test(currentRoute())) await revisitSavedSession();
     applyRoute();
     applyStartup(params);
     // (Removed) the veyra_handoff return-trip param: with the cookie
     // handoff gone, nothing navigates back into the app with a target URL
     // anymore. Sign-in happens inside the fast proxy.
-    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }
