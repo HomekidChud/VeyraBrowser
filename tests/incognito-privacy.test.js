@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 
 const app = readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 const core = readFileSync(new URL("../web/src/core.js", import.meta.url), "utf8");
+const ui = readFileSync(new URL("../web/src/ui.js", import.meta.url), "utf8");
 
 // --- Token generation: 32 random characters --------------------------------
 const rotIdx = app.indexOf("function rotateIncognitoAddressToken()");
@@ -41,5 +42,11 @@ assert.match(core, /const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS\.has\(k
 for (const key of ["veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-settings", "veyra-bookmarks"]) {
   assert.ok(core.includes(`"${key}"`), `ephemeral key set must include ${key}`);
 }
+assert.match(app, /const ephemeralSession = \(\) => INCOGNITO \|\| !auth\.user/);
+assert.match(app, /if \(ephemeralSession\(\)\) return false;/, "guest sessions cannot restore tabs");
+assert.match(app, /display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'/);
+assert.match(ui, /cover\.showModal\(\)/);
+assert.match(ui, /cover\.addEventListener\("cancel", event => event\.preventDefault\(\)\)/);
+assert.match(ui, /document\.addEventListener\("visibilitychange"/);
 
 console.log("incognito privacy regression checks passed");

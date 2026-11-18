@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.29.0-workspace";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.29.1-session-privacy";
 
 const pending = new Map();
 const listeners = new Set();

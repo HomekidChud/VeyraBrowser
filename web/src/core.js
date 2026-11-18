@@ -1,5 +1,5 @@
-import { toast } from "./notifications.js?v=1";
-export { toast };
+import { toast, clearNotifications } from "./notifications.js?v=2";
+export { toast, clearNotifications };
 
 export function bootParam(name) {
   try {
@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.29.0";
+export const VERSION = "8.29.1";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -49,12 +49,12 @@ export function safeJsonParse(raw, fallback) { try { const v = JSON.parse(raw); 
 
 
 export const INCOGNITO = (() => {
+  const q = bootParam("incognito");
   try {
-    const q = bootParam("incognito");
     if (q === "1") sessionStorage.setItem("veyra-incognito", "1");
     else if (q === "0") sessionStorage.removeItem("veyra-incognito");
     return sessionStorage.getItem("veyra-incognito") === "1";
-  } catch { return false; }
+  } catch { return q === "1"; }
 })();
 const EPHEMERAL_KEYS = new Set([
   "veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes",
@@ -182,20 +182,12 @@ export function engineUrl(q) {
 }
 
 
-const readSessionAuth = () => {
-  try {
-    const store = INCOGNITO ? sessionStorage : localStorage;
-    return safeJsonParse(store.getItem("veyra-auth"), null);
-  } catch { return null; }
-};
+const readSessionAuth = () => load("veyra-auth", null);
 export const auth = { token: readSessionAuth()?.token || "", user: readSessionAuth()?.user || null, admin: false, config: null };
 export function setAuth(token, user) {
   auth.token = token || ""; auth.user = user || null;
-  try {
-    const store = INCOGNITO ? sessionStorage : localStorage;
-    if (token) store.setItem("veyra-auth", JSON.stringify({ token, user }));
-    else store.removeItem("veyra-auth");
-  } catch {}
+  if (token) save("veyra-auth", { token, user });
+  else remove("veyra-auth");
   hooks.onAuthChanged?.();
 }
 export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin"); }
@@ -233,13 +225,16 @@ export async function api(path, options = {}) {
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
   try {
-    const response = await rawFetch(API + path, { method, headers, body, signal: controller.signal, credentials: "omit" });
+    const privateTraffic = INCOGNITO || !auth.user || hooks.isEphemeralSession?.();
+    const requestPath = privateTraffic && path.startsWith("/api/search")
+      ? `${path}${path.includes("?") ? "&" : "?"}private=1` : path;
+    const response = await rawFetch(API + requestPath, { method, headers, body, signal: controller.signal, credentials: "omit", ...(privateTraffic ? { cache: "no-store" } : {}) });
     apiLastSuccessAt = Date.now();
     const rid = response.headers.get("X-Veyra-Request-ID") || requestId;
     const text = await response.text();
     const ct = response.headers.get("content-type") || "";
     const data = text ? (/json/i.test(ct) ? safeJsonParse(text, null) : text) : null;
-    netLog.push({ time: Date.now(), method, path, status: response.status, ms: Math.round(performance.now() - start), requestId: rid }); if (netLog.length > 500) netLog.shift();
+    if (!privateTraffic) { netLog.push({ time: Date.now(), method, path, status: response.status, ms: Math.round(performance.now() - start), requestId: rid }); if (netLog.length > 500) netLog.shift(); }
     if (!response.ok) {
       const err = new ApiError(data?.error || (typeof data === "string" ? data.slice(0, 300) : `HTTP ${response.status}`), response.status, data?.code || "HTTP_ERROR", rid, data);
       if (err.code === "SESSION_EXPIRED") hooks.onSessionExpired?.("server");
@@ -249,7 +244,7 @@ export async function api(path, options = {}) {
     return data;
   } catch (e) {
     if (e instanceof ApiError) throw e;
-    netLog.push({ time: Date.now(), method, path, status: "ERR", ms: Math.round(performance.now() - start), requestId });
+    if (!INCOGNITO && auth.user && !hooks.isEphemeralSession?.()) netLog.push({ time: Date.now(), method, path, status: "ERR", ms: Math.round(performance.now() - start), requestId });
     const callerCancelled = externalSignal?.aborted && !timedOut;
     throw new ApiError(
       e?.name === "AbortError" && timedOut ? `Request timed out after ${Math.round(timeoutMs / 1000)} s.` : (callerCancelled ? "Request cancelled." : (e?.message || String(e))),
@@ -306,7 +301,7 @@ export function ensureApiAwake(onStatus = null) {
 
 
 export async function sendNeuralFeedback(url, positive, weight = 1.0) {
-  if (INCOGNITO || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
+  if (INCOGNITO || !auth.user || hooks.isEphemeralSession?.() || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
   try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}
 }
 export async function getNeuralStats() {

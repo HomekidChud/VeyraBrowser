@@ -1464,6 +1464,16 @@ body{letter-spacing:-.006em}
 .platform-keys-mode .workspace-card-top,.platform-keys-mode .workspace-card-title,.platform-keys-mode .workspace-description,.platform-keys-mode .workspace-card-stats,.platform-keys-mode .workspace-card-foot{display:none}
 .platform-keys-mode .key-list{margin-top:0}
 
+.privacy-cover{position:fixed;inset:0;box-sizing:border-box;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:clamp(1rem,5vw,2.5rem);border:0;border-radius:0;overflow:auto;background:#15121e;color:#fcf8ff}
+.privacy-cover[open]{display:grid;place-items:center}
+.privacy-cover::backdrop{background:#15121e}
+.privacy-cover-content{display:grid;justify-items:start;gap:1rem;width:min(100%,28rem)}
+.privacy-cover-content svg{width:2rem;height:2rem;color:#ccbafd}
+.privacy-cover-content h2{margin:0;font-size:clamp(1.5rem,5vw,2.1rem);line-height:1.2}
+.privacy-cover-content p{margin:0;color:#d5cce0;font-size:1rem;line-height:1.55}
+.privacy-cover-content .btn{background:#dfd1ff;color:#22163c;border-color:#dfd1ff}
+.privacy-cover-content .btn:focus-visible{outline:2px solid #fcf8ff;outline-offset:4px}
+
 /* Professional settings groups and command palette */
 .snav-group{display:grid;gap:2px;margin-top:17px}.snav-group:first-of-type{margin-top:5px}.snav-group-label{padding:0 12px 6px;color:#56657a;font-size:.56rem;font-weight:800;letter-spacing:.15em;text-transform:uppercase}.snav span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:840px){

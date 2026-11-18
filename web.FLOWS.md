@@ -31,6 +31,13 @@
 - On a normal browser profile, verify **GitHub signup** is added once and opens the official signup page in a separate tab. Remove it, reload and verify it stays removed. An existing signup bookmark with a custom name should be preserved. Incognito should not seed it.
 - Check toast actions, input submission, deduplication, screen fit at 375 px, and reduced-motion behavior. Check that saved Google bookmarks open directly and ordinary bookmarks do not change behavior.
 
+## Session privacy and VPN
+
+- In a fresh guest context, browse a fixture site, end the session and confirm the tab closes without restoring its URL. Reload and verify browsing history, tab state and the session ID weren't written to local storage. Confirm the intentionally saved GitHub signup bookmark still exists.
+- In incognito, open the profile menu and select **Hide screen**. Check that Escape doesn't reveal the screen, and **Reveal screen** restores it. Switch browser tabs to check the automatic cover at desktop and phone widths. Check that Device Cast is absent from the menu and cannot be opened by route.
+- Open the VPN popover and full VPN panel. Verify a configured exit remains visible when the session-status request fails, that status is marked unknown, and that catalog failure is not described as zero configured exits.
+- Open the downloads page and verify the launcher ZIP link. Check the official GitHub signup bookmark in a new context without entering credentials.
+
 ## Browser admin access
 
 - Baseline: `veyra://admin` exposes overview, sessions, crawls, requests, logs, ads, config and tools. Confirm the upgraded panel keeps them available from both browser entry pages.

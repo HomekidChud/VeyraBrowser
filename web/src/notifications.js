@@ -1,5 +1,11 @@
 const activeKeys = new Map();
+const activeNotices = new Set();
 let notificationId = 0;
+
+export function clearNotifications() {
+  for (const dismiss of activeNotices) dismiss(true);
+  document.getElementById("toasts")?.replaceChildren();
+}
 
 function element(tag, className, text) {
   const el = document.createElement(tag);
@@ -37,17 +43,18 @@ export function toast(message, {
 
   let timer = 0, deadline = 0, remaining = Number(ms) > 0 ? Math.max(1200, Number(ms)) : 0;
   let closed = false, hovered = false, focused = false;
-  const dismiss = () => {
+  const dismiss = (immediate = false) => {
     if (closed) return;
     closed = true;
     clearTimeout(timer);
+    activeNotices.delete(dismiss);
     if (key && activeKeys.get(key) === dismiss) activeKeys.delete(key);
     const hadFocus = card.contains(document.activeElement);
     card.inert = true;
     if (hadFocus && focusBefore?.isConnected && focusBefore !== document.body && document.activeElement === document.body) {
       focusBefore.focus({ preventScroll: true });
     }
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches || document.body.classList.contains("reduce-motion")) {
+    if (immediate === true || matchMedia("(prefers-reduced-motion: reduce)").matches || document.body.classList.contains("reduce-motion")) {
       card.remove();
     } else {
       card.classList.add("toast-exit");
@@ -127,6 +134,7 @@ export function toast(message, {
   }
 
   host.append(card);
+  activeNotices.add(dismiss);
   if (key) activeKeys.set(key, dismiss);
   if (field?.autofocus) fieldInput?.focus({ preventScroll: true });
   resume();

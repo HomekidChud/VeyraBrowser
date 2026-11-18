@@ -1,29 +1,30 @@
 
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
-  settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
+  settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.29.0-workspace";
+} from "./core.js?v=8.29.1-session-privacy";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.29.0-workspace";
-import { initUI } from "./ui.js?v=8.29.0-workspace";
-import { initDevtools } from "./devtools.js?v=8.29.0-workspace";
-import { maybeOfferRenew } from "./renew.js?v=8.29.0-workspace";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.29.1-session-privacy";
+import { initUI } from "./ui.js?v=8.29.1-session-privacy";
+import { initDevtools } from "./devtools.js?v=8.29.1-session-privacy";
+import { maybeOfferRenew } from "./renew.js?v=8.29.1-session-privacy";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
+import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=1";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.29.0-workspace").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.29.1-session-privacy").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
   // A failed module fetch can be sticky for this document. Retry at a new URL.
-  const url = "./admin.js?v=8.29.0-workspace";
+  const url = "./admin.js?v=8.29.1-session-privacy";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
@@ -42,14 +43,14 @@ const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
   tabs: [], activeId: null, seq: 0, closed: [],
   bookmarks: (Array.isArray(oldBookmarks) ? oldBookmarks : []).map(b => typeof b === "string" ? { id: uid(), url: b, title: hostOf(b) || b, time: Date.now() } : b).filter(b => b && b.url),
-  history: load("veyra-history", []).filter(x => x && typeof x === "object"),
-  downloads: load("veyra-downloads", []).filter(x => x && typeof x === "object"),
+  history: auth.user ? load("veyra-history", []).filter(x => x && typeof x === "object") : [],
+  downloads: auth.user ? load("veyra-downloads", []).filter(x => x && typeof x === "object") : [],
   downloadControllers: new Map(),
   session: null, sessionTimer: null, sessionHeartbeat: null, lastUserActivity: Date.now(), sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
   vpn: { status: null, connected: false, profile: null },
   incognito: INCOGNITO, server: { leanMode: false, chromiumEnabled: null, version: "", checked: false }, sessionPromise: null,
   
-  tabGroups: load("veyra-tab-groups", []),
+  tabGroups: auth.user ? load("veyra-tab-groups", []) : [],
   
   splitScreen: { active: false, leftTabId: null, rightTabId: null },
   historyRenderLimit: 600
@@ -73,8 +74,10 @@ const INTERNAL = {
   cast: { title: "Device Cast", icon: "i-globe", path: "/cast" },
   internet: { title: "Internet", icon: "i-vpn", path: "/internet" }
 };
-const saveHistory = () => save("veyra-history", state.history.slice(0, settings.historyMax || 1000));
-const saveDownloads = () => save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200));
+const ephemeralSession = () => INCOGNITO || !auth.user || !!state.session?.ephemeral;
+hooks.isEphemeralSession = ephemeralSession;
+const saveHistory = () => { if (!ephemeralSession()) save("veyra-history", state.history.slice(0, settings.historyMax || 1000)); };
+const saveDownloads = () => { if (!ephemeralSession()) save("veyra-downloads", state.downloads.slice(0, settings.downloadsMax || 200)); };
 const saveBookmarks = () => { save("veyra-bookmarks", state.bookmarks); hooks.scheduleSync?.(); };
 const GITHUB_BOOKMARK_SEEDED = "veyra-github-signup-bookmark-seeded";
 if (!INCOGNITO && !load(GITHUB_BOOKMARK_SEEDED, false)) {
@@ -85,7 +88,7 @@ if (!INCOGNITO && !load(GITHUB_BOOKMARK_SEEDED, false)) {
   }
   save(GITHUB_BOOKMARK_SEEDED, true);
 }
-const saveTabGroups = () => save("veyra-tab-groups", state.tabGroups);
+const saveTabGroups = () => { if (!ephemeralSession()) save("veyra-tab-groups", state.tabGroups); };
 // Tab-group membership lives on the tab objects, so persisting the group list
 // is not enough: every membership change must refresh a per-tab snapshot too,
 // otherwise a reload (or a reload-style handoff) forgets which tab was in
@@ -101,7 +104,7 @@ function persistTabGroups() {
 // boot after install still looks like a first boot).
 let lastSavedTabState = "";
 function persistTabState() {
-  if (INCOGNITO) return;
+  if (ephemeralSession()) return;
   const pageTabs = state.tabs.filter(t => t.view === "page" && t.url);
   const keepNewTab = state.tabs.length === 1 && state.tabs[0].view === "newtab";
   const tabs = (keepNewTab ? [state.tabs[0]] : pageTabs).map(t => ({
@@ -114,7 +117,7 @@ function persistTabState() {
   save("veyra-tab-state", { ...snapshot, savedAt: Date.now() });
 }
 function restoreTabState() {
-  if (INCOGNITO) return false;
+  if (ephemeralSession()) return false;
   const snap = load("veyra-tab-state", null);
   if (!snap || !Array.isArray(snap.tabs) || !snap.tabs.length) return false;
   if (snap.tabs.length === 1 && snap.tabs[0].view === "newtab") return false;
@@ -602,13 +605,13 @@ function routeForTab(t) {
 function syncRoute({ replace = false } = {}) {
   const [p, q] = routeForTab(activeTab());
   if (INCOGNITO) {
-    const privateRoute = routeUrl(p) + `?private=${encodeURIComponent(incognitoToken || incognitoAddressToken())}`;
+    const privateRoute = routeUrl(p) + `?incognito=1&private=${encodeURIComponent(incognitoToken || incognitoAddressToken())}`;
     if (location.pathname !== new URL(privateRoute, location.href).pathname) {
       try { history.replaceState({ veyra: true, incognito: true }, "", privateRoute); } catch {}
     }
     return;
   }
-  const next = routeUrl(p, q);
+  const next = routeUrl(p, ephemeralSession() ? "" : q);
   if (next === location.pathname + location.search + location.hash) return;
   try { history[replace ? "replaceState" : "pushState"]({ veyra: true }, "", next); } catch {}
 }
@@ -662,6 +665,11 @@ window.addEventListener("popstate", () => applyRoute());
 
 
 export function openInternal(view, { tab = null, push = true, section = "", calc = "" } = {}) {
+  if (INCOGNITO && view === "cast") {
+    toast("Device Cast is disabled in incognito.", { kind: "warn" });
+    if (currentRoute() === "/cast") history.replaceState({}, "", routeUrl("/browse") + "?incognito=1");
+    return renderActive({ push: false });
+  }
   if (view !== "admin" && INTERNAL[view]?.admin && !isAdmin()) {
     toast("That page is only available to Veyra administrators", { kind: "warn" });
     if (currentRoute() === "/dev" || location.hash === "#console") { try { history.replaceState({}, "", routeUrl("/browse")); } catch {} }
@@ -798,7 +806,7 @@ function rotateIncognitoAddressToken() {
   const input = $("address"); const t = activeTab();
   if (INCOGNITO && input && t?.view === "page" && document.activeElement !== input) input.value = incognitoToken;
   if (INCOGNITO) {
-    const privateRoute = routeUrl(routeForTab(t)[0]) + `?private=${encodeURIComponent(incognitoToken)}`;
+    const privateRoute = routeUrl(routeForTab(t)[0]) + `?incognito=1&private=${encodeURIComponent(incognitoToken)}`;
     try { history.replaceState({ veyra: true, incognito: true }, "", privateRoute); } catch {}
   }
 }
@@ -872,7 +880,9 @@ function getOrCreateFrame(t) {
   // images and resource requests fail even though the HTML itself renders.
   // The API origin remains cross-origin from the GitHub Pages shell.
   f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
-  f.setAttribute("allow", "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
+  f.setAttribute("allow", INCOGNITO
+    ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
+    : "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
   f.addEventListener("load", () => onFrameLoad(t));
   $("frameWrap").insertBefore(f, $("frameLoader"));
   syncSplitFrames();
@@ -1198,8 +1208,8 @@ export async function ensureSession() {
 function adoptSession(body, resumed = false) {
   const limit = Number(body.timeLimitMs) || 0;
   state.serverLimitMs = limit;
-  state.session = { id: body.sessionId, startedAt: body.createdAt ? Date.parse(body.createdAt) : Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity };
-  save("veyra-live-session", { id: body.sessionId, startedAt: state.session.startedAt });
+  state.session = { id: body.sessionId, startedAt: body.createdAt ? Date.parse(body.createdAt) : Date.now(), limitMs: limit, expiresAt: limit ? Date.now() + Number(body.remainingMs ?? limit) : Infinity, ephemeral: INCOGNITO || body.guest === true || !auth.user, controller: new AbortController() };
+  if (!ephemeralSession()) save("veyra-live-session", { id: body.sessionId, startedAt: state.session.startedAt });
   state.lastUserActivity = Date.now(); state.sessionWarned = {};
   addLog("info", `Session ${body.sessionId.slice(0, 8)} ${resumed ? "revisited" : "started"}${limit ? ` (${fmtClock(Number(body.remainingMs ?? limit))} remaining)` : ""}.`);
   startSessionTimer(); startSessionHeartbeat();
@@ -1233,12 +1243,12 @@ function startSessionHeartbeat() {
 }
 function markUserActivity() { state.lastUserActivity = Date.now(); }
 async function revisitSavedSession() {
-  if (INCOGNITO) return false;
+  if (ephemeralSession()) return false;
   const saved = load("veyra-live-session", null);
   if (!saved?.id) return false;
   let body;
   try { body = await api(`/api/session/${encodeURIComponent(saved.id)}`, { timeoutMs: 8000 }); } catch { return false; }
-  if (!body?.active) { remove("veyra-live-session"); return false; }
+  if (!body?.active || body.guest || body.incognito) { remove("veyra-live-session"); return false; }
   return await new Promise(resolve => {
     const overlay = $("sessionResumeOverlay"); if (!overlay) return resolve(false);
     $("sessionResumeText").textContent = `Session ${String(saved.id).slice(0, 8)}… is still available with ${body.remainingMs == null ? "no fixed time limit" : fmtClock(body.remainingMs)} remaining. Revisit it or start at home.`;
@@ -1282,26 +1292,46 @@ function tickSession() {
 }
 export async function endSession(reason = "timer") {
   const s = state.session; if (!s || state.sessionEnding) return;
+  const ephemeral = ephemeralSession();
   state.sessionEnding = true;
   try {
     // Session cookies are temporary, but signed-in user storage is not. Flush
     // it before closing the session; incognito is excluded by the hook.
-    try { await hooks.flushSync?.(); } catch (e) { addLog("warn", `Could not save account storage before session end: ${e.message}`); }
+    try { if (!ephemeral) await hooks.flushSync?.(); } catch (e) { addLog("warn", `Could not save account storage before session end: ${e.message}`); }
     state.session = null; clearInterval(state.sessionTimer); clearInterval(state.sessionHeartbeat);
+    s.controller?.abort();
     
-    const pageTabs = state.tabs.filter(t => t.view === "page");
-    const restoreUrls = [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
+    const pageTabs = ephemeral ? state.tabs : state.tabs.filter(t => t.view === "page");
+    const restoreUrls = ephemeral ? [] : [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
     for (const t of pageTabs) { teardownTab(t); hooks.dt?.onTabClosed(t); }
-    state.tabs = state.tabs.filter(t => t.view !== "page");
+    state.tabs = ephemeral ? [] : state.tabs.filter(t => t.view !== "page");
     if (!state.tabs.length) state.tabs.push(makeTab());
     if (!tabById(state.activeId)) state.activeId = state.tabs[0].id;
     state.closed = state.closed.filter(c => !c.url);
-    if (settings.clearHistoryOnSessionEnd) { state.history = state.history.filter(h => h.sid !== s.id); saveHistory(); }
-    remove("veyra-live-session");
-    state.vpn.connected = false; state.vpn.profile = null;
+    if (ephemeral) {
+      for (const controller of state.downloadControllers.values()) controller.abort();
+      state.downloadControllers.clear();
+      state.history = []; state.downloads = []; state.closed = []; state.tabGroups = [];
+      state.splitScreen = { active: false, leftTabId: null, rightTabId: null };
+      logs.length = 0; netLog.length = 0;
+      closeFloating();
+      clearNotifications();
+      // Inactive views are hidden, not removed; discard their previous content too.
+      for (const id of ["searchInput", "historyFilter", "downloadsFilter", "findInput", "resFilter", "linkFilter", "consoleSearch", "omnibox"]) {
+        const input = $(id); if (input) input.value = "";
+      }
+      for (const id of ["searchResults", "searchSuggestions", "searchCorrection", "searchStat", "searchMeta", "aiAnswer", "downloadsList", "historyList", "sourceCode", "resourcesList", "linksList", "consoleLines", "sidePanel", "popover", "mainMenu"]) {
+        $(id)?.replaceChildren();
+      }
+    } else {
+      if (settings.clearHistoryOnSessionEnd) { state.history = state.history.filter(h => h.sid !== s.id); saveHistory(); }
+      remove("veyra-live-session");
+    }
+    state.capabilityCache.clear();
+    state.vpn.connected = false; state.vpn.profile = null; state.vpn.info = null;
     let closeConfirmed = false;
     try { const closed = await api(`/api/session/${encodeURIComponent(s.id)}/close`, { method: "POST", timeoutMs: 5000 }); closeConfirmed = !!closed?.ok; } catch {}
-    addLog("info", `Session ${s.id.slice(0, 8)} ended (${reason}).`);
+    if (!ephemeral) addLog("info", `Session ${s.id.slice(0, 8)} ended (${reason}).`);
     renderTabs(); renderActive({ push: true, replace: true }); tickSession(); hooks.onSessionChanged?.();
     if (reason === "manual") toast(closeConfirmed ? "Session ended; server cleanup confirmed" : "Session closed locally. Server cleanup could not be confirmed.", { kind: closeConfirmed ? "" : "warn", ms: 5000 });
     else if (settings.autoRestartSession && restoreUrls.length) {
@@ -1396,8 +1426,10 @@ async function capability(url) {
   // Chromium, so while Chromium is not fully working they degrade to the
   // fast proxy (see CHROMIUM_TRY_DISABLED in core.js).
   if (settings.runtime === "browser" || settings.runtime === "combined") return CHROMIUM_TRY_DISABLED ? "FAST_PROXY" : "BROWSER_ENGINE";
+  if (ephemeralSession()) return "FAST_PROXY";
   const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
-  try { const r = await api("/api/browser/capability", { json: { url }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; if (typeof r?.lean === "boolean") state.server.leanMode = r.lean; state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
+  const session = state.session;
+  try { const r = await api("/api/browser/capability", { json: { url, proxySessionId: session?.id }, timeoutMs: 12000 }); const m = r?.mode || "FAST_PROXY"; if (typeof r?.lean === "boolean") state.server.leanMode = r.lean; if (session && state.session === session) state.capabilityCache.set(host, m); return m; } catch { return "FAST_PROXY"; }
 }
 function desiredStrategy(url) {
   const r = String(settings.runtime || "auto");
@@ -1463,7 +1495,7 @@ function resolveStrategy(url) {
   return { ...base, probe: !cached };
 }
 function scheduleDeferredCrawler(t, url, session, enabled = true, delayMs = 450) {
-  if (!enabled || !session?.id) return;
+  if (!enabled || !session?.id || ephemeralSession()) return;
   if (t.jobId || t.crawlerStartTimer) return;
   t.crawlerStartTimer = setTimeout(() => {
     t.crawlerStartTimer = null;
@@ -1472,7 +1504,7 @@ function scheduleDeferredCrawler(t, url, session, enabled = true, delayMs = 450)
   }, Math.max(150, Number(delayMs) || 450));
 }
 function openCrawl(t, url, session, enabled = true) {
-  if (!enabled) return Promise.resolve(null);
+  if (!enabled || ephemeralSession() || state.session !== session) return Promise.resolve(null);
   const engineMode = t.loadStrategy || settings.runtime || "auto";
   return api("/api/open", { json: { url, sessionId: session.id, engineMode } }).then(b => {
     if (!state.tabs.includes(t) || t.url !== url) { if (b?.jobId) stopJob(b.jobId); return null; }
@@ -2062,9 +2094,16 @@ const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "
 async function runSearch(query, offset = 0, opts = {}) {
   const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
   const source = t.searchSource || "web";
+  const current = () => activeTab() === t && t.view === "search" && t.searchQuery === query;
+  let signal;
+  if (query.trim() && ephemeralSession()) {
+    try { signal = (await ensureSession()).controller.signal; }
+    catch { if (current()) toast("Could not start a private search session.", { kind: "warn" }); return; }
+    if (!current() || signal.aborted) return;
+  }
   if (!offset && !opts.corrected && query.trim()) {
     try {
-      const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500 });
+      const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal });
       if (correction.changed && correction.corrected && correction.corrected.toLowerCase() !== query.toLowerCase()) {
         t.searchCorrection = { original: query, corrected: correction.corrected };
         
@@ -2072,6 +2111,7 @@ async function runSearch(query, offset = 0, opts = {}) {
       }
     } catch {}
   }
+  if (!current() || signal?.aborted) return;
   const correction = t.searchCorrection;
   const correctionEl = $("searchCorrection");
   if (correctionEl) {
@@ -2091,15 +2131,15 @@ async function runSearch(query, offset = 0, opts = {}) {
   if (!offset) $("searchResults").innerHTML = Array.from({ length: 4 }, () => `<div class="result"><div class="skel" style="height:16px;width:55%;border-radius:4px;background:var(--surface-3)"></div><div style="height:10px"></div><div style="height:12px;width:85%;border-radius:4px;background:var(--surface-2)"></div></div>`).join("");
   try {
     const b = source === "web"
-      ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent((navigator.language || "en").slice(0, 2))}`, { timeoutMs: 20000 })
-      : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`);
+      ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent((navigator.language || "en").slice(0, 2))}`, { timeoutMs: 20000, signal })
+      : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`, { signal });
     if (activeTab() !== t || t.searchQuery !== query) return;
     b.source = source;
     if (offset && t.searchData) t.searchData.results.push(...(b.results || [])); else t.searchData = b;
     renderSearch();
     
-    if (!offset && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results, source);
-  } catch (e) { $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
+    if (!ephemeralSession() && !offset && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results, source);
+  } catch (e) { if (activeTab() !== t || t.searchQuery !== query) return; $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
 }
 async function fetchAIAnswer(t, query, results, source = "web") {
   const ai = $("aiAnswer");
@@ -2183,7 +2223,8 @@ let suggestTimer = 0;
 function loadSuggestions(q) {
   clearTimeout(suggestTimer);
   if (!settings.suggestions) { $("searchSuggestions").innerHTML = ""; return; }
-  suggestTimer = setTimeout(async () => { if (!settings.suggestions || !q.trim()) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); if (settings.suggestions) $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160);
+  const tab = activeTab();
+  suggestTimer = setTimeout(async () => { if (!settings.suggestions || !q.trim() || activeTab() !== tab) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); if (settings.suggestions && activeTab() === tab) $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160);
 }
 export async function omniSuggest(q) {
   if (!settings.suggestions || !q.trim()) return [];
@@ -2576,19 +2617,28 @@ async function platformRotateKey(workspaceId, keyId) { if (!confirm("Rotate this
 async function platformDeleteWorkspace(id) { if (!confirm("Delete this workspace and revoke all its keys?")) return; try { await api(`/api/platform/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" }); toast("Workspace deleted"); renderPlatform(); } catch (e) { toast(e.message, { kind: "err" }); } }
 
 
-export async function refreshVpnStatus() {
-  try {
-    const st = await api("/api/vpn/status", { timeoutMs: 8000 }); state.vpn.status = st;
-    if (state.session) { const si = await api(`/api/vpn/session?sid=${encodeURIComponent(state.session.id)}`, { timeoutMs: 8000 }); state.vpn.connected = !!si.connected; state.vpn.profile = si.profile || null; state.vpn.info = si; }
-    else { state.vpn.connected = false; state.vpn.profile = null; }
-    state.vpn.error = null;
-  } catch (e) { state.vpn.error = e.message; state.vpn.status = null; state.vpn.connected = false; state.vpn.profile = null; }
-  $("vpnBtn").classList.toggle("on", state.vpn.connected); updateIdentity();
+let vpnRefresh = 0;
+export async function refreshVpnStatus(onProfiles) {
+  const revision = ++vpnRefresh;
+  const session = state.session;
+  const next = await readVpnAvailability(api, {
+    sessionId: session?.id, previous: state.vpn.status,
+    onProfiles: result => {
+      if (revision !== vpnRefresh) return;
+      Object.assign(state.vpn, result);
+      onProfiles?.({ ...result, info: null, connected: false, profile: null, sessionError: session ? "Checking this session's connection…" : "" });
+    }
+  });
+  if (revision === vpnRefresh) {
+    if (state.session === session) Object.assign(state.vpn, next);
+    $("vpnBtn").classList.toggle("on", state.vpn.connected); updateIdentity();
+  }
   return state.vpn;
 }
 export async function connectVpn(profileId, { quiet = false } = {}) {
   const s = await ensureSession();
   const r = await api("/api/vpn/connect", { json: { sessionId: s.id, profileId } });
+  if (state.session !== s) return;
   state.vpn.connected = true; state.vpn.profile = r.profile || null;
   if (!quiet) toast(`VPN connected · ${r.profile?.name || profileId}`);
   reloadPagesAfterVpn(); $("vpnBtn").classList.toggle("on", true); updateIdentity();
@@ -2600,13 +2650,18 @@ export async function disconnectVpn() {
 }
 function reloadPagesAfterVpn() { for (const t of state.tabs) if (t.view === "page" && t.url) { if (isRemote(t)) { stopBrowserSession(t).then(() => loadInTab(t, t.url)); } else if (activeTab() === t) loadInTab(t, t.url); else t.needsReload = true; } }
 async function renderVpnPanel() {
-  const box = $("vpnPanel"); box.innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
-  const v = await refreshVpnStatus(); const st = v.status;
-  if (!st) { box.innerHTML = `<div class="empty"><svg><use href="#i-vpn"/></svg><b>Veyra VPN is unavailable</b><span>${esc(v.error || "")}</span></div>`; return; }
+  const box = $("vpnPanel");
+  const focus = box.querySelector(":focus")?.dataset.connect;
+  if (!box.hasChildNodes()) box.innerHTML = `<div class="empty"><div class="spinner" aria-label="Loading VPN exits"></div></div>`;
+  const render = v => {
+  box.onclick = null;
+  const st = v.status;
+  if (!st) { box.innerHTML = `<div class="empty"><svg><use href="#i-vpn"/></svg><b>Veyra VPN is unavailable</b><span>${esc(v.error || "")}</span><button class="btn ghost sm" id="vpnRefresh">Retry</button></div>`; box.querySelector("#vpnRefresh").onclick = renderVpnPanel; return; }
   const profiles = st.profiles || [];
   const cur = v.profile;
-  box.innerHTML = `<div class="vpn-hero"><div class="vpn-orb ${v.connected ? "on" : ""}"><svg><use href="#i-vpn"/></svg></div><div><h2>${v.connected ? "Protected" : "Not connected"}</h2><p class="muted">${v.connected ? `Traffic in this session leaves through <b>${esc(cur?.name || "")}</b>${cur?.region ? ` · ${esc(cur.region)}` : ""}${cur?.health?.exitIp ? ` · exit ${esc(cur.health.exitIp)}` : ""}.` : !st.enabled ? "The VPN is turned off on this server." : !profiles.length ? "No VPN exits are configured on the server yet." : "Choose an exit below. Every tab in this session will use it."}</p></div><span class="spacer"></span>${v.connected ? `<button class="btn ghost" id="vpnRotate">Rotate exit</button><button class="btn danger" id="vpnOff">Disconnect</button>` : ""}</div>
-    <div class="s-section"><h2>Exits by country</h2><p class="muted">${st.killSwitch ? "Kill switch is on: if a tunnel drops, requests are blocked instead of leaking through the server's own IP." : "Kill switch is off on this server."}${st.failover ? " Failover moves you to a healthy exit automatically." : ""}</p>
+  const openCountries = new Set([...box.querySelectorAll("details[open]")].map(node => node.dataset.country));
+  box.innerHTML = `<div class="vpn-hero"><div class="vpn-orb ${v.connected ? "on" : ""}"><svg><use href="#i-vpn"/></svg></div><div><h2>${v.sessionError ? "Connection status unknown" : v.connected ? "Protected" : "Not connected"}</h2><p class="muted">${v.connected ? `Traffic in this session leaves through <b>${esc(cur?.name || "")}</b>${cur?.region ? ` · ${esc(cur.region)}` : ""}${cur?.health?.exitIp ? ` · exit ${esc(cur.health.exitIp)}` : ""}.` : st.enabled === false ? "The VPN is turned off on this server." : v.sessionError ? esc(v.sessionError) : v.error ? esc(v.error) : !profiles.length ? "No VPN exits are configured on the server yet." : "Choose an exit below. Every tab in this session will use it."}</p></div><span class="spacer"></span>${v.connected ? `<button class="btn ghost" id="vpnRotate">Rotate exit</button><button class="btn danger" id="vpnOff">Disconnect</button>` : ""}</div>
+    <div class="s-section"><h2>Exits by country</h2><p class="muted">${st.killSwitch ? "Kill switch is on: if a tunnel drops, requests are blocked instead of leaking through the server's own IP." : st.killSwitch === false ? "Kill switch is off on this server." : ""}${st.failover ? " Failover moves you to a healthy exit automatically." : ""}</p>
     ${(() => {
       // Group exits by country (or region) so users can pick an exit location at a glance.
       const byCountry = new Map();
@@ -2621,15 +2676,18 @@ async function renderVpnPanel() {
         if (curKey && a === curKey) return -1; if (curKey && b === curKey) return 1;
         return a.localeCompare(b);
       });
-      if (!keys.length) return `<div class="empty"><span>Set VPN_PROFILES_JSON, WIREGUARD_CONFIG or VPN_PROXY_SERVER on Render to add exits.</span></div>`;
+      if (!keys.length) return `<div class="empty"><span>${v.error ? esc(v.error) : "No exits to show. A server administrator can configure them."}</span><button class="btn ghost sm" id="vpnRefresh">Refresh exits</button></div>`;
       return keys.map(k => {
         const rows = byCountry.get(k);
         const anyOn = rows.some(p => p.id === cur?.id);
-        return `<details class="vpn-country" ${anyOn ? "open" : ""}><summary><span class="pill ${anyOn ? "ok" : ""}">${esc(k)}</span><small>${rows.length} exit${rows.length > 1 ? "s" : ""}</small>${anyOn ? `<span class="pill ok">Connected</span>` : ""}</summary><div class="vpn-list">${rows.map(p => `<div class="vpn-row ${cur?.id === p.id ? "on" : ""}"><span class="pill ${p.health?.healthy === false ? "err" : p.health?.healthy ? "ok" : ""}">${esc(p.protocol || p.type)}</span><div class="n"><b>${esc(p.name)}</b><small>${esc([p.region, p.provider].filter(Boolean).join(" · ") || "Server exit")}${p.health?.latencyMs ? ` · ${p.health.latencyMs} ms` : ""}${p.health?.healthy === false ? ` · ${esc(p.health.lastError || "health check failed")}` : ""}</small></div>${cur?.id === p.id ? `<span class="pill ok">Connected</span>` : `<button class="btn ghost sm" data-connect="${esc(p.id)}" ${st.enabled && p.health?.healthy !== false ? "" : "disabled"}>${p.health?.healthy === false ? "Unavailable" : "Connect"}</button>`}<button class="btn ghost sm" data-test="${esc(p.id)}">Test</button></div>`).join("")}</div></details>`;
+        return `<details class="vpn-country" data-country="${esc(k)}" ${anyOn || keys.length === 1 || openCountries.has(k) ? "open" : ""}><summary><span class="pill ${anyOn ? "ok" : ""}">${esc(k)}</span><small>${rows.length} exit${rows.length > 1 ? "s" : ""}</small>${anyOn ? `<span class="pill ok">Connected</span>` : ""}</summary><div class="vpn-list">${rows.map(p => `<div class="vpn-row ${cur?.id === p.id ? "on" : ""}"><span class="pill ${p.health?.healthy === false ? "err" : p.health?.healthy ? "ok" : ""}">${esc(p.protocol || p.type)}</span><div class="n"><b>${esc(p.name)}</b><small>${esc([p.region, p.provider].filter(Boolean).join(" · ") || "Server exit")}${p.health?.latencyMs ? ` · ${p.health.latencyMs} ms` : ""}${p.health?.healthy === false ? ` · ${esc(p.health.lastError || "health check failed")}` : ""}</small></div>${cur?.id === p.id ? `<span class="pill ok">Connected</span>` : `<button class="btn ghost sm" data-connect="${esc(p.id)}" ${st.enabled !== false && p.health?.healthy !== false ? "" : "disabled"}>${p.health?.healthy === false ? "Unavailable" : "Connect"}</button>`}<button class="btn ghost sm" data-test="${esc(p.id)}">Test</button></div>`).join("")}</div></details>`;
       }).join("");
     })()}</div></div>
     <div class="s-section"><h2>Automatic connection</h2><div class="s-card"><div class="s-row"><div class="s-label"><b>Connect new sessions automatically</b><span>Uses the chosen exit as soon as a session starts.</span></div><div class="s-ctl"><select class="input" id="vpnAuto"><option value="">Off</option>${profiles.map(p => `<option value="${esc(p.id)}" ${settings.vpnAutoProfile === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div></div><div class="s-row"><div class="s-label"><b>Automatic exit rotation</b><span>When enabled on the server, Veyra can periodically move the session to another configured exit. A new public IP depends on the VPN provider.</span></div><div class="s-ctl"><span class="pill ${st.rotation?.enabled ? "ok" : ""}">${st.rotation?.enabled ? `Every ${fmtClock(st.rotation.intervalMs)}` : "Server controlled"}</span></div></div></div></div>`;
-  box.onclick = async e => { const b = e.target.closest("button"); if (!b) return; b.disabled = true;
+  box.onclick = async e => {
+    const b = e.target.closest("button");
+    if (!b || !(b.dataset.connect || b.dataset.test || b.id === "vpnOff" || b.id === "vpnRotate")) return;
+    b.disabled = true;
     try {
       if (b.dataset.connect) await connectVpn(b.dataset.connect);
       else if (b.dataset.test) { const r = await api("/api/vpn/test", { json: { profileId: b.dataset.test }, timeoutMs: 20000 }); toast(`Exit responded${r.exitIp ? ` · IP ${r.exitIp}` : ""}${r.latencyMs ? ` · ${r.latencyMs} ms` : ""}`); }
@@ -2638,6 +2696,10 @@ async function renderVpnPanel() {
     } catch (err) { toast(err.message, { kind: "err" }); }
     renderVpnPanel(); };
   $("vpnAuto").onchange = e => { settings.vpnAutoProfile = e.target.value; saveSettings(); toast(e.target.value ? "New sessions will connect automatically" : "Automatic VPN off"); };
+  if (focus) [...box.querySelectorAll("[data-connect]")].find(button => button.dataset.connect === focus)?.focus();
+  };
+  const result = await refreshVpnStatus(render);
+  render(result);
 }
 export { renderVpnPanel };
 
@@ -3124,6 +3186,12 @@ function wire() {
   splitMobile.addEventListener("change", syncSplitFrames);
   ["pointerdown", "keydown", "wheel", "touchstart", "focus"].forEach(type => window.addEventListener(type, markUserActivity, { passive: true }));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") markUserActivity(); });
+  window.addEventListener("pagehide", () => {
+    if (state.session?.ephemeral) navigator.sendBeacon?.(`${API}/api/session/${encodeURIComponent(state.session.id)}/close`, "");
+  });
+  window.addEventListener("pageshow", event => {
+    if (event.persisted && ephemeralSession()) location.reload();
+  });
   $("newTabBtn").onclick = () => newTab();
   $("backBtn").onclick = back; $("forwardBtn").onclick = forward; $("reloadBtn").onclick = () => reload(); $("homeBtn").onclick = goHome;
   $("starBtn").onclick = toggleBookmark; $("zoomChip").onclick = () => setZoom(1);
@@ -3171,7 +3239,7 @@ hooks.B = B;
 function applyStartup(params) {
   if (currentRoute() !== "/browse" || params.get("url") || params.get("q") || location.hash) return;
   if (settings.startup === "url" && settings.startupUrl) { go(settings.startupUrl, { tab: activeTab(), push: false }); return; }
-  if (settings.startup === "continue") {
+  if (!ephemeralSession() && settings.startup === "continue") {
     const urls = load("veyra-last-tabs", []).filter(u => /^https?:/.test(u));
     const first = urls.shift(); if (first) go(first, { tab: activeTab(), push: false });
     
@@ -3179,7 +3247,7 @@ function applyStartup(params) {
     urls.forEach((u, i) => setTimeout(() => newTab({ url: u, background: true }), (i + 1) * 75));
   }
 }
-setInterval(() => { if (settings.startup === "continue") save("veyra-last-tabs", state.tabs.filter(t => t.view === "page" && t.url).map(t => t.url)); }, 3000);
+setInterval(() => { if (!ephemeralSession() && settings.startup === "continue") save("veyra-last-tabs", state.tabs.filter(t => t.view === "page" && t.url).map(t => t.url)); }, 3000);
 
 async function boot() {
   try {

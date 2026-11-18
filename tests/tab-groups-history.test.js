@@ -11,7 +11,7 @@ const lines = f => f.split("\n");
 
 // --- app.js: the tab-group state and mutation helpers -----------------------
 const app = files.app;
-assert.match(app, /tabGroups:\s*load\("veyra-tab-groups",\s*\[\]\)/, "tab group state must be loaded from local storage");
+assert.match(app, /tabGroups:\s*auth\.user \? load\("veyra-tab-groups",\s*\[\]\) : \[\]/, "load saved tab groups only for signed-in users");
 
 // Bug 1: group membership changes were never persisted. Every mutation of
 // t.groupId must be saved, otherwise a shell reload forgets the grouping.
