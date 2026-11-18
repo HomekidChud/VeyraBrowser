@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.44";
+export const VERSION = "8.29.0";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -90,6 +90,8 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.user
 
 export const DEFAULT_SETTINGS = {
   theme: "dark", accent: "#8fb0f0", fontScale: 1, compact: false, showBookmarksBar: true, showHomeButton: true,
+  workspacePreset: "glacier", tabLayout: "top", tabRailWidth: 212, tabRailCompact: false, chromeShape: "soft",
+  newTabBackdrop: "glow", gameFocus: false, splitLayout: "columns", splitRatio: 50,
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   ntpShortcuts: true, ntpRecent: true, ntpClock: true,

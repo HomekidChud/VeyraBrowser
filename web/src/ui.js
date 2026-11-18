@@ -2,10 +2,11 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.44-admin-entry";
-import { initExtensions } from "./extensions.js?v=8.28.44-admin-entry";
-import { initSettings } from "./settings.js?v=8.28.44-admin-entry";
+} from "./core.js?v=8.29.0-workspace";
+import { initExtensions } from "./extensions.js?v=8.29.0-workspace";
+import { initSettings } from "./settings.js?v=8.29.0-workspace";
 import { accountDestination } from "./account-navigation.js?v=2";
+import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=1";
 
 let B;
 
@@ -13,11 +14,24 @@ let B;
 export function applyTheme() {
   let t = settings.theme || "dark"; if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   const root = document.documentElement; root.dataset.theme = t;
-  if (settings.accent) root.style.setProperty("--accent", settings.accent); else root.style.removeProperty("--accent");
+  const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
+  root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
+  root.style.setProperty("--workspace-tint", preset.palette);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
   document.body.classList.toggle("compact", !!settings.compact || !!load("veyra-extensions", {}).compact);
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);
   document.body.classList.toggle("focus-rings", !!settings.focusRings);
+  document.body.classList.toggle("game-focus", !!settings.gameFocus);
+  const app = $("app"), strip = $("tabsList").parentElement;
+  app.dataset.tabLayout = tabLayout(settings.tabLayout);
+  app.dataset.railCompact = String(!!settings.tabRailCompact);
+  app.dataset.shape = ["soft", "sharp", "round"].includes(settings.chromeShape) ? settings.chromeShape : "soft";
+  app.dataset.backdrop = ["glow", "grid", "plain"].includes(settings.newTabBackdrop) ? settings.newTabBackdrop : "glow";
+  app.style.setProperty("--tab-rail-width", `${clampNumber(settings.tabRailWidth, 160, 320, 212)}px`);
+  const top = app.querySelector(".chrome");
+  const parent = app.dataset.tabLayout === "top" ? top : app;
+  if (strip.parentElement !== parent) parent.prepend(strip);
+  $("tabsList").setAttribute("aria-orientation", parent === top ? "horizontal" : "vertical");
   document.body.classList.toggle("link-underline", !!settings.linkUnderline);
   $("bookmarksBar").classList.toggle("hidden", !settings.showBookmarksBar);
   $("homeBtn").classList.toggle("hidden", !settings.showHomeButton);
@@ -487,7 +501,12 @@ function openMainMenu() {
     ...(INCOGNITO ? [menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
-    menuItem("i-grid", "Tab groups", "", () => { const t = B.activeTab(); if (t) B.createTabGroup?.(t.title || "Group"); }),
+    menuItem("i-grid", "Create tab group…", "", () => B.groupActiveTab()),
+    menuItem("i-moon", "Customize workspace", "", () => B.openInternal("settings", { section: "appearance" })),
+    menuItem("i-bolt", settings.gameFocus ? "Turn off Game Focus" : "Turn on Game Focus", "", () => {
+      settings.gameFocus = !settings.gameFocus; saveSettings();
+      toast(settings.gameFocus ? "Game Focus on. Background diagnostics are paused." : "Game Focus off");
+    }, { badge: settings.gameFocus ? "ON" : "" }),
     "-",
     menuItem("i-history", "History", "history", () => B.openInternal("history")),
     menuItem("i-download", "Downloads", "downloads", () => B.openInternal("downloads")),

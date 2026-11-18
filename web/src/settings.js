@@ -1,6 +1,7 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.44-admin-entry";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.44-admin-entry";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.29.0-workspace";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.29.0-workspace";
+import { WORKSPACE_PRESETS } from "./workspace.js?v=1";
 
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -60,11 +61,20 @@ function accountSection() {
 function appearanceSection() {
   const theme = settings.theme;
   const card = (v, l, bg) => `<button class="theme-card ${theme === v ? "on" : ""}" data-theme-pick="${v}" aria-pressed="${theme === v}"><i style="background:${bg}"></i><span>${l}</span></button>`;
-  return section("appearance", "Appearance", "", `
+  return section("appearance", "Customize workspace", "Make Veyra feel like your browser. Changes apply as you make them.", `
+    <div class="workspace-presets" aria-label="Workspace presets">${Object.entries(WORKSPACE_PRESETS).map(([id, p]) =>
+      `<button type="button" class="workspace-preset" data-workspace-preset="${id}" aria-pressed="${settings.workspacePreset === id}" style="--preset-tint:${p.palette};--preset-accent:${p.accent}"><i></i><span>${p.name}</span></button>`).join("")}</div>
     <div class="theme-cards" data-label="Theme dark light system">${card("dark", "Dark", "linear-gradient(135deg,#0d0f13 60%,#1b1f27)")}${card("light", "Light", "linear-gradient(135deg,#f6f7f9 60%,#e2e5ea)")}${card("system", "Device", "linear-gradient(135deg,#0d0f13 50%,#f6f7f9 50%)")}</div>
     ${row("Accent colour", "Used for buttons, focus and highlights.", `<div class="swatches">${ACCENTS.map(c => `<button class="swatch ${settings.accent === c ? "on" : ""}" data-accent="${c}" style="background:${c}" aria-label="Accent ${c}"></button>`).join("")}<input type="color" data-set="accent" value="${esc(settings.accent)}" aria-label="Custom accent" style="width:30px;height:28px;border:0;background:none;padding:0"></div>`)}
     ${select("fontScale", "Font size", "Scales the Veyra interface.", [[0.9, "Small"], [1, "Medium (recommended)"], [1.1, "Large"], [1.2, "Very large"]])}
     ${select("zoomDefault", "Default page zoom", "Applied to new page tabs.", [[0.8, "80%"], [0.9, "90%"], [1, "100%"], [1.1, "110%"], [1.25, "125%"], [1.5, "150%"]])}
+    ${select("tabLayout", "Tab position", "Put tabs in the top strip or a side rail.", [["top", "Top"], ["left", "Left side"], ["right", "Right side"]])}
+    ${number("tabRailWidth", "Side rail width", "160–320 pixels, when tab titles are shown.", 160, 320, 8)}
+    ${toggle("tabRailCompact", "Icon-only side rail", "Keep the side rail narrow and show titles on hover.")}
+    ${select("chromeShape", "Tab shape", "", [["soft", "Soft corners"], ["sharp", "Square"], ["round", "Rounded"]])}
+    ${select("newTabBackdrop", "New tab backdrop", "", [["glow", "Accent glow"], ["grid", "Grid"], ["plain", "Plain"]])}
+    ${select("splitLayout", "Default split layout", "Small screens stack the panes automatically.", [["columns", "Side by side"], ["stack", "Stacked"]])}
+    ${toggle("gameFocus", "Game Focus", "Reduces interface effects and pauses background Veyra diagnostics. Does not change game FPS or network limits.")}
     ${toggle("compact", "Compact mode", "Tighter tabs and toolbar.")}
     ${toggle("showHomeButton", "Show home button", "")}
     ${toggle("showBookmarksBar", "Show bookmarks bar", "Ctrl+Shift+B toggles it.")}`);
@@ -512,6 +522,12 @@ export function initSettings(b) {
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el && ["text", "password", "url", "color"].includes(el.type)) { setValue(el); if (el.dataset.set === "accent") qsa(".swatch").forEach(s => s.classList.remove("on")); } }, 450));
   body.addEventListener("click", async e => {
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
+    const preset = e.target.closest("[data-workspace-preset]");
+    if (preset && Object.hasOwn(WORKSPACE_PRESETS, preset.dataset.workspacePreset)) {
+      settings.workspacePreset = preset.dataset.workspacePreset; settings.accent = WORKSPACE_PRESETS[settings.workspacePreset].accent;
+      settings.theme = "dark"; saveSettings();
+      render(curSection()); body.querySelector(`[data-workspace-preset="${settings.workspacePreset}"]`)?.focus(); return;
+    }
     const th = e.target.closest("[data-theme-pick]"); if (th) { settings.theme = th.dataset.themePick; saveSettings(); qsa(".theme-card").forEach(c => { c.classList.toggle("on", c === th); c.setAttribute("aria-pressed", c === th); }); return; }
     const sw = e.target.closest("[data-accent]"); if (sw) { settings.accent = sw.dataset.accent; saveSettings(); qsa(".swatch").forEach(s => s.classList.toggle("on", s === sw)); const ci = document.querySelector('#settingsBody input[type=color]'); if (ci) ci.value = sw.dataset.accent; return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }

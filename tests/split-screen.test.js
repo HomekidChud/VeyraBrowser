@@ -28,8 +28,11 @@ assert.match(app, /function teardownSplitScreen\(\)/, "split teardown must be a 
 {
   const i = app.indexOf("function getOrCreateFrame(");
   const body = app.slice(i, app.indexOf("function onFrameLoad"));
-  assert.match(body, /splitLeftContent/, "frame creation must route pane tabs into the split pane content");
-  assert.match(body, /splitRightContent/, "frame creation must route pane tabs into the split pane content");
+  assert.match(body, /\$\("frameWrap"\)\.insertBefore\(f/, "a frame is attached to the stable wrapper");
+  assert.match(body, /syncSplitFrames\(\)/, "new frames get their split marker immediately");
+  const nativeSplit = app.slice(app.indexOf("function syncSplitFrames"), app.indexOf("function makeTab"));
+  assert.doesNotMatch(nativeSplit, /appendChild\((?:leftFrame|rightFrame|frame|f)\)|\b(?:removeChild|replaceChild)\b/, "split does not reparent live frames");
+  assert.match(css, /tab-frame\[data-split-pane=second\]/, "CSS positions the second live frame");
 }
 
 // --- Bug 4: closeTab/switchTab/renderActive left split state pointing at
@@ -43,7 +46,7 @@ assert.match(app, /ss\.active && \(t\.view !== "page" \|\| isRemote\(t\) \|\| \(
 // inline gridTemplateColumns broke the mobile stacked (rows) layout.
 assert.doesNotMatch(app, /document\.addEventListener\("mousemove"[\s\S]{0,400}splitContainer/, "the divider drag must not leak document-level listeners");
 assert.match(app, /pointerdown/, "the divider drag must use pointer events on the divider (mouse + touch)");
-assert.match(app, /gridTemplateRows = `\$\{clamped\}fr 6px \$\{100 - clamped\}fr`/, "dragging on the mobile layout must resize rows, not columns");
+assert.match(css, /\[data-split-axis=stack\][^{]+\{[^}]+grid-template-rows:[^}]+--split-position/, "stacked layout resizes rows, not columns");
 assert.match(css, /\.split-divider\{[^}]*touch-action:none/, "the divider needs touch-action:none for touch dragging");
 
 // --- Menu item must reflect the current split state.
