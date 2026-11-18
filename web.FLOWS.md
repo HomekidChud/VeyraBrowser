@@ -1,5 +1,12 @@
 # Developer portal QA
 
+## Web workspace and tab layout
+
+- In Customize workspace choose Pulse, switch the tabs to the left and then right, change the rail width, and check the top layout still works. Check the compact mobile rail and reload to verify the chosen theme and layout are saved.
+- Create a named, coloured group from the browser menu or tab context menu. Add another tab; expand, collapse, rename and ungroup it. Verify group membership and order survive reload.
+- Open two Fast Proxy pages, then split them. Resize by mouse and keyboard, stack the panes, swap sides and choose a different partner. A running page must not reload when the split layout changes. Exit the split and confirm the active page remains clickable.
+- Toggle Game Focus and verify that animations and background diagnostics are reduced without dropping the visible page or session.
+
 ## Public documentation
 - Open `/dev/platform/` signed out. The old live portal shows only a sign-in form; the new entry should show the fetch guide first without signing in.
 - Switch the request language, copy an example, open the embed guide, and follow its direct reference link. The API key belongs only in a server-side environment variable.
