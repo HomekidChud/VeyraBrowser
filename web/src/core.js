@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.41";
+export const VERSION = "8.28.43";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -310,19 +310,6 @@ export async function getNeuralStats() {
   try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
-
-export async function testAdminLogin() {
-  try {
-    const cfg = await api("/api/auth/config", { timeoutMs: 5000 });
-    if (!cfg.testMode) return { ok: false, reason: "Test mode is off on this server" };
-    const result = await api("/api/auth/test-login", { method: "POST", json: {}, timeoutMs: 10000 });
-    if (result.ok && result.token) {
-      setAuth(result.token, result.user);
-      auth.admin = true;
-    }
-    return result;
-  } catch (e) { return { ok: false, reason: e.message }; }
-}
 
 
 export const logs = [];

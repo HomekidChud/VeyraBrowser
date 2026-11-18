@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.41-account-notices";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.28.43-admin-console";
 
 const pending = new Map();
 const listeners = new Set();

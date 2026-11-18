@@ -23,3 +23,12 @@
 - Open a GitHub login or signup URL: verify the direct action uses the official start page and drops transient session parameters.
 - On a normal browser profile, verify **GitHub signup** is added once and opens the official signup page in a separate tab. Remove it, reload and verify it stays removed. An existing signup bookmark with a custom name should be preserved. Incognito should not seed it.
 - Check toast actions, input submission, deduplication, screen fit at 375 px, and reduced-motion behavior. Check that saved Google bookmarks open directly and ordinary bookmarks do not change behavior.
+
+## Browser admin access
+
+- Baseline: `veyra://admin` exposes overview, sessions, crawls, requests, logs, ads, config and tools. Confirm the upgraded panel keeps them available from both browser entry pages.
+- With a disposable administrator, switch Public → Staff only, cancel once, and confirm again. The summary should show only saved settings. A fresh visitor and a valid invite holder should see the lock screen, and their API requests should fail. Administrator recovery sign-in should still open the panel; a regular account should not pass it.
+- While locked, turn new browser waitlist signups off and on. Check that the gate form reflects the setting and that the queue keeps its entries. The separate developer-platform waitlist must not be changed by this switch.
+- Enable access test mode, run read-only checks, then disable it. Confirm the checks match public, invite holder and staff behavior, and that nobody gains an account, credential or access from test mode.
+- Return to Invite only, redeem an existing invite, then switch Public. Reload in a fresh context; restart the fixture API and verify the persisted settings. Simulate a stale revision, rejected save and older server; expect clear errors or read-only status without showing a false save.
+- Review a disposable browser waitlist entry, rotate a link, and verify no live mail is sent during QA. Test the policy form and confirmation with the keyboard. At 375 px, status text and controls must wrap without horizontal page overflow.

@@ -3,24 +3,24 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.28.41-account-notices";
+} from "./core.js?v=8.28.43-admin-console";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.41-account-notices";
-import { initUI } from "./ui.js?v=8.28.41-account-notices";
-import { initDevtools } from "./devtools.js?v=8.28.41-account-notices";
-import { maybeOfferRenew } from "./renew.js?v=8.28.41-account-notices";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.28.43-admin-console";
+import { initUI } from "./ui.js?v=8.28.43-admin-console";
+import { initDevtools } from "./devtools.js?v=8.28.43-admin-console";
+import { maybeOfferRenew } from "./renew.js?v=8.28.43-admin-console";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.28.41-account-notices").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.28.43-admin-console").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 function ensureAdminModule() {
-  adminModulePromise ||= import("./admin.js?v=8.28.41-account-notices");
+  adminModulePromise ||= import("./admin.js?v=8.28.43-admin-console");
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
@@ -3030,12 +3030,18 @@ async function boot() {
     restoreTabState();
     renderTabs(); tickSession();
     await revisitSavedSession();
+    const authConfig = api("/api/auth/config", { timeoutMs: 10000 }).then(c => {
+      auth.config = c; auth.admin = !!c.admin;
+      state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0;
+      tickSession(); hooks.onAuthChanged?.();
+      if (activeTab()?.view === "newtab") hooks.renderNewTab?.();
+    }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
+    if (!isAdmin() && settings.adminToken && /^\/admin(?:\/|$)/.test(currentRoute())) await authConfig;
     applyRoute();
     applyStartup(params);
     // (Removed) the veyra_handoff return-trip param: with the cookie
     // handoff gone, nothing navigates back into the app with a target URL
     // anymore. Sign-in happens inside the fast proxy.
-    api("/api/auth/config", { timeoutMs: 10000 }).then(c => { auth.config = c; auth.admin = !!c.admin; state.serverLimitMs = Number(c.sessionTimeLimitMs) || 0; tickSession(); hooks.onAuthChanged?.(); if ((currentRoute() === "/dev" || currentRoute() === "/admin" || location.hash === "#console") && !isAdmin()) applyRoute(); if (activeTab()?.view === "newtab") hooks.renderNewTab?.(); }).catch(e => addLog("warn", `Backend unreachable: ${e.message}`));
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }

@@ -2,9 +2,9 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.41-account-notices";
-import { initExtensions } from "./extensions.js?v=8.28.41-account-notices";
-import { initSettings } from "./settings.js?v=8.28.41-account-notices";
+} from "./core.js?v=8.28.43-admin-console";
+import { initExtensions } from "./extensions.js?v=8.28.43-admin-console";
+import { initSettings } from "./settings.js?v=8.28.43-admin-console";
 import { accountDestination } from "./account-navigation.js?v=2";
 
 let B;

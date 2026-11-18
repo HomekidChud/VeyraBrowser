@@ -1,6 +1,6 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, testAdminLogin, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.41-account-notices";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.41-account-notices";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.28.43-admin-console";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.28.43-admin-console";
 
 let B;
 const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -45,7 +45,7 @@ const section = (id, title, desc, body) => `<section class="s-section" id="s-${i
 function accountSection() {
   if (!auth.user) return section("account", "You and Veyra", "Sign in to sync settings, bookmarks, extensions and notes across devices.",
     row("Not signed in", "You are browsing as a guest. Everything stays in this browser.", `<button class="btn" data-act="signin">Sign in</button><button class="btn primary" data-act="signup">Create account</button>`)
-    + row("Test admin", "Log in as a test administrator with full access. Only works when test mode is enabled on the server (VEYRA_TEST_MODE=1).", `<button class="btn" data-act="testAdmin">Test admin login</button>`));
+    );
   const u = auth.user;
   return section("account", "You and Veyra", "", `
     <div class="about-card"><div class="avatar" style="width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font:800 1.3rem var(--font-display)">${esc((u.name || u.email || "?")[0].toUpperCase())}</div><div><h3>${esc(u.name || "Veyra user")}</h3><div class="muted">${esc(u.email)}${isAdmin() ? " · Administrator" : ""}</div></div></div>
@@ -296,13 +296,6 @@ async function act(a, el) {
   switch (a) {
     case "signin": return openAuth("login");
     case "signup": return openAuth("signup");
-    case "testAdmin": {
-      toast("Attempting test admin login…");
-      const r = await testAdminLogin();
-      if (r.ok) { toast("Logged in as test admin", { ms: 4000 }); render(curSection()); }
-      else toast(r.reason || "Test admin login failed", { kind: "err" });
-      return;
-    }
     case "saveName": {
       const name = $("accName").value.trim(); if (!name) return toast("Name can't be empty", { kind: "err" });
       try { const r = await api("/api/auth/me", { method: "PATCH", json: { name } }); setAuth(r.token || auth.token, r.user); toast("Name updated"); render(curSection()); } catch (e) { toast(e.message, { kind: "err" }); } return;
