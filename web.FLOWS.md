@@ -49,3 +49,8 @@
 - Enable access test mode, run read-only checks, then disable it. Confirm the checks match public, invite holder and staff behavior, and that nobody gains an account, credential or access from test mode.
 - Return to Invite only, redeem an existing invite, then switch Public. Reload in a fresh context; restart the fixture API and verify the persisted settings. Simulate a stale revision, rejected save and older server; expect clear errors or read-only status without showing a false save.
 - Review a disposable browser waitlist entry, rotate a link, and verify no live mail is sent during QA. Test the policy form and confirmation with the keyboard. At 375 px, status text and controls must wrap without horizontal page overflow.
+# Console Lab workbench checks
+
+- Open `veyra://console-lab` and its existing plural spelling in the Veyra address bar. The singular address stays visible and no browsing proxy session starts. Reload and back/forward keep the lab usable. A signed-out or non-admin account sees the access prompt; verified admins see Console Lab.
+- From Overview, open all modules: Console, Agent Studio, Live Activity, Neural Analytics, Task Runs, Crawler Fleet and Diagnostics. Check console help and filtering, editable agent templates, profile save/filter and run history, status refresh, and the local diagnostics and clear report controls. Server probes still require Fast Proxy.
+- Open Website Analytics. Start with no metrics, then load the explicitly labeled demo or an aggregate CSV. Run a typed trend task, a top-pages or channels task and anomaly detection. Verify export, clear, invalid input, missing data and unknown task states. The CSV stays in this frame and no website-wide traffic is inferred from a URL.

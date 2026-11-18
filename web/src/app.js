@@ -6,7 +6,7 @@ import {
 } from "./core.js?v=8.29.1-session-privacy";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.29.1-session-privacy";
-import { initUI } from "./ui.js?v=8.29.1-session-privacy";
+import { initUI } from "./ui.js?v=8.29.2-console-lab";
 import { initDevtools } from "./devtools.js?v=8.29.1-session-privacy";
 import { maybeOfferRenew } from "./renew.js?v=8.29.1-session-privacy";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
@@ -67,7 +67,7 @@ const INTERNAL = {
   resources: { title: "Page resources", icon: "i-file", path: "/resources" },
   links: { title: "All links", icon: "i-link", path: "/links" },
   console: { title: "Veyra console", icon: "i-terminal", path: "/console", admin: true },
-  "console-labs": { title: "Veyra Console Lab", icon: "i-terminal", path: "/console-labs", admin: true },
+  "console-lab": { title: "Veyra Console Lab", icon: "i-terminal", path: "/browse", admin: true },
   dev: { title: "Veyra dev", icon: "i-code", path: "/dev", admin: true },
   platform: { title: "Developer platform", icon: "i-platform", path: "/dev/platform" },
   admin: { title: "Admin panel", icon: "i-shield", path: "/admin/", admin: true },
@@ -598,6 +598,7 @@ function routeForTab(t) {
   if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
   if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
   if (t.view === "console") return ["/browse", "#console"];
+  if (t.view === "console-lab") return ["/browse/", "#console-lab"];
   if (t.view === "cast") return ["/cast", ""];
   if (t.view === "internet") return ["/internet", ""];
   return [INTERNAL[t.view]?.path || "/browse", ""];
@@ -633,6 +634,7 @@ function applyRoute() {
   if (!state.tabs.length) { const t = makeTab(); state.tabs.push(t); state.activeId = t.id; renderTabs(); }
   const t = activeTab();
   const reuse = x => x.view === "newtab" || x.view === "page" && !x.url;
+  if ((route === "/browse" && location.hash === "#console-lab") || route === "/console-labs") return openInternal("console-lab", { push: false });
   if (location.hash === "#console" && !/^\/admin(?:\/|$)/.test(route)) return openInternal("console", { push: false });
   const [, first, second, third] = route.split("/");
   const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
@@ -670,7 +672,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
     if (currentRoute() === "/cast") history.replaceState({}, "", routeUrl("/browse") + "?incognito=1");
     return renderActive({ push: false });
   }
-  if (view !== "admin" && INTERNAL[view]?.admin && !isAdmin()) {
+  if (view !== "admin" && view !== "console-lab" && INTERNAL[view]?.admin && !isAdmin()) {
     toast("That page is only available to Veyra administrators", { kind: "warn" });
     if (currentRoute() === "/dev" || location.hash === "#console") { try { history.replaceState({}, "", routeUrl("/browse")); } catch {} }
     renderActive({ push: false }); return;
@@ -727,6 +729,8 @@ function renderAdminAccessChange() {
   const tab = activeTab();
   if (tab?.view === "admin") renderAdminEntry(tab);
   else if (!canOpenAdminPanel()) $("adminPanel")?.replaceChildren();
+  if (tab?.view === "console-lab") renderConsoleLabEntry();
+  else if (!canOpenAdminPanel()) $("view-console-lab")?.replaceChildren();
 }
 
 function adminMessage(box, message, actions = "") {
@@ -763,6 +767,41 @@ function renderAdminEntry(tab) {
   });
 }
 
+function renderConsoleLabEntry() {
+  const box = $("view-console-lab"); if (!box) return;
+  if (INCOGNITO || !canOpenAdminPanel()) {
+    const shell = document.createElement("div");
+    shell.className = "page-shell wide";
+    const h = document.createElement("h1"), note = document.createElement("p");
+    h.textContent = "Console Lab";
+    note.setAttribute("role", "status");
+    const checking = adminAccess?.status === "checking";
+    note.textContent = INCOGNITO ? "Console Lab is not available in private browsing." : checking
+      ? "Checking administrator access…" : adminAccess?.status === "unavailable"
+        ? "Administrator verification is unavailable. Check your connection and retry."
+        : "Sign in with a verified Veyra administrator account.";
+    shell.append(h, note);
+    if (!checking && !INCOGNITO) {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "btn primary";
+      if (adminAccess?.status === "unavailable") {
+        button.textContent = "Retry verification";
+        button.onclick = () => syncAdminAccess({ force: true });
+      } else { button.textContent = "Sign in"; button.dataset.auth = "login"; }
+      shell.append(button);
+    }
+    box.replaceChildren(shell);
+    return;
+  }
+  if ($("consoleLabFrame")) return;
+  const frame = document.createElement("iframe");
+  frame.id = "consoleLabFrame"; frame.title = "Veyra Console Lab";
+  frame.referrerPolicy = "no-referrer";
+  frame.style.cssText = "display:block;width:100%;height:100%;border:0";
+  frame.src = new URL(`${APP_BASE}/console-lab/`, location.origin).href;
+  box.replaceChildren(frame);
+}
+
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
   // Split view overlays the whole viewport; if the active pane tab stops
@@ -776,9 +815,10 @@ export function renderActive({ push = true, replace = false } = {}) {
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
     downloads: renderDownloads, history: renderHistory, extensions: () => hooks.renderExtensions?.(), settings: () => hooks.renderSettings?.(t.section),
-    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdminEntry(t),
+    vpn: renderVpnPanel, resources: renderResources, links: renderLinks, console: renderConsole, dev: renderDev, platform: renderPlatform, admin: () => renderAdminEntry(t), "console-lab": renderConsoleLabEntry,
     cast: () => ensureCastModule().then(() => hooks.renderCast?.()), internet: () => ensureCastModule().then(() => hooks.renderInternet?.())
   }[t.view]; r?.();
+  if (t.view !== "console-lab" && !state.tabs.some(tab => tab.view === "console-lab")) $("view-console-lab")?.replaceChildren();
   if (t.view !== "dev") clearInterval(state.devTimer);
   if (t.view !== "admin") clearInterval(state.adminTimer);
   if (!$("findBar").classList.contains("hidden") && t.view !== "page") closeFind();
@@ -1376,7 +1416,10 @@ export function classify(input) {
   const source = parseSourceUri(v);
   if (source) { const resolved = resolveSourceUri(v, API); return resolved ? { kind: "source", uri: resolved.uri, url: resolved.url } : { kind: "unsupported", value: v }; }
   const internal = v.match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
-  if (internal) return INTERNAL[internal[1].toLowerCase()] ? { kind: "internal", view: internal[1].toLowerCase(), section: internal[2] || "" } : { kind: "search", query: v };
+  if (internal) {
+    const name = internal[1].toLowerCase(), view = name === "console-labs" ? "console-lab" : name;
+    return Object.hasOwn(INTERNAL, view) ? { kind: "internal", view, section: view === "console-lab" ? "" : internal[2] || "" } : { kind: "search", query: v };
+  }
   if (/^(?:javascript|data|blob|file|chrome|about):/i.test(v)) return { kind: "unsupported", value: v };
   if (/^https?:\/\//i.test(v)) return { kind: "url", url: v };
   if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i.test(v)) return { kind: "url", url: "http://" + v };
@@ -1389,12 +1432,6 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   if (r.kind === "source") {
     if (inNew) return newTab({ url: r.url, displayUrl: r.uri, background: !activate });
     return navigate(r.url, { tab, push, activate, displayUrl: r.uri });
-  }
-  if (r.kind === "internal" && r.view === "console-labs") {
-    if (!isAdmin()) { toast("That page is only available to Veyra administrators", { kind: "warn" }); return; }
-    const target = new URL(`${APP_BASE}/console-lab/`, location.origin).href;
-    if (inNew) { newTab({ url: target }); return; }
-    return navigate(target, { tab, push, activate });
   }
   if (inNew) { if (interceptAccount(r.url, activeTab()?.url)) updateAddress(); else newTab({ url: input }); return; }
   if (r.kind === "internal") { openInternal(r.view, { tab, section: r.section, push }); return; }
@@ -2038,6 +2075,7 @@ export async function reload({ hard = false } = {}) {
     return loadInTab(t, t.url, { loadFrame: true });
   }
   if (t.view === "search") return runSearch(t.searchQuery);
+  if (t.view === "console-lab") { $("view-console-lab")?.replaceChildren(); return renderConsoleLabEntry(); }
   renderActive({ push: false });
 }
 export async function stopLoad() {
@@ -2943,6 +2981,14 @@ async function handleMessage(e) {
   // raw browser tabs at path-based proxy URLs.
   if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
+  if (d.type === "veyra:console-lab:open-proxy") {
+    const frame = $("consoleLabFrame");
+    if (frame && e.source === frame.contentWindow && e.origin === location.origin &&
+        activeTab()?.view === "console-lab" && canOpenAdminPanel() && isConsoleLabPageUrl(frame.src)) {
+      newTab({ url: frame.src });
+    }
+    return;
+  }
   
   
   

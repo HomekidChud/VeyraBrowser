@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Website Analytics | Veyra Console Lab</title>
+  <meta name="description" content="Analyze your aggregate site traffic locally. Compare weeks, rank landing pages and channels, and screen for abnormal days.">
+  <link rel="stylesheet" href="traffic.css?v=1">
+  <script src="traffic.js?v=1" type="module"></script>
+</head>
+<body>
+  <main>
+    <header class="page-head">
+      <div><div class="eyebrow">Console Lab / Analysis</div><h1>Website Analytics</h1>
+      <p>Measure traffic from your own export. No sitewide visits are guessed from a URL.</p></div>
+      <span class="local">Local processing</span>
+    </header>
+    <section class="panel source" aria-labelledby="source-title">
+      <div class="section-head"><div><h2 id="source-title">Traffic data</h2><p>Import daily totals by landing page and channel. Files stay in this tab.</p></div>
+      <span id="source-label" class="tag">No data loaded</span></div>
+      <div class="actions"><label class="button primary upload" for="traffic-file">Import CSV</label><input id="traffic-file" class="file" type="file" accept=".csv,text/csv" aria-describedby="import-status">
+        <button type="button" id="demo">Load demo</button><button type="button" id="template">Download CSV template</button><button type="button" id="clear" hidden>Clear data</button></div>
+      <p id="import-status" role="status" class="metadata">Up to 2 MB, 20,000 rows, and 366 days.</p>
+      <details><summary>CSV format and counting rules</summary><p>Use <code>date,page,channel,sessions,pageviews</code>, with one row per date, landing page and acquisition channel. Each session should belong to only one row. Use path-only labels, no personal data, and only aggregate data you’re authorized to use. Missing days are not assumed to be zero. Pageviews are attributed to the session’s landing page in this format. Unique visitors, conversions, and bounce rates are not measured.</p></details>
+    </section>
+
+    <section class="panel" aria-labelledby="task-title">
+      <div class="section-head"><div><h2 id="task-title">Task desk</h2><p>Pick a task or describe what you want to analyze.</p></div></div>
+      <form id="task-form">
+        <label for="question" class="visually-hidden">Describe an analytics task</label>
+        <input id="question" maxlength="160" placeholder="How did traffic change week over week?" autocomplete="off">
+        <button class="primary" type="submit">Run task</button>
+      </form>
+      <div class="actions task-list" aria-label="Available tasks">
+        <button data-task="summary" aria-pressed="false" type="button">Traffic brief</button>
+        <button data-task="trend" aria-pressed="false" type="button">Compare weeks</button>
+        <button data-task="pages" aria-pressed="false" type="button">Top landing pages</button>
+        <button data-task="channels" aria-pressed="false" type="button">Acquisition channels</button>
+        <button data-task="anomalies" aria-pressed="false" type="button">Find spikes or dips</button>
+      </div>
+      <p id="task-status" class="metadata" role="status">Tasks use only the imported metrics. This is not a general chat box.</p>
+    </section>
+
+    <section id="results" hidden aria-labelledby="results-title">
+      <div class="metrics" aria-label="Imported traffic totals">
+        <article><span>Sessions</span><strong id="sessions"></strong></article>
+        <article><span>Pageviews</span><strong id="pageviews"></strong></article>
+        <article><span>Reported days</span><strong id="days"></strong></article>
+        <article><span>Landing pages</span><strong id="pages"></strong></article>
+      </div>
+      <div class="panel" id="task-result">
+        <div class="section-head"><div><p id="result-source" class="metadata"></p><h2 id="results-title" tabindex="-1">Traffic brief</h2></div>
+        <button type="button" id="export">Export report</button></div>
+        <div id="narrative"></div>
+        <div id="task-table"></div>
+      </div>
+      <section class="panel" aria-labelledby="trend-title">
+        <div class="section-head"><div><h2 id="trend-title">Daily sessions</h2><p id="trend-scope">Latest 14 calendar days</p></div></div>
+        <div id="chart" aria-hidden="true"></div>
+        <div id="chart-labels" class="chart-labels" aria-hidden="true"></div>
+        <details><summary>View daily values</summary><div id="trend-table"></div></details>
+      </section>
+    </section>
+    <footer>Veyra Console Lab <span>Aggregate traffic analysis</span></footer>
+  </main>
+</body>
+</html>
