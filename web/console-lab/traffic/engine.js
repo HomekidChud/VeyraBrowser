@@ -1,6 +1,7 @@
 /* Browser and Node tests share exactly the same dependency-free task engine. */
   const DAY = 86400000, MAX_BYTES = 2_000_000, MAX_ROWS = 20_000;
   const COLUMNS = ["date", "page", "channel", "sessions", "pageviews"];
+  const DAILY_COLUMNS = ["date", "sessions", "pageviews"];
   const TASKS = {
     summary: "Traffic brief", trend: "Compare weeks", pages: "Top landing pages",
     channels: "Acquisition channels", anomalies: "Find traffic spikes or dips"
@@ -71,8 +72,10 @@
   function metric(value) { return /^\d{1,9}$/.test(value) ? Number(value) : null; }
   function parse(value) {
     const rows = csvRows(value), columns = (rows.shift() || []).map(x => x.trim().toLowerCase());
-    if (columns.length !== COLUMNS.length || !COLUMNS.every(col => columns.includes(col))) {
-      throw new Error("Required columns: date, page, channel, sessions, pageviews. Use the CSV template.");
+    const matches = schema => columns.length === schema.length && schema.every(col => columns.includes(col));
+    const hasBreakdowns = matches(COLUMNS);
+    if (!hasBreakdowns && !matches(DAILY_COLUMNS)) {
+      throw new Error("Use date,sessions,pageviews or date,page,channel,sessions,pageviews. See the CSV templates.");
     }
     if (!rows.length) throw new Error("The CSV has no data rows.");
     const indexes = COLUMNS.map(col => columns.indexOf(col));
@@ -84,18 +87,19 @@
     let sessions = 0, pageviews = 0;
     rows.forEach((row, i) => {
       const error = message => { throw new Error(`Data row ${i + 1}: ${message}`); };
-      if (row.length !== COLUMNS.length) error("Each row needs five columns.");
-      const [date, rawPage, rawChannel, sess, views] = indexes.map(index => row[index].trim());
+      if (row.length !== columns.length) error(`Each row needs ${columns.length} columns.`);
+      const [date, rawPage, rawChannel, sess, views] = indexes.map(index => index < 0 ? "" : row[index].trim());
       const stamp = Date.parse(`${date}T00:00:00Z`);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(stamp) || dateLabel(stamp) !== date) error("Use a valid date in YYYY-MM-DD format.");
-      if (!/^\/(?!\/)[^?#\\\s<>\u0000-\u001f]{0,179}$/.test(rawPage)) error("Use a landing path like /pricing, with no host, query, or fragment.");
-      if (!/^[\p{L}\p{N} .&+_/-]{1,64}$/u.test(rawChannel)) error("Use a short aggregate channel label like Organic Search.");
+      if (hasBreakdowns && !/^\/(?!\/)[^?#\\\s<>\u0000-\u001f]{0,179}$/.test(rawPage)) error("Use a landing path like /pricing, with no host, query, or fragment.");
+      if (hasBreakdowns && !/^[\p{L}\p{N} .&+_/-]{1,64}$/u.test(rawChannel)) error("Use a short aggregate channel label like Organic Search.");
       const n = metric(sess), v = metric(views);
       if (n === null || v === null) error("Sessions and pageviews must be whole numbers from 0 to 999,999,999.");
-      const identity = JSON.stringify([date, rawPage, rawChannel.toLowerCase()]);
-      if (seen.has(identity)) error("This date, page, and channel already appear in the CSV.");
+      const identity = hasBreakdowns ? JSON.stringify([date, rawPage, rawChannel.toLowerCase()]) : date;
+      if (seen.has(identity)) error(hasBreakdowns ? "This date, page, and channel already appear in the CSV." : "This date already appears in the daily totals CSV.");
       seen.add(identity);
-      add(days, stamp, n, v); add(pages, rawPage, n, v); add(channels, rawChannel.toLowerCase(), n, v);
+      add(days, stamp, n, v);
+      if (hasBreakdowns) { add(pages, rawPage, n, v); add(channels, rawChannel.toLowerCase(), n, v); }
       sessions += n; pageviews += v;
     });
     const dates = [...days.keys()].sort((a, b) => a - b), first = dates[0], last = dates.at(-1);
@@ -106,7 +110,7 @@
       return { date: dateLabel(stamp), sessions: days.get(stamp)?.sessions ?? null, pageviews: days.get(stamp)?.pageviews ?? null };
     });
     const order = map => [...map].map(([label, values]) => ({ label, ...values })).sort((a, b) => b.sessions - a.sessions || b.pageviews - a.pageviews || a.label.localeCompare(b.label));
-    return { rows: rows.length, sessions, pageviews, reportedDays: days.size, missingDays: span - days.size,
+    return { rows: rows.length, sessions, pageviews, hasBreakdowns, reportedDays: days.size, missingDays: span - days.size,
       start: dateLabel(first), end: dateLabel(last), timeline, pages: order(pages), channels: order(channels) };
   }
 
@@ -135,7 +139,8 @@
     const period = comparison(data);
     if (task === "summary") {
       desc.push(`${number(data.sessions)} sessions and ${number(data.pageviews)} pageviews across ${data.reportedDays} reported days (${data.start} to ${data.end}).`);
-      if (data.sessions > 0) desc.push(`Top landing page: ${data.pages[0].label} (${number(data.pages[0].sessions)} sessions). Top channel: ${data.channels[0].label} (${number(data.channels[0].sessions)} sessions).`);
+      if (!data.hasBreakdowns) desc.push("This CSV contains daily totals only. Landing pages and acquisition channels are not provided.");
+      else if (data.sessions > 0) desc.push(`Top landing page: ${data.pages[0].label} (${number(data.pages[0].sessions)} sessions). Top channel: ${data.channels[0].label} (${number(data.channels[0].sessions)} sessions).`);
       if (period?.delta != null) desc.push(`The last 7 days changed ${pct(period.delta)} versus the preceding 7 days.`);
       if (data.missingDays) desc.push(`${data.missingDays} calendar days are missing, not zero.`);
     } else if (task === "trend") {
@@ -145,6 +150,7 @@
         desc.push(period.delta === null ? "Percentage change is undefined because the preceding week had zero sessions." : `Week-over-week change: ${pct(period.delta)}.`);
       }
     } else if (task === "pages" || task === "channels") {
+      if (!data.hasBreakdowns) return { task, title: TASKS[task], desc: [`${TASKS[task]} are not available in a daily totals CSV. Import a CSV with both page and channel columns to see this breakdown.`], headers, rows, unavailable: true };
       const list = data[task];
       desc.push(`Top ${Math.min(10, list.length)} of ${list.length} ${task === "pages" ? "landing pages" : "channels"}, ranked by sessions.`);
       headers = [task === "pages" ? "Landing page" : "Channel", "Sessions", "Pageviews", "Session share"];

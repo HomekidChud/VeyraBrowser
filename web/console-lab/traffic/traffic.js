@@ -1,4 +1,4 @@
-import * as engine from "./engine.js?v=1";
+import * as engine from "./engine.js?v=2";
 
 (() => {
   "use strict";
@@ -51,7 +51,7 @@ import * as engine from "./engine.js?v=1";
     write("results-title", result.title);
     $("narrative").replaceChildren(...result.desc.map(line => node("p", line)));
     table("task-table", result.headers, result.rows);
-    status("task-status", `Completed: ${result.title}.`);
+    status("task-status", result.unavailable ? "Breakdown unavailable for this import." : `Completed: ${result.title}.`);
     if (focus) $("results-title").focus();
   }
   function load(csv, kind) {
@@ -59,8 +59,8 @@ import * as engine from "./engine.js?v=1";
     data = next; source = kind;
     write("source-label", kind === "demo" ? "Synthetic demo" : "Imported CSV");
     $("source-label").dataset.type = kind;
-    status("import-status", `${format.format(next.rows)} aggregate rows · ${next.start} to ${next.end}.`);
-    for (const [id, count] of [["sessions", next.sessions], ["pageviews", next.pageviews], ["days", next.reportedDays], ["pages", next.pages.length]]) write(id, format.format(count));
+    status("import-status", `${format.format(next.rows)} ${next.hasBreakdowns ? "aggregate rows" : "daily totals"} · ${next.start} to ${next.end}.`);
+    for (const [id, count] of [["sessions", next.sessions], ["pageviews", next.pageviews], ["days", next.reportedDays], ["pages", next.hasBreakdowns ? next.pages.length : null]]) write(id, count === null ? "Not provided" : format.format(count));
     $("results").hidden = false; $("clear").hidden = false;
     drawTimeline(); showTask("summary");
   }
@@ -82,6 +82,7 @@ import * as engine from "./engine.js?v=1";
   });
   $("demo").onclick = () => { ++uploadVersion; load(engine.demoCsv(), "demo"); };
   $("template").onclick = () => download("veyra-traffic-template.csv", "date,page,channel,sessions,pageviews\n", "text/csv;charset=utf-8");
+  $("daily-template").onclick = () => download("veyra-traffic-daily-template.csv", "date,sessions,pageviews\n", "text/csv;charset=utf-8");
   $("clear").onclick = () => {
     ++uploadVersion; data = source = result = null;
     $("results").hidden = true; $("clear").hidden = true;
@@ -104,7 +105,7 @@ import * as engine from "./engine.js?v=1";
     if (!result || !data) return;
     const lines = [result.title, provenance(), "", ...result.desc];
     if (result.rows.length) lines.push("", result.headers.join("\t"), ...result.rows.map(row => row.join("\t")));
-    lines.push("", "Counting scope: aggregate sessions and pageviews by date, landing page and acquisition channel.");
+    lines.push("", data.hasBreakdowns ? "Counting scope: aggregate sessions and pageviews by date, landing page and acquisition channel." : "Counting scope: aggregate sessions and pageviews by date only; landing pages and acquisition channels were not provided.");
     download(`veyra-${result.task}-${data.end}.txt`, lines.join("\n"), "text/plain;charset=utf-8");
   };
 })();
