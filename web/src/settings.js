@@ -1,5 +1,5 @@
 import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, isMac, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
-import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.0-touch";
+import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.1-inline-watch";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
@@ -164,7 +164,7 @@ function vpnSection() {
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
-    ${toggle("youtubeInline", "Inline YouTube player", "Open supported video links in the active tab with YouTube’s official embed. This direct player is off while using Veyra VPN or private browsing.")}
+    ${toggle("youtubeInline", "Inline YouTube player", "Use YouTube’s official player in the video area on eligible watch pages. The player connects directly to YouTube and is off with Veyra VPN or private browsing.")}
     ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. Fast proxy is the recommended default: it renders most sites quickly without a heavyweight browser. The crawler accelerates the current page only: the proxy paints first, critical assets start early, then bounded discovery warms additional required assets without crawling the whole site during your session.", [["proxy", "Fast proxy (recommended)"], ["crawler", "Fast proxy + page accelerator"], ["combined", "All combined (fastest adaptive)"], ["auto", "Automatic"]])}
     ${CHROMIUM_TRY_DISABLED ? "" : toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
     ${toggle("autoStopPrevious", "Stop the previous crawl when navigating", "Saves server resources.")}
@@ -381,6 +381,7 @@ function setValue(el) {
     return;
   }
   settings[key] = v; saveSettings();
+  if (key === "youtubeInline" && v === false) hooks.disableInlineYouTube?.();
   if (key === "blockTrackers" || key === "doNotTrack") {
     hooks.applyExtensionsToTab?.(B.activeTab());
     hooks.updateSessionPreferences?.().catch(e => toast(`Couldn't update active-session privacy controls: ${e.message}`, { kind: "err" }));
