@@ -1,8 +1,9 @@
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.34.0-actions";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.34.0-actions";
-import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=4";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.35.0-deck";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.35.0-deck";
+import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
+import { settingsPins, settingSearchTerms, settingTextMatches } from "./settings-model.js?v=1";
 
 let B;
 const SECTIONS = [
@@ -33,6 +34,7 @@ const SECTION_GROUPS = [
   ["Advanced", ["developer", "admin", "reset", "about"]]
 ];
 
+const icon = name => `<svg aria-hidden="true"><use href="#${name}"/></svg>`;
 const row = (label, desc, ctl, extra = "") => `<div class="s-row" ${extra}><div class="s-label"><b>${esc(label)}</b>${desc ? `<span>${esc(desc)}</span>` : ""}</div><div class="s-ctl">${ctl}</div></div>`;
 const toggle = (key, label, desc) => row(label, desc, `<input type="checkbox" class="switch" data-set="${key}" ${settings[key] ? "checked" : ""} aria-label="${esc(label)}">`);
 const select = (key, label, desc, opts) => row(label, desc, `<select class="input" data-set="${key}" aria-label="${esc(label)}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(settings[key]) === String(v) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`);
@@ -146,6 +148,7 @@ function vpnSection() {
 }
 function systemSection() {
   return section("system", "System and engine", "How Veyra loads pages.", `
+    ${toggle("youtubeInline", "Inline YouTube player", "Open supported video links in the active tab with YouTube’s official embed. This direct player is off while using Veyra VPN or private browsing.")}
     ${select("runtime", "Page loading strategy", "Choose the engines Veyra may use. Fast proxy is the recommended default: it renders most sites quickly without a heavyweight browser. The crawler accelerates the current page only: the proxy paints first, critical assets start early, then bounded discovery warms additional required assets without crawling the whole site during your session.", [["proxy", "Fast proxy (recommended)"], ["crawler", "Fast proxy + page accelerator"], ["combined", "All combined (fastest adaptive)"], ["auto", "Automatic"]])}
     ${CHROMIUM_TRY_DISABLED ? "" : toggle("browserFallback", "Allow Chromium fallback", "In Automatic and Proxy + crawler modes, use Chromium when the lightweight renderer cannot handle a site.")}
     ${toggle("autoStopPrevious", "Stop the previous crawl when navigating", "Saves server resources.")}
@@ -195,36 +198,54 @@ const PARTS = () => ({ account: accountSection, appearance: appearanceSection, s
 export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
 export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
 let lastRendered = null;
+let searchIndex = null;
 const curSection = () => { const t = B?.activeTab?.(); return t && t.view === "settings" ? t.section || "" : ""; };
-function render(active) {
+const navItem = (s, cur) => `<button type="button" class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}>${icon(s.icon)}<span>${esc(s.label)}</span></button>`;
+const pinButton = (s, pinned) => `<button type="button" class="deck-pin" data-deck-pin="${s.id}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(s.label)}">${icon("i-star")}</button>`;
+function overview(byId, pins) {
+  const card = s => `<div class="deck-directory-item"><button type="button" class="s-home-card" data-snav="${s.id}"><span class="s-home-ic">${icon(s.icon)}</span><span class="s-home-txt"><b>${esc(s.label)}</b><small>${esc(s.desc)}</small></span></button>${pinButton(s, pins.includes(s.id))}</div>`;
+  return `<header class="deck-overview"><div><p class="deck-kicker">Veyra Control Deck</p><h1>Settings</h1><p>Make Veyra yours. Find a control or pin a section for quick access.</p></div><div class="deck-schematic" aria-hidden="true"><i></i><i></i><i></i><b></b></div></header>
+    <section class="deck-pinned"><h2>Pinned sections</h2><div class="deck-pinned-list">${pins.length ? pins.map(id => { const s = byId.get(id); return `<button type="button" data-snav="${id}">${icon(s.icon)}${esc(s.label)}</button>`; }).join("") : "<p>No pins yet. Use a star in the directory below.</p>"}</div></section>
+    <div class="deck-directory">${SECTION_GROUPS.map(([group, ids]) => `<section class="deck-group"><h2>${esc(group)}</h2><div class="s-home-grid">${ids.filter(id => byId.has(id)).map(id => card(byId.get(id))).join("")}</div></section>`).join("")}</div>`;
+}
+function render(active, reuseSearch = false) {
   const nav = $("settingsNav"), body = $("settingsBody");
   const visible = visibleSections();
   const cur = visible.find(s => s.id === active) ? active : "";
   const q = $("settingsSearch").value.trim();
+  if (q && reuseSearch && searchIndex && searchIndex.admin === isAdmin()) { filter(q); return; }
+  searchIndex = null;
   const t = B?.activeTab?.();
   if (t && t.view === "settings" && active && !cur) t.section = "";
   const byId = new Map(visible.map(s => [s.id, s]));
-  nav.innerHTML = `<button class="snav ${!cur ? "on" : ""}" data-snav=""><svg><use href="#i-grid"/></svg><span>Overview</span></button>` +
-    SECTION_GROUPS.map(([group, ids]) => { const items = ids.map(id => byId.get(id)).filter(Boolean); return items.length ? `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${items.map(s => `<button class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}><svg><use href="#${s.icon}"/></svg><span>${esc(s.label)}</span></button>`).join("")}</div>` : ""; }).join("");
+  const pins = settingsPins(settings.deckPins, byId.keys());
+  const groupMarkup = (group, ids, current = true) => `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${ids.filter(id => byId.has(id)).map(id => navItem(byId.get(id), current && !q ? cur : null)).join("")}</div>`;
+  nav.innerHTML = navItem({ id: "", label: "Overview", icon: "i-grid" }, q ? null : cur)
+    + (pins.length ? groupMarkup("Pinned", pins, false) : "") + SECTION_GROUPS.map(([group, ids]) => groupMarkup(group, ids)).join("");
   const parts = PARTS();
   const empty = `<p class="muted s-empty" id="settingsEmpty" style="display:none">No settings match your search.</p>`;
   if (q) {
-    body.innerHTML = `<div class="s-crumbs"><span>Search results for “${esc(q)}”</span></div>` + visible.map(s => parts[s.id]()).join("") + empty;
+    body.innerHTML = `<header class="deck-search-head"><h1>Search settings</h1><p id="settingsResultCount" role="status"></p></header>` + visible.map(s => parts[s.id]()).join("") + empty;
+    searchIndex = { admin: isAdmin(), entries: [...body.querySelectorAll(".s-section")].map(sec => {
+      const s = byId.get(sec.dataset.section);
+      if (s) sec.insertAdjacentHTML("afterbegin", `<button type="button" class="deck-search-open" data-snav="${s.id}">Open ${esc(s.label)} ${icon("i-forward")}</button>`);
+      const rows = [...sec.querySelectorAll(".s-row,.radio-row,.studio-preset,.studio-wallpaper")].map(el => [el, `${el.textContent} ${el.dataset.label || ""}`.toLowerCase()]);
+      return { sec, rows, text: `${s?.label || ""} ${s?.desc || ""} ${sec.querySelector("h2")?.textContent || ""}`.toLowerCase() };
+    }) };
     filter(q);
   } else if (!cur) {
-    body.innerHTML = `<header class="s-home-head"><h1>Settings</h1><p class="muted">Pick a category, or search every setting from the box on the left.</p></header>
-      <div class="s-home-grid">${visible.map(s => `<button class="s-home-card" data-snav="${s.id}"><span class="s-home-ic"><svg><use href="#${s.icon}"/></svg></span><span class="s-home-txt"><b>${esc(s.label)}</b><small>${esc(s.desc || "")}</small></span><svg class="s-home-go"><use href="#i-forward"/></svg></button>`).join("")}</div>` + empty;
+    body.innerHTML = overview(byId, pins);
   } else {
     const meta = visible.find(s => s.id === cur);
-    body.innerHTML = `<nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>` + parts[cur]() + empty;
+    body.innerHTML = `<div class="deck-section-bar"><nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>${pinButton(meta, pins.includes(cur))}</div>` + parts[cur]();
   }
   hooks.updateStudioPreview?.();
   if (lastRendered !== `${cur}|${q}`) $("view-settings").scrollTop = 0;
   lastRendered = `${cur}|${q}`;
-  if (q || !cur || cur === "about") loadAbout();
+  if (!q && cur === "about") loadAbout();
   if (!q && cur === "neural") void loadNeuralStats();
-  if (q || cur === "vpn") renderVpnList();
-  if (isAdmin() && (q || cur === "admin")) loadAdmin();
+  if (!q && cur === "vpn") renderVpnList();
+  if (!q && cur === "admin" && isAdmin()) loadAdmin();
 }
 
 async function loadNeuralStats() {
@@ -260,16 +281,20 @@ async function loadAdmin() {
 }
 
 function filter(q) {
-  q = q.toLowerCase(); let any = false;
-  qsa("#settingsBody .s-section").forEach(sec => {
-    let hit = false; const inTitle = (sec.querySelector("h2").textContent + " " + (sec.classList.contains("studio") ? sec.querySelector(".studio-panel[data-studio-content=look]").textContent : sec.classList.contains("velocity-panel") ? "Boost anti lag tab parking timing diagnostics" : "")).toLowerCase().includes(q);
-    sec.querySelectorAll(".s-row, .radio-row, .theme-cards").forEach(r => {
-      const m = !!q && (r.textContent + " " + (r.dataset.label || "")).toLowerCase().includes(q);
-      r.classList.toggle("hit", m && r.classList.contains("s-row")); if (m) hit = true;
-    });
-    const show = !q || hit || inTitle; sec.style.display = show ? "" : "none"; if (show) any = true;
-  });
-  $("settingsEmpty").style.display = any ? "none" : "";
+  const terms = settingSearchTerms(q);
+  let count = 0;
+  for (const { sec, rows, text } of searchIndex.entries) {
+    let found = settingTextMatches(text, terms);
+    for (const [el, label] of rows) {
+      const hit = settingTextMatches(label, terms);
+      el.classList.toggle("hit", hit);
+      found ||= hit;
+    }
+    sec.hidden = !found;
+    count += Number(found);
+  }
+  $("settingsResultCount").textContent = `${count} matching ${count === 1 ? "section" : "sections"} for “${q}”`;
+  $("settingsEmpty").style.display = count ? "none" : "";
 }
 
 function setValue(el) {
@@ -509,6 +534,18 @@ export function initSettings(b) {
   };
   nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
   body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
+  body.addEventListener("click", e => {
+    const pin = e.target.closest("[data-deck-pin]");
+    if (!pin) return;
+    const id = pin.dataset.deckPin;
+    const allowed = visibleSections().map(s => s.id);
+    const pins = settingsPins(settings.deckPins, allowed);
+    if (!allowed.includes(id)) return;
+    settings.deckPins = pins.includes(id) ? pins.filter(key => key !== id) : [...pins, id];
+    saveSettings();
+    render(curSection());
+    body.querySelector(`[data-deck-pin="${id}"]`)?.focus({ preventScroll: true });
+  });
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
   body.addEventListener("change", e => {
     const profile = e.target.closest("[data-performance-mode]");
@@ -564,8 +601,8 @@ export function initSettings(b) {
     const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const pid = vd.dataset.vpnDelete; try { await api(`/api/vpn/custom/${encodeURIComponent(pid)}`, { method: "DELETE" }); toast("VPN profile removed"); } catch(e) { toast(`Failed: ${e.message}`, { kind: "err" }); } renderVpnList(); return; }
     const vt = e.target.closest("[data-vpn-test]"); if (vt) { const pid = vt.dataset.vpnTest; try { const r = await api("/api/vpn/test", { method: "POST", json: { profileId: pid } }); toast(r.healthy ? `Healthy (${r.latencyMs}ms, IP: ${r.exitIp || "?"})` : `Failed: ${r.lastError || "unreachable"}`, { kind: r.healthy ? "ok" : "err" }); } catch(e) { toast(`Test failed: ${e.message}`, { kind: "err" }); } return; }
   });
-  $("settingsSearch").addEventListener("input", debounce(() => render(B.activeTab()?.section || ""), 120));
-  $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.target.value = ""; render(B.activeTab()?.section || ""); } });
+  $("settingsSearch").addEventListener("input", debounce(() => { if (B.activeTab()?.view === "settings") render(curSection(), true); }, 100));
+  $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.target.value = ""; render(curSection()); } });
   hooks.onSessionTickSettings = () => { const el = $("setSessLeft"); const s = B.state.session; if (el && s) el.textContent = fmtClock(Math.max(0, s.expiresAt - Date.now())) + " left"; };
   setInterval(() => { if (!document.hidden && B.activeTab()?.view === "settings") hooks.onSessionTickSettings(); }, 1000);
 }

@@ -23,16 +23,21 @@ assert.equal(embedParsed.searchParams.get("widget_referrer"), origin);
 assert.equal(youtubeEmbedUrl("https://m.youtube.com/", origin), null, "home URLs are not video embeds and should be routed to the browser engine");
 assert.equal(youtubeEmbedUrl("https://www.youtube.com/watch?v=bad!", origin), null, "invalid video IDs must be rejected");
 assert.equal(youtubeEmbedUrl("https://youtube.com.evil.example/watch?v=42TV0hS59OA", origin), null);
+assert.equal(youtubeEmbedUrl("https://www.youtube.com/watch?v=abc123", origin), null);
+assert.equal(new URL(youtubeEmbedUrl("https://youtu.be/42TV0hS59OA?t=1h2m3s", origin)).searchParams.get("start"), "3723");
+assert.equal(new URL(youtubeEmbedUrl("https://www.youtube.com/shorts/42TV0hS59OA#t=14s", origin)).searchParams.get("start"), "14");
+assert.equal(new URL(youtubeEmbedUrl("https://www.youtube.com/live/42TV0hS59OA?list=PLExample&index=3", origin)).searchParams.get("index"), "3");
 
 const watchHtml = youtubeFallbackHtml(videoUrl, origin);
 assert.match(watchHtml, /youtube-nocookie\.com\/embed\/42TV0hS59OA/);
 assert.match(watchHtml, /referrerpolicy="strict-origin-when-cross-origin"/);
 assert.match(watchHtml, /Official YouTube player/);
-assert.match(watchHtml, /Sign in to YouTube/);
+assert.match(watchHtml, /Open on YouTube/);
+assert.match(watchHtml, /Some videos require YouTube sign-in or do not allow embeds/);
 assert.match(watchHtml, /<html lang="en" data-veyra-youtube-fallback="true">/);
-assert.doesNotMatch(watchHtml, /<script\b/i, "srcdoc inherits the shell CSP; link routing must be handled by the parent app");
-assert.match(watchHtml, /Google handles sign-in; Veyra does not receive or store your Google credentials/);
-assert.match(watchHtml, /target="_blank"/);
+assert.doesNotMatch(watchHtml, /<script\b/i, "the local player needs no injected script");
+assert.match(watchHtml, /target="_blank" rel="noopener noreferrer"/);
+assert.match(watchHtml, /minmax\(200px,1fr\)/, "the player takes the active tab area");
 
 assert.equal(youtubeFallbackHtml("https://www.youtube.com/", origin), "", "the YouTube home page must not be replaced by an external-link fallback");
 assert.equal(youtubeFallbackHtml("https://m.youtube.com/", origin), "", "the mobile homepage must be redirected and loaded normally");

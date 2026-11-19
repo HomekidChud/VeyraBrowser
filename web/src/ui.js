@@ -1,13 +1,13 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.34.0-actions";
-import { initExtensions } from "./extensions.js?v=8.34.0-actions";
-import { initSettings } from "./settings.js?v=8.34.0-actions";
+} from "./core.js?v=8.35.0-deck";
+import { initExtensions } from "./extensions.js?v=8.35.0-deck";
+import { initSettings } from "./settings.js?v=8.35.0-deck";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
-import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=2";
-import { applyStudioVisuals, playStudioSound } from "./studio.js?v=4";
+import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=3";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=5";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
 
@@ -43,7 +43,7 @@ export function applyTheme() {
   const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
   root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
   const neutral = t === "light" ? "#f4f6fa" : "#10151c";
-  const tint = validColour(settings.chromeTint) ? `color-mix(in srgb, ${neutral}, ${settings.chromeTint} ${t === "light" ? 22 : 20}%)` :
+  const tint = validColour(settings.chromeTint) ? `color-mix(in srgb, ${neutral}, ${settings.chromeTint} ${clampNumber(settings.chromeTintStrength, 0, 60, 22)}%)` :
     preset.mode === t ? preset.palette : neutral;
   root.style.setProperty("--workspace-tint", tint);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
@@ -69,6 +69,7 @@ export function applyTheme() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "light" ? "#f6f7f9" : "#0d0f13");
 }
 hooks.updateStudioPreview = () => applyStudioVisuals($("app"), document.documentElement);
+hooks.applyStudioTheme = applyTheme;
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => settings.theme === "system" && applyTheme());
 
 export function openIncognitoWindow() {
@@ -596,6 +597,11 @@ function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; o
 async function openSiteInfo() {
   const t = B.activeTab(); const anchor = $("siteChip");
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
+  if (t.localPage) {
+    const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN." : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
+    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p>`, anchor);
+    return;
+  }
   const host = hostOf(t.url); const s = B.state.session; const secure = /^https:/.test(t.url);
   pop(`<h4>${esc(host)}</h4><p class="pop-sub">${secure ? "Connection between Veyra and this site is encrypted." : "This site doesn't use HTTPS. Don't enter passwords."}</p>
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>

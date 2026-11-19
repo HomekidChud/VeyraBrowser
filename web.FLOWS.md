@@ -69,6 +69,13 @@
 - Undo and redo a look change (including a slider drag), and verify that changing a non-appearance setting is not reverted. Rename and update a saved setup, switch away and reapply it, then export it. Verify an older setup file still imports and that an invalid toolbar order or wallpaper setting is rejected.
 - Export Sakura and Tide, inspect the downloaded JSON for the selected palette and wallpaper framing, then re-import. Check the wallpaper controls by touch and reload at phone width.
 
+## Settings Control Deck and media
+
+- Open Settings Overview, pin and unpin Appearance and Performance, then reload. Change Overview layout, Settings spacing and panel contrast from Appearance → Layout. Verify dark and light mode, narrow-phone fit, keyboard navigation and setup export.
+- Search for “wallpaper fit” and “focus rings”, edit a match, and clear with Escape. A second query must reuse the result tree without making requests for off-screen sections.
+- Open a YouTube watch, Shorts or timed share link. The official player should fill the active Veyra tab without waiting for a Veyra session. The direct YouTube link must open separately. Non-video links, private windows, VPN sessions and the inline-player opt-out must stay on regular routes.
+- Open a now.gg game URL. Use the direct launch button to reach the same official URL in a browser tab, without attempting to frame it. Normal Bloxity links must remain on the existing Fast Proxy path.
+
 ## Extension actions
 
 - In Developer mode, load an unpacked fixture with an action and background worker. Check compatibility details, pin from the manager or puzzle menu, and invoke the button with the keyboard to update its badge. Verify the pin survives reload.

@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.34.0-actions";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.34.0-actions", "./styles/studio.css?v=3", "./styles/velocity.css?v=2", "./src/bootstrap.js?v=8.34.0-actions"];
+const CACHE = "veyra-browser-shell-v8.35.0-deck";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.35.0-deck", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=1", "./styles/velocity.css?v=2", "./src/bootstrap.js?v=8.35.0-deck"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -24,6 +24,7 @@ self.addEventListener("fetch", event => {
     const cache = await caches.open(CACHE);
     if (staticAsset) {
       const cached = await cache.match(request);
+      if (cached && /^(?:src|styles)\//.test(shellPath) && url.searchParams.has("v")) return cached;
       const network = fetch(request).then(response => {
 
         if (response.ok) cache.put(request, response.clone()).catch(() => {});
@@ -37,7 +38,7 @@ self.addEventListener("fetch", event => {
     try {
       return await fetch(request);
     } catch {
-      return cache.match("./index.html") || Response.error();
+      return (await cache.match("./index.html")) || Response.error();
     }
   })());
 });

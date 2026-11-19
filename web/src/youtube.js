@@ -35,18 +35,23 @@ export function youtubeEmbedUrl(raw, origin = globalThis.location?.origin || "")
       if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
       else if (/^\/(shorts|live|embed)\//.test(url.pathname)) id = url.pathname.split("/").filter(Boolean)[1] || "";
     }
-    if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
+    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
 
-    const params = new URLSearchParams({ enablejsapi: "1", playsinline: "1", rel: "0" });
+    const params = new URLSearchParams({ playsinline: "1", rel: "0" });
     const pageOrigin = String(origin || "");
     if (/^https?:\/\//i.test(pageOrigin)) {
       params.set("origin", pageOrigin);
       params.set("widget_referrer", pageOrigin);
     }
-    const start = url.searchParams.get("start") || url.searchParams.get("t");
-    if (start && /^\d+$/.test(String(start))) params.set("start", String(start));
-    if (url.searchParams.get("list")) params.set("list", url.searchParams.get("list"));
-    if (url.searchParams.get("index")) params.set("index", url.searchParams.get("index"));
+    const start = url.searchParams.get("start") || url.searchParams.get("t") || new URLSearchParams(url.hash.slice(1)).get("t");
+    const parts = /^(\d+)$/.test(start || "") ? [null, 0, 0, start] : /^(?:(\d{1,4})h)?(?:(\d{1,4})m)?(?:(\d{1,5})s)?$/i.exec(start || "");
+    const seconds = parts ? Number(parts[1] || 0) * 3600 + Number(parts[2] || 0) * 60 + Number(parts[3] || 0) : 0;
+    if (Number.isFinite(seconds) && seconds > 0) params.set("start", String(Math.min(seconds, 86400)));
+    const list = url.searchParams.get("list"), index = url.searchParams.get("index");
+    if (/^[A-Za-z0-9_-]{2,100}$/.test(list || "")) {
+      params.set("list", list);
+      if (/^\d{1,5}$/.test(index || "")) params.set("index", index);
+    }
     return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?${params.toString()}`;
   } catch {
     return null;
@@ -70,8 +75,7 @@ export function youtubeSignInUrl(raw) {
 export function youtubeFallbackHtml(raw, origin = globalThis.location?.origin || "") {
   const target = safeYouTubeUrl(raw);
   const embedUrl = target && youtubeEmbedUrl(target, origin);
-  const signInUrl = target && youtubeSignInUrl(target);
-  if (!target || !embedUrl || !signInUrl) return "";
+  if (!target || !embedUrl) return "";
 
   return `<!doctype html>
 <html lang="en" data-veyra-youtube-fallback="true">
@@ -80,12 +84,12 @@ export function youtubeFallbackHtml(raw, origin = globalThis.location?.origin ||
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YouTube video</title>
 <style>
-:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#0d0f13;color:#f2f4f8}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:clamp(16px,4vw,40px);background:radial-gradient(ellipse at 50% 0%,#182132 0%,#0d0f13 60%)}
-main{width:min(100%,1000px)}.card{padding:clamp(20px,4vw,36px);border:1px solid #29303b;border-radius:20px;background:#12161def;box-shadow:0 22px 70px #0007}.brand{display:flex;align-items:center;gap:10px;color:#f6f7fa;font-weight:750;font-size:18px}.play{display:grid;place-items:center;width:32px;height:23px;border-radius:7px;background:#f22;color:#fff;font-size:14px}.eyebrow{margin:26px 0 8px;color:#aab4c4;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}h1{margin:0;font-size:clamp(25px,5vw,38px);line-height:1.12;letter-spacing:-.035em}p{color:#b7c0ce;line-height:1.6}.player{margin:24px 0 12px;aspect-ratio:16/9;overflow:hidden;border-radius:14px;background:#000}.player iframe{display:block;width:100%;height:100%;border:0}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid #3a4352;border-radius:10px;color:#f2f4f8;text-decoration:none;font-weight:650}.button.primary{border-color:#e62117;background:#e62117;color:#fff}.note{margin:16px 0 0;font-size:12px;color:#8994a4}
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0d0f13;color:#f2f4f8}
+*{box-sizing:border-box}body{margin:0}main{min-height:100vh;display:grid;grid-template-rows:minmax(200px,1fr) auto}.player{display:flex;justify-content:center;background:#000;min-height:200px}.player iframe{display:block;width:100%;height:100%;min-height:200px;border:0}
+footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.25rem 1rem;padding:.25rem clamp(.6rem,3vw,1.5rem);border-top:1px solid #2c3645}p{margin:0;color:#bac6d6;font-size:.8rem;line-height:1.4}a{display:inline-flex;align-items:center;min-height:44px;color:#d9e7ff;font-weight:650;font-size:.875rem;text-underline-offset:.18em}
 </style>
 </head>
-<body><main><section class="card"><div class="brand"><span class="play" aria-hidden="true">▶</span><span>YouTube</span></div><p class="eyebrow">Official YouTube player</p><h1>Watch in Veyra</h1><p>Play the video below in YouTube’s own player.</p><div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div><div class="actions"><a class="button primary" href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">Open video in a Veyra tab</a><a class="button" href="${escapeHtml(signInUrl)}" target="_blank" rel="noopener noreferrer">Sign in to YouTube</a></div><p class="note">These links open as Veyra tabs. Google handles sign-in; Veyra does not receive or store your Google credentials.</p></section></main>
+<body><main aria-label="Official YouTube player"><div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div><footer><p>YouTube loads directly, outside the Veyra proxy. Some videos require YouTube sign-in or do not allow embeds.</p><a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></footer></main>
 </body>
 </html>`;
 }

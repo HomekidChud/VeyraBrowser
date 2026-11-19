@@ -1,9 +1,9 @@
-import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.34.0-actions";
+import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.35.0-deck";
 import { WORKSPACE_PRESETS } from "./workspace.js?v=3";
 import {
   APPEARANCE, WALLPAPERS, SOUND_PACKS, TOOLBAR_ITEMS, MAX_SETUPS, MAX_SETUP_BYTES, MAX_IMAGE_BYTES,
   STUDIO_LOCAL_KEYS, appearanceValues, moveToolbarItem, readSetup, setupForExport, setupName, resolvedWallpaper, validWallpaper
-} from "./studio-model.js?v=2";
+} from "./studio-model.js?v=3";
 
 const [IMAGE_KEY, SETUP_KEY] = STUDIO_LOCAL_KEYS;
 const descriptions = {
@@ -22,6 +22,13 @@ let soundContext;
 let imageValue = load(IMAGE_KEY, "");
 let savedSetups = load(SETUP_KEY, []);
 let undo, redo, adjustment;
+let previewFrame = 0, pendingSave = 0;
+function commitAppearance() {
+  if (previewFrame) cancelAnimationFrame(previewFrame);
+  clearTimeout(pendingSave);
+  previewFrame = pendingSave = 0;
+  saveSettings();
+}
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const setups = () => Array.isArray(savedSetups) ? savedSetups.filter(p => p && /^[\w-]{1,60}$/.test(p.id || "") && setupName(p.name)).slice(0, MAX_SETUPS) : [];
 const persist = (key, value) => {
@@ -37,7 +44,11 @@ export function changeStudioAppearance(patch, control = null) {
   adjustment = control;
   redo = null;
   Object.assign(settings, after);
-  saveSettings();
+  if (control) {
+    previewFrame ||= requestAnimationFrame(() => { previewFrame = 0; hooks.applyStudioTheme?.(); });
+    clearTimeout(pendingSave);
+    pendingSave = setTimeout(commitAppearance, 200);
+  } else commitAppearance();
   return true;
 }
 
@@ -73,6 +84,13 @@ export function applyStudioVisuals(app, root) {
   app.dataset.ntpBrand = String(p.ntpBrand);
   app.dataset.ntpSearch = String(p.ntpSearch);
   app.dataset.tabIndicator = p.tabIndicator;
+  app.dataset.chromeEdge = String(p.chromeEdge);
+  const deck = $("settingsBody")?.parentElement;
+  if (deck) {
+    deck.dataset.deckLayout = p.settingsLayout;
+    deck.dataset.deckDensity = p.settingsDensity;
+    deck.dataset.deckSurface = p.settingsSurface;
+  }
   app.dataset.chromeTint = String(!!p.chromeTint || (p.workspacePreset !== "glacier" && WORKSPACE_PRESETS[p.workspacePreset].mode === root.dataset.theme));
   app.dataset.wallpaperMotion = String(p.studioMotion && p.wallpaperFit === "cover" && !p.reduceMotion && !p.gameFocus);
   app.style.setProperty("--wallpaper-strength", p.wallpaperStrength / 100);
@@ -117,10 +135,9 @@ export function applyStudioVisuals(app, root) {
 
 const cardHead = (title, desc) => `<header class="studio-card-head"><h3>${title}</h3><p>${desc}</p></header>`;
 const block = (title, desc, body) => `<div class="studio-block">${cardHead(title, desc)}<div class="s-card">${body}</div></div>`;
-const range = (row, key, label, desc, min, max) => row(label, desc, `<div class="studio-range"><input type="range" data-studio-range="${key}" min="${min}" max="${max}" value="${appearanceValues(settings)[key]}" aria-label="${label}"><output>${appearanceValues(settings)[key]}%</output></div>`);
-
 export function studioMarkup({ row, toggle, select, number }, searching) {
   const p = appearanceValues(settings), custom = validWallpaper(imageValue);
+  const range = (row, key, label, desc, min, max) => row(label, desc, `<div class="studio-range"><input type="range" data-studio-range="${key}" min="${min}" max="${max}" value="${p[key]}" aria-label="${label}"><output>${p[key]}%</output></div>`);
   const looks = block("Theme collection", "Start with a palette. Your wallpaper and layout stay independent.", `<div class="studio-presets" aria-label="Theme presets">${
     options(WORKSPACE_PRESETS).map(([id, preset]) => `<button class="studio-preset" data-studio-theme="${id}" aria-pressed="${p.workspacePreset === id}" style="--preset-tint:${preset.palette};--preset-accent:${preset.accent}" type="button"><span class="studio-preset-art" data-preset-art="${id}"><i></i><i></i><i></i>${icon("i-check")}</span><span class="studio-preset-name">${preset.name}</span><small>${descriptions[id]}</small></button>`).join("")
   }</div>`)
@@ -128,6 +145,8 @@ export function studioMarkup({ row, toggle, select, number }, searching) {
       select("theme", "Color mode", "Follow your device or choose a mode manually.", [["dark", "Dark"], ["light", "Light"], ["system", "Device"]])
       + row("Accent colour", "Highlights, selection, and focus.", `<div class="swatches">${accents.map(c => `<button type="button" class="swatch ${p.accent === c ? "on" : ""}" data-studio-accent="${c}" style="background:${c}" aria-pressed="${p.accent === c}" aria-label="Accent ${c}"></button>`).join("")}<input type="color" value="${p.accent}" id="studioAccent" aria-label="Custom accent"></div>`)
       + row("Chrome tint", "Colour the tab strip and toolbar separately from the accent.", `<div class="studio-color">${action("clear-tint", "Use theme tint", null, p.chromeTint ? "" : "disabled")}<input type="color" value="${p.chromeTint || WORKSPACE_PRESETS[p.workspacePreset].palette}" id="studioTint" aria-label="Custom chrome tint"></div>`)
+      + range(row, "chromeTintStrength", "Chrome tint intensity", "Blend a custom chrome tint into the tab strip and toolbar.", 0, 60)
+      + toggle("chromeEdge", "Chrome accent edge", "Draw an accent line under the browser controls.")
       + select("uiTypeface", "Interface font", "Changes browser controls, not website fonts.", [["default", "Veyra default"], ["system", "System sans"], ["mono", "Monospace"]])
       + select("fontScale", "Font size", "Scales the Veyra interface.", [[.9, "Small"], [1, "Medium"], [1.1, "Large"], [1.2, "Very large"]]));
   const newtab = block("Wallpaper gallery", "Mix any wallpaper with any theme. Your own image stays in this browser.",
@@ -161,6 +180,10 @@ export function studioMarkup({ row, toggle, select, number }, searching) {
         const name = TOOLBAR_ITEMS[id];
         return row(`${index + 1}. ${name}`, "", `<div class="studio-tool"><input type="checkbox" class="switch" aria-label="${name} shortcut" data-studio-tool="${id}" ${p.toolbarHidden.includes(id) ? "" : "checked"}>${action("move-tool", "Earlier", "i-back", `data-setup="${id}" data-step="-1" aria-label="Move ${name} earlier" ${index === 0 ? "disabled" : ""}`)}${action("move-tool", "Later", "i-forward", `data-setup="${id}" data-step="1" aria-label="Move ${name} later" ${index === p.toolbarOrder.length - 1 ? "disabled" : ""}`)}</div>`);
       }).join(""))
+    + block("Settings workspace", "Adjust the settings dashboard without altering your website pages.",
+      select("settingsLayout", "Overview layout", "Choose a card gallery or a single directory.", [["cards", "Card gallery"], ["list", "Directory list"]])
+      + select("settingsDensity", "Settings spacing", "Adjust navigation and control spacing.", [["compact", "Compact"], ["standard", "Standard"], ["roomy", "Roomy"]])
+      + select("settingsSurface", "Settings panels", "Choose how much color and contrast to use.", [["neutral", "Neutral"], ["tinted", "Theme tint"], ["contrast", "High contrast"]]))
     + block("Browsing comfort", "Set defaults for reading, multitasking, and a quieter interface.",
       select("zoomDefault", "Default page zoom", "Applied to new page tabs.", [[.8, "80%"], [.9, "90%"], [1, "100%"], [1.1, "110%"], [1.25, "125%"], [1.5, "150%"]])
       + select("splitLayout", "Default split layout", "Small screens stack panes automatically.", [["columns", "Side by side"], ["stack", "Stacked"]])
@@ -223,6 +246,7 @@ async function convertWallpaper(file) {
 }
 
 export function wireStudio(body, refresh) {
+  window.addEventListener("pagehide", () => { if (pendingSave) commitAppearance(); });
   function repaint(el) {
     const attrs = ["data-studio-theme", "data-studio-wall", "data-studio-act"];
     const attr = attrs.find(name => el.hasAttribute(name));
@@ -259,7 +283,10 @@ export function wireStudio(body, refresh) {
   });
   body.addEventListener("change", async e => {
     const el = e.target;
-    if (adjustment === el) adjustment = null;
+    if (adjustment === el) {
+      adjustment = null;
+      if (pendingSave) commitAppearance();
+    }
     if (Object.hasOwn(TOOLBAR_ITEMS, el.dataset.studioTool)) {
       const hidden = new Set(appearanceValues(settings).toolbarHidden);
       if (el.checked) hidden.delete(el.dataset.studioTool); else hidden.add(el.dataset.studioTool);

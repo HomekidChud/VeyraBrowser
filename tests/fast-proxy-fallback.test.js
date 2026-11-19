@@ -10,19 +10,18 @@ assert.match(appSource, /if \(strategy\.forceBrowserHost && !\(await serverChrom
 assert.match(appSource, /async function routeBrowserRequired\(t, url, key, reason\)/, "browser-required events use the capability-aware fallback");
 assert.match(appSource, /keeping the FAST_PROXY page/, "when Chromium is unavailable the proxy frame is retained");
 assert.match(appSource, /t\.requiresBrowser = false/, "a failed or unavailable browser attempt must not prevent proxy fallback");
-assert.match(appSource, /youtubeProxy: true/, "YouTube video URLs keep their dedicated official-player embed strategy");
 assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\/reader|HTTP Reader/, "the browser UI no longer replaces the upstream page with an extracted-text reader");
-assert.match(appSource, /if \(isYouTubeUrl\(url\) && youtubeEmbedUrl\(url\)\)[\s\S]{0,280}f\.srcdoc = youtubeFallbackHtml\(url\)/, "only watch URLs use the official YouTube player embed");
-assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*if \(youtubeEmbedUrl\(url\)\) \{[\s\S]{0,220}return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages must use Veyra Chromium while videos use the official player");
+assert.match(appSource, /settings\.youtubeInline !== false && youtubeEmbedUrl\(url\)/, "only recognized videos use the direct player when enabled");
+assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages retain the previous routing");
 assert.match(appSource, /url = normalizeYouTubeUrl\(url\)/, "m.youtube.com URLs are normalized before they are loaded");
-assert.match(appSource, /t\.youtubeEmbed && doc\?\.documentElement\?\.dataset\.veyraYoutubeFallback === "true" && !doc\.__veyraLinkHandler/, "the parent shell installs its link router only in the local YouTube fallback document");
-assert.match(appSource, /doc\.addEventListener\("click", event =>/);
-assert.match(appSource, /target === "_blank" \|\| event\.ctrlKey \|\| event\.metaKey \|\| event\.button === 1/);
-assert.match(appSource, /newTab\(\{ url, index: state\.tabs\.indexOf\(t\) \+ 1 \}\)/, "YouTube links requesting a new tab must become Veyra tabs");
-assert.doesNotMatch(appSource, /trustedYouTubeFallbackLink/, "YouTube links no longer depend on inline srcdoc postMessage code");
-assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the official player is visible while YouTube initializes");
+assert.match(appSource, /frame\.srcdoc = direct === "youtube" \? youtubeFallbackHtml\(url\) : nowGameMarkup\(url\);[\s\S]{0,440}return;[\s\S]{0,320}await ensureSession\(\)/, "direct pages are visible before the proxy session starts");
+assert.match(appSource, /target !== t\.url && e\.origin === API_ORIGIN && frameFor\(t\)\?\.contentWindow === e\.source && localPageKind\(target\)/, "only a trusted root frame selects a direct page for in-site navigation");
+assert.match(appSource, /!INCOGNITO && !state\.vpn\.connected && settings\.youtubeInline/, "private and VPN sessions stay on regular routes");
+assert.match(appSource, /if \(!current\(\) \|\| result\?\.stale\) return;/, "stale Chromium starts may not replace the direct page");
 
 assert.match(swSource, /cache\.put\(request, response\.clone\(\)\)\.catch\(\(\) => \{\}\)/, "cache writes must be failure-safe");
 assert.match(swSource, /return cached \|\| Response\.error\(\);/, "a network failure with no cached copy must return a network-error response");
+assert.match(swSource, /url\.searchParams\.has\("v"\)\) return cached;[\s\S]{0,55}const network = fetch/, "versioned scripts and styles avoid a network fetch on a warm load");
+assert.match(swSource, /return \(await cache\.match\("\.\/index\.html"\)\) \|\| Response\.error\(\);/, "offline shell cache misses still return a response");
 
 console.log("VeyraBrowser FAST_PROXY fallback checks passed");
