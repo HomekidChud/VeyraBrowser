@@ -71,8 +71,10 @@
 
 ## Settings Control Deck and media
 
+- In Keyboard shortcuts, filter by command and category. Record three combinations, remove one, then cancel. Move an existing binding only after checking the conflict confirmation. Save, trigger the command, reload, disable it, and restore defaults. Verify Escape closes the editor and restores button focus.
+- In Video guides, expand the written steps and follow the section link. Verify no MP4 request on page entry, then play a clip from the dialog, close with Escape, and verify focus returns to Watch video. Repeat on a narrow phone.
 - Open Settings Overview, pin and unpin Appearance and Performance, then reload. Change Overview layout, Settings spacing and panel contrast from Appearance → Layout. Verify dark and light mode, narrow-phone fit, keyboard navigation and setup export.
-- Search for “wallpaper fit” and “focus rings”, edit a match, and clear with Escape. A second query must reuse the result tree without making requests for off-screen sections.
+- Search for “wallpaper fit” and “focus rings”, edit a match, and clear with Escape. A second query must reuse matching sections and keep unrelated sections detached without making requests for off-screen sections.
 - Open a YouTube watch, Shorts or timed share link. The official player should fill the active Veyra tab without waiting for a Veyra session. The direct YouTube link must open separately. Non-video links, private windows, VPN sessions and the inline-player opt-out must stay on regular routes.
 - Open a now.gg game URL. Use the direct launch button to reach the same official URL in a browser tab, without attempting to frame it. Normal Bloxity links must remain on the existing Fast Proxy path.
 

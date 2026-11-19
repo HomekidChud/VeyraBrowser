@@ -1,4 +1,4 @@
-import { api, API_ORIGIN, uid } from "./core.js?v=8.35.0-deck";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.36.0-workbench";
 
 const pending = new Map();
 const listeners = new Set();

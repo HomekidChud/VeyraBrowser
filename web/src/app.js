@@ -2,12 +2,12 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.35.0-deck";
+} from "./core.js?v=8.36.0-workbench";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.35.0-deck";
-import { initUI } from "./ui.js?v=8.35.0-deck";
-import { initDevtools } from "./devtools.js?v=8.35.0-deck";
-import { maybeOfferRenew } from "./renew.js?v=8.35.0-deck";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
+import { initUI } from "./ui.js?v=8.36.0-workbench";
+import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
+import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
@@ -17,14 +17,14 @@ import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.35.0-deck").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.36.0-workbench").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
 
-  const url = "./admin.js?v=8.35.0-deck";
+  const url = "./admin.js?v=8.36.0-workbench";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
@@ -379,11 +379,18 @@ export function renderTabs() {
   const ordered = arrangeTabs(state.tabs, state.tabGroups);
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
   let html = "";
+  const groupsById = new Map(state.tabGroups.map(g => [g.id, g]));
+  const groupMembers = new Map();
+  for (const tab of state.tabs) {
+    if (!tab.groupId || !groupsById.has(tab.groupId)) continue;
+    if (!groupMembers.has(tab.groupId)) groupMembers.set(tab.groupId, []);
+    groupMembers.get(tab.groupId).push(tab);
+  }
 
   let openGroupId = null;
   const renderedCollapsed = new Set();
   const headerFor = g => {
-    const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+    const groupTabs = groupMembers.get(g.id);
     const color = validColour(g.color) ? g.color : GROUP_COLOURS[0];
     return `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${color}">
           <div class="tab-group-header" data-group="${esc(g.id)}">
@@ -394,13 +401,13 @@ export function renderTabs() {
             <button class="tab-group-close" data-group-menu="${esc(g.id)}" aria-label="Options for ${esc(g.name)}" title="Group options"><svg><use href="#i-menu"/></svg></button>
           </div>`;
   };
-  const groupFor = t => (t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null) || null;
+  const groupFor = t => groupsById.get(t.groupId) || null;
   for (const t of state.tabs) {
     const g = groupFor(t);
     const gid = g?.id || null;
     if (gid !== openGroupId && openGroupId) { html += "</div>"; openGroupId = null; }
     if (g && gid !== openGroupId && !(g.collapsed && renderedCollapsed.has(gid))) {
-      const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+      const groupTabs = groupMembers.get(g.id);
       html += headerFor(g);
       if (g.collapsed) {
         renderedCollapsed.add(gid);
@@ -419,8 +426,10 @@ export function renderTabs() {
   }
   if (openGroupId) html += "</div>";
 
-  const emptyGroups = state.tabGroups.filter(g => !state.tabs.some(t => t.groupId === g.id));
-  if (emptyGroups.length) { state.tabGroups = state.tabGroups.filter(g => !emptyGroups.includes(g)); saveTabGroups(); }
+  if (state.tabGroups.some(g => !groupMembers.has(g.id))) {
+    state.tabGroups = state.tabGroups.filter(g => groupMembers.has(g.id));
+    saveTabGroups();
+  }
   persistTabState();
   if (html === renderedTabMarkup) return;
   renderedTabMarkup = html;
@@ -473,6 +482,18 @@ function moveTab(fromId, toId) {
   }
   renderTabs();
 }
+function shiftActiveTab(step) {
+  const tab = activeTab(), pos = state.tabs.indexOf(tab), adjacent = state.tabs[pos + step];
+  if (!tab || !adjacent || tab.groupId !== adjacent.groupId || !!tab.pinned !== !!adjacent.pinned) return;
+  [state.tabs[pos], state.tabs[pos + step]] = [adjacent, tab];
+  renderTabs();
+}
+function toggleTabPin(t = activeTab()) {
+  if (!t) return;
+  t.pinned = !t.pinned;
+  if (t.pinned) delete t.groupId;
+  persistTabGroups(); renderTabs();
+}
 function tabContextMenu(id, x, y) {
   const t = tabById(id); if (!t) return; const i = state.tabs.indexOf(t);
   const groupItems = state.tabGroups.length ? [
@@ -498,7 +519,7 @@ function tabContextMenu(id, x, y) {
     "-",
     { label: "Reload", kbd: "Ctrl+R", action: () => { switchTab(id); reload(); } },
     { label: "Duplicate", action: () => duplicateTab(t) },
-    { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; if (t.pinned) delete t.groupId; persistTabGroups(); renderTabs(); } },
+    { label: t.pinned ? "Unpin" : "Pin", action: () => toggleTabPin(t) },
     ...(parkingAllowed(t) ? [{ label: "Park background tab…", action: () => parkTab(id) }] : []),
     "-",
     ...groupItems,
@@ -572,9 +593,12 @@ function performanceTabs() {
   });
 }
 function setPerformanceMode(value) {
-  settings.performanceMode = performanceMode(value);
-  save("veyra-settings", settings);
-  hooks.onSettingsChanged?.();
+  const mode = performanceMode(value);
+  if (settings.performanceMode === mode) return;
+  settings.performanceMode = mode;
+  saveSettings({ refresh: false });
+  document.body.classList.toggle("velocity-boost", mode === "boost");
+  syncBackgroundDiagnostics();
 }
 export function closeTab(id, { silent = false } = {}) {
   const idx = state.tabs.findIndex(t => t.id === id); if (idx < 0) return;
@@ -1364,6 +1388,7 @@ function tickSession() {
   const clock = fmtClock(left);
   const tone = "session-pill " + (left <= 10000 ? "crit" : left <= 30000 ? "warn" : "live");
   if (txt.textContent !== clock) txt.textContent = clock;
+  hooks.onSessionTickSettings?.(clock);
   if (pill.className !== tone) pill.className = tone;
   const title = `Session ends in ${clock}. Everything in it is deleted when the timer hits 0:00.`;
   if (pill.title !== title) pill.title = title;
@@ -3059,7 +3084,10 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
-  if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
+  if (d.type === "veyra:shortcut") {
+    if (activeTab() === t && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source) hooks.handleForwardedShortcut?.(d);
+    return;
+  }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
     if (u && t.view === "page" && !isRemote(t)) {
@@ -3306,7 +3334,7 @@ export const B = {
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
   omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions,
   syncAdminAccess, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab()),
-  performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics
+  performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics, shiftActiveTab, toggleTabPin
 };
 hooks.B = B;
 

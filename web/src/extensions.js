@@ -1,5 +1,5 @@
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText, INCOGNITO } from "./core.js?v=8.35.0-deck";
-import { dtCall, isRemote } from "./bridge.js?v=8.35.0-deck";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText, INCOGNITO } from "./core.js?v=8.36.0-workbench";
+import { dtCall, isRemote } from "./bridge.js?v=8.36.0-workbench";
 import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.34.0";
 import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon, sameChromePackage } from "./extension-actions.js?v=8.34.0";
 
