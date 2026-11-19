@@ -264,9 +264,19 @@ export function parseChromeManifest(manifest, files = {}) {
   }
 
   const actionMeta = manifest.action || manifest.browser_action || null;
+  const actionIcons = typeof actionMeta?.default_icon === "string" ? { 16: actionMeta.default_icon } : actionMeta?.default_icon;
+  const actionIconData = {};
+  for (const [size, path] of Object.entries(actionIcons && typeof actionIcons === "object" ? actionIcons : {})) {
+    if (!/^[1-9]\d{0,3}$/.test(size) || typeof path !== "string" || !Object.hasOwn(files, path)) continue;
+    const content = files[path];
+    if (typeof content !== "string") continue;
+    if (content.startsWith("data:")) actionIconData[size] = content;
+    else if (/\.svg$/i.test(path)) actionIconData[size] = "data:image/svg+xml," + encodeURIComponent(content.slice(0, 65536));
+  }
   const action = actionMeta && typeof actionMeta === "object" ? {
-    defaultTitle: str(actionMeta.default_title, 100),
-    defaultIcon: actionMeta.default_icon && typeof actionMeta.default_icon === "object" ? { ...actionMeta.default_icon } : null,
+    defaultTitle: substituteMessages(str(actionMeta.default_title, 100), messages),
+    defaultIcon: typeof actionIcons === "object" ? actionIcons : null,
+    iconData: actionIconData,
     defaultPopup: actionMeta.default_popup ? String(actionMeta.default_popup) : null
   } : null;
   if (action?.defaultPopup) warnings.push("Action popups are not supported; the action is recorded as metadata only.");
@@ -625,6 +635,23 @@ export function buildBackgroundWorkerSource(ext) {
   }
   var PASSTHRU = { then: 1, toJSON: 1, constructor: 1, valueOf: 1, toString: 1 };
   var actionListeners = new Set();
+  var action = {
+    onClicked: {
+      addListener: function (fn) { if (typeof fn === "function") actionListeners.add(fn); },
+      removeListener: function (fn) { actionListeners.delete(fn); },
+      hasListener: function (fn) { return actionListeners.has(fn); }
+    },
+    setBadgeText: function (details, cb) { return actionRpc("action.setBadgeText", details, cb); },
+    getBadgeText: function (details, cb) { return actionRpc("action.getBadgeText", details, cb); },
+    getUserSettings: function (cb) { return actionRpc("action.getUserSettings", null, cb); }
+  };
+  function actionRpc(kind, data, cb) {
+    if (typeof cb !== "function") return rpc(kind, data);
+    return rpc(kind, data).then(function (value) { cb(value); }, function (e) {
+      lastError = { message: e.message };
+      try { cb(); } finally { lastError = null; }
+    });
+  }
   var tabs = {
     query: function (q, cb) {
       return rpc("tabs.query", q || {}).then(function (ts) { if (cb) { cb(ts); return undefined; } return ts; }, function (e) { if (cb) { lastError = { message: e.message }; cb([]); } });
@@ -651,13 +678,8 @@ export function buildBackgroundWorkerSource(ext) {
     runtime: runtime,
     tabs: tabs,
     scripting: scripting,
-    action: {
-      onClicked: {
-        addListener: function (fn) { if (typeof fn === "function") actionListeners.add(fn); },
-        removeListener: function (fn) { actionListeners.delete(fn); },
-        hasListener: function (fn) { return actionListeners.has(fn); }
-      }
-    },
+    action: action,
+    browserAction: action,
     i18n: {
       getMessage: function (msgName, substitutions) {
         var k = String(msgName || "");
@@ -696,11 +718,9 @@ export function buildBackgroundWorkerSource(ext) {
         try { fn(m.message, { id: EXT_ID }, respond); } catch (e) {}
       });
     }
-    // The host fires this when the user clicks the extension's entry in
-    // Veyra's puzzle popover — Chrome's toolbar-icon click, no popup case.
     if (m.__veyraActionClick) {
       actionListeners.forEach(function (fn) {
-        try { fn({ id: EXT_ID }); } catch (e) {}
+        try { fn(m.tab || {}); } catch (e) {}
       });
     }
   };

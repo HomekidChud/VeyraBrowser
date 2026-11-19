@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.33.0";
+export const VERSION = "8.34.0";
 
 export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);

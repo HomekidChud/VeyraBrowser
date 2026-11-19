@@ -18,7 +18,7 @@
  * admin-gated on the server, so guests can never read other sessions' data.
  */
 
-import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, confirmDialog, copyText } from "./core.js?v=8.33.0-studio";
+import { $, esc, api, toast, addLog, fmtBytes, fmtClock, fmtMs, hostOf, hooks, settings, saveSettings, confirmDialog, copyText } from "./core.js?v=8.34.0-actions";
 
 let refreshTimer = null;
 let currentTab = "access";

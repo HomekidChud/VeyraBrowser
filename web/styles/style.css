@@ -469,7 +469,7 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 
 /* ---------- extensions */
 .ext-dev{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:var(--r-lg);border:1px dashed var(--line-2);margin-bottom:16px}
-.ext-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.ext-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:16px}
 .ext-card{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);transition:border-color .2s,transform .15s}
 .ext-card:hover{border-color:var(--accent);transform:translateY(-2px)}
 .ext-card.on{border-color:color-mix(in oklab,var(--accent) 40%,var(--line))}
@@ -505,9 +505,26 @@ textarea.input{height:auto;padding:10px 12px;resize:vertical;font-family:var(--f
 .ext-pop{width:320px}
 .ext-pop-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r)}
 .ext-pop-row:hover{background:var(--surface-2)}
-.ext-pop-row.ext-click{cursor:pointer}
 .ext-pop-row .n{flex:1;min-width:0}
 .ext-pop-row .n small{display:block;color:var(--muted)}
+#pinnedExtensions{display:flex;gap:2px;flex:none}
+#pinnedExtensions[hidden]{display:none}
+.ext-action{position:relative}
+.ext-action img,.ext-ico img{width:18px;height:18px;object-fit:contain}
+.ext-action-badge,.ext-menu-badge{border-radius:5px;background:var(--accent);color:var(--accent-ink);font-size:.63rem;font-weight:750;line-height:1.25;padding:1px 3px;white-space:nowrap}
+.ext-action-badge{position:absolute;right:-1px;bottom:0}
+.ext-action-badge:empty,.ext-menu-badge:empty{display:none}
+#popover:has(.ext-puzzle-list){width:min(390px,calc(100vw - 16px))}
+.ext-puzzle-list{max-height:min(48dvh,460px);overflow:auto}
+.ext-puzzle-list .ext-pop-row{padding-inline:4px;gap:6px}
+.ext-puzzle-list .ext-ico{width:30px;height:30px;flex:none}
+.ext-puzzle-list .n{overflow-wrap:anywhere}
+.ext-menu-links{display:grid;gap:6px;margin-top:10px}
+.ext-details{font-size:.82em;color:var(--text-2);overflow-wrap:anywhere}
+.ext-details summary{cursor:pointer;color:var(--text)}
+.ext-details ul{padding-inline-start:18px}
+.ext-foot{flex-wrap:wrap}
+@media(max-width:700px){#pinnedExtensions{display:none}}
 
 /* ---------- menus */
 .menu,.popover,.ctx-menu{position:fixed;z-index:60;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:6px;animation:pop .14s var(--ease)}

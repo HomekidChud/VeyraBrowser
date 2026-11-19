@@ -20,7 +20,7 @@
     if (saved.fontScale) document.documentElement.style.setProperty("--ui-scale", saved.fontScale);
   } catch {}
   const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.33.0-studio`; document.head.appendChild(stylesheet);
+  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.34.0-actions`; document.head.appendChild(stylesheet);
   const studioStyle = document.createElement("link");
   studioStyle.rel = "stylesheet"; studioStyle.href = `${base}styles/studio.css?v=3`; document.head.appendChild(studioStyle);
   const velocityStyle = document.createElement("link");
@@ -34,14 +34,14 @@
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.33.0-studio`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.34.0-actions`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
       const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
       if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.33.0-studio`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.34.0-actions`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();

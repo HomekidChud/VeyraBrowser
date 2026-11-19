@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Toolbar Counter",
+  "version": "1.0",
+  "description": "A local test fixture with a toolbar action and no page access.",
+  "action": { "default_title": "Count a click" },
+  "background": { "service_worker": "worker.js" }
+}

@@ -6,6 +6,7 @@ import {
   buildContentScriptShim, buildContentScriptSource, buildBackgroundWorkerSource,
   patternMatchesUrl, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS
 } from "../web/src/extension-manifest.js";
+import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon } from "../web/src/extension-actions.js";
 
 const mv3Manifest = {
   manifest_version: 3,
@@ -68,6 +69,7 @@ const mv3Files = {
   assert.ok(rec.warnings.some(w => w.includes('"tabs" has no Veyra implementation')));
 
   assert.equal(rec.action.defaultTitle, "Enhance");
+  assert.deepEqual(rec.action.defaultIcon, { 16: "icons/48.png" });
   assert.equal(rec.action.defaultPopup, "popup.html");
   assert.deepEqual(rec.webAccessibleResources[0].resources, ["images/logo.png"]);
   assert.equal(rec.minimumChromeVersion, "126");
@@ -75,6 +77,29 @@ const mv3Files = {
   assert.ok(rec.warnings.some(w => w.includes("Action popups")));
 
   assert.equal(rec.enabled, true);
+}
+
+{
+  const rec = parseChromeManifest({
+    manifest_version: 3, name: "Toolbar", default_locale: "en",
+    action: { default_title: "__MSG_actionTitle__", default_icon: { 16: "icon.png" } },
+    background: { service_worker: "worker.js" }
+  }, { "_locales/en/messages.json": '{"actionTitle":{"message":"Play"}}', "icon.png": "data:image/png;base64,YQ==", "worker.js": ";" });
+  assert.equal(rec.action.defaultTitle, "Play");
+  assert.equal(rec.action.iconData[16], "data:image/png;base64,YQ==");
+  assert.equal(safeExtensionIcon(rec.action.iconData[16]), rec.action.iconData[16]);
+  for (const invalid of ["https://example.test/icon.png", "data:text/html;base64,YQ==", "javascript:0"]) assert.equal(safeExtensionIcon(invalid), "");
+  assert.equal(actionAvailability(rec, "running"), "");
+  assert.equal(actionAvailability(rec, "error"), "No running background");
+  assert.equal(actionAvailability({ ...rec, enabled: false }, "running"), "Disabled");
+  assert.equal(actionAvailability({ ...rec, action: { defaultPopup: "popup.html" } }, "running"), "Popup not supported");
+  assert.deepEqual(extensionPins(["chrome-a", {}, "chrome-a", "<script>", "chrome-b", "chrome-c", "chrome-d"]), ["chrome-a", "chrome-b", "chrome-c"]);
+  assert.deepEqual(pinExtension(["chrome-a", "chrome-b"], "chrome-b"), ["chrome-a"]);
+  assert.deepEqual(pinExtension(["chrome-a"], "chrome-b"), ["chrome-a", "chrome-b"]);
+  assert.throws(() => pinExtension(["chrome-a", "chrome-b", "chrome-c"], "chrome-d"), /Unpin one/);
+  assert.equal(actionBadge("A\u202EB\u0000CDE"), "ABCD");
+  assert.equal(actionBadge(""), "");
+  assert.throws(() => actionBadge(1), /string/);
 }
 
 {
@@ -350,9 +375,29 @@ const mv3Files = {
   const workerChrome = new Function("self", buildBackgroundWorkerSource(rec) + "\n;return self.chrome;")(fakeSelf);
   assert.equal(workerChrome.runtime.id, rec.id);
   let clicked = null;
-  workerChrome.action.onClicked.addListener(tab => { clicked = tab; });
-  fakeSelf.onmessage({ data: { __veyraActionClick: 1 } });
-  assert.equal(clicked?.id, rec.id, "action.onClicked fires on host action click");
+  workerChrome.browserAction.onClicked.addListener(tab => { clicked = tab; });
+  const activeTab = { id: "veyra-tab", active: true, windowId: 1 };
+  fakeSelf.onmessage({ data: { __veyraActionClick: true, tab: activeTab } });
+  assert.deepEqual(clicked, activeTab, "the MV2 alias and MV3 action receive the active Veyra tab");
+
+  const setting = workerChrome.action.getUserSettings();
+  const request = posted.at(-1);
+  assert.equal(request.kind, "action.getUserSettings");
+  fakeSelf.onmessage({ data: { __veyraRpcReply: request.__veyraRpc, result: { isOnToolbar: true } } });
+  assert.deepEqual(await setting, { isOnToolbar: true });
+
+  const badgeSet = workerChrome.action.setBadgeText({ text: "ON" });
+  const setRequest = posted.at(-1);
+  assert.equal(setRequest.kind, "action.setBadgeText");
+  assert.deepEqual(setRequest.payload, { text: "ON" });
+  fakeSelf.onmessage({ data: { __veyraRpcReply: setRequest.__veyraRpc } });
+  await badgeSet;
+
+  const badgeGet = workerChrome.action.getBadgeText({});
+  const getRequest = posted.at(-1);
+  assert.equal(getRequest.kind, "action.getBadgeText");
+  fakeSelf.onmessage({ data: { __veyraRpcReply: getRequest.__veyraRpc, result: "ON" } });
+  assert.equal(await badgeGet, "ON");
 }
 
 console.log("Chrome extension tests passed: MV3 + MV2 parsing, permission allow/deny with warnings, missing-file errors, chrome.* shims, run_at gating, match patterns, unpacked folders, _locales i18n, web-accessible resources, tabs/scripting/action RPC.");
