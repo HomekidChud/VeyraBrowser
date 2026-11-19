@@ -36,14 +36,14 @@
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.0-watch-desk`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.1-inline-watch`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
       const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
       if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.0-watch-desk`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.1-inline-watch`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();

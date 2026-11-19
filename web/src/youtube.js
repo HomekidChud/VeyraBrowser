@@ -13,6 +13,15 @@ export function normalizeYouTubeUrl(raw) {
   return safeYouTubeUrl(raw) || String(raw ?? "");
 }
 
+export function youtubeWatchId(raw) {
+  try {
+    const url = new URL(safeYouTubeUrl(raw));
+    if (url.protocol !== "https:" || !["youtube.com", "www.youtube.com"].includes(url.hostname) || url.pathname !== "/watch") return "";
+    const id = url.searchParams.get("v");
+    return /^[\w-]{11}$/.test(id || "") ? id : "";
+  } catch { return ""; }
+}
+
 export function isYouTubeUrl(raw) {
   try {
     const url = new URL(String(raw));

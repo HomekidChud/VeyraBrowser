@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.36.0-touch";
+import { initSettings } from "./settings.js?v=8.36.1-inline-watch";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";

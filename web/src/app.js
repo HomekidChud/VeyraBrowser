@@ -5,7 +5,7 @@ import {
 } from "./core.js?v=8.36.0-workbench";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
-import { initUI } from "./ui.js?v=8.36.0-touch";
+import { initUI } from "./ui.js?v=8.36.1-inline-watch";
 import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
 import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
@@ -32,7 +32,7 @@ function ensureAdminModule() {
   });
   return adminModulePromise;
 }
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, wireYouTubeDesk } from "./youtube.js?v=3";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=4";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
 import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
@@ -557,7 +557,7 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
 }
 function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
 function teardownTab(t) {
-  t.pageLoad = null; t.localPage = ""; t.youtubeEmbed = false;
+  t.pageLoad = null; t.localPage = ""; t.youtubeEmbed = false; t.youtubeInlineWatch = false;
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.combinedGraceTimer); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
   if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
   if (t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
@@ -1579,8 +1579,18 @@ function hostNeedsRealBrowser(url) {
   } catch {}
   return false;
 }
+function inlineYouTubeAllowed() {
+  return !INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false;
+}
+hooks.disableInlineYouTube = () => {
+  for (const t of state.tabs) {
+    if (t.view === "page" && (t.localPage === "youtube" || t.youtubeInlineWatch)) {
+      void loadInTab(t, t.url, { trackHistory: false });
+    }
+  }
+};
 function localPageKind(url) {
-  if (!INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false && youtubeEmbedUrl(url)) return "youtube";
+  if (inlineYouTubeAllowed() && !youtubeWatchId(url) && youtubeEmbedUrl(url)) return "youtube";
   return nowGameUrl(url) ? "now" : "";
 }
 function resolveStrategy(url) {
@@ -1662,7 +1672,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
   if (previousUrl !== url) t.escapeRecoveries = 0;
-  if (t.localPage || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
+  if (t.localPage || t.youtubeInlineWatch || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
   t.sourceDisplayAliases ||= new Map();
   const suppliedDisplayUrl = isYouTubeUrl(url) ? "" : validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
   if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
@@ -1673,6 +1683,9 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
+  const watchInline = loadFrame && !forceBrowser && inlineYouTubeAllowed() && !!youtubeWatchId(url);
+  t.youtubeInlineWatch = watchInline;
+  if (watchInline && t.browserSessionId) void stopBrowserSession(t);
   const direct = loadFrame && localPageKind(url);
   if (direct) {
     frameFor(t)?.remove();
@@ -1701,7 +1714,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!current()) return;
   t.sessionId = session.id;
   if (trackHistory) recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
-  let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false } : resolveStrategy(url);
+  let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false }
+    : watchInline ? { key: "proxy", proxy: true, crawler: false, browser: false, race: false } : resolveStrategy(url);
   if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
     strategy = { ...strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false, auto: false, forceBrowserHost: false };
     addLog("info", `${hostOf(url)} will use the full FAST_PROXY page because this server has Chromium disabled.`);
@@ -1745,7 +1759,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-    setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl), t);
+    const src = proxyUrl(url, "view", session.id, previousUrl);
+    setFrameSrc(f, watchInline && inlineYouTubeAllowed() ? `${src}&__veyra_youtube_inline=1` : src, t);
     if (activeTab() === t) showFrameForTab(t);
 
     if (isYouTubeUrl(url)) setTimeout(() => {
@@ -2828,7 +2843,7 @@ function reloadPagesAfterVpn() {
       void stopBrowserSession(t).then(() => {
         if (state.tabs.includes(t) && t.view === "page" && t.url === url && t.pageLoad === pageLoad) void loadInTab(t, url);
       });
-    } else if (activeTab() === t || t.localPage === "youtube") void loadInTab(t, t.url);
+    } else if (activeTab() === t || t.localPage === "youtube" || t.youtubeInlineWatch) void loadInTab(t, t.url);
     else t.needsReload = true;
   }
 }
@@ -3252,8 +3267,19 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
-    if (target !== t.url && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source && localPageKind(target)) {
-      void navigate(target, { tab: t, push: false, activate: false, record: { title: String(d.title || "").slice(0, 200) } });
+    const watchChanged = t.browserMode === "FAST_PROXY" && inlineYouTubeAllowed() && !!youtubeWatchId(target)
+      && youtubeWatchId(target) !== youtubeWatchId(t.url);
+    if (target !== t.url && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source && (localPageKind(target) || watchChanged)) {
+      const historyAction = String(d.source);
+      if (watchChanged && historyAction === "history.popstate") {
+        const i = t.history.lastIndexOf(target);
+        if (i >= 0) t.histIndex = i;
+        else pushTabHistory(t, target);
+      } else if (watchChanged && /^history\.(?:replaceState|heal)$/.test(historyAction)) {
+        if (t.histIndex >= 0) t.history[t.histIndex] = target;
+        else pushTabHistory(t, target);
+      } else pushTabHistory(t, target);
+      void navigate(target, { tab: t, push: false, pushHist: false, activate: false, record: { title: String(d.title || "").slice(0, 200) } });
       return;
     }
     if (accountDestination(target)) {

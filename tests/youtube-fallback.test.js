@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeDeskVideo, youtubeEmbedUrl, youtubeFallbackHtml, youtubeSignInUrl } from "../web/src/youtube.js";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeDeskVideo, youtubeEmbedUrl, youtubeFallbackHtml, youtubeSignInUrl, youtubeWatchId } from "../web/src/youtube.js";
 
 const origin = "https://homekidchud.github.io";
 const videoUrl = "https://www.youtube.com/watch?v=42TV0hS59OA&t=45";
@@ -11,6 +11,12 @@ assert.equal(isYouTubeUrl("javascript://youtube.com/watch?v=42TV0hS59OA"), false
 assert.equal(normalizeYouTubeUrl("https://m.youtube.com/"), "https://www.youtube.com/");
 assert.equal(normalizeYouTubeUrl("https://m.youtube.com/watch?v=42TV0hS59OA&t=45"), videoUrl);
 assert.equal(normalizeYouTubeUrl("https://www.youtube.com/watch?v=42TV0hS59OA"), "https://www.youtube.com/watch?v=42TV0hS59OA");
+assert.equal(youtubeWatchId(videoUrl), "42TV0hS59OA");
+assert.equal(youtubeWatchId("https://m.youtube.com/watch?v=42TV0hS59OA"), "42TV0hS59OA");
+assert.equal(youtubeWatchId("http://www.youtube.com/watch?v=42TV0hS59OA"), "");
+assert.equal(youtubeWatchId("https://www.youtube.com:8443/watch?v=42TV0hS59OA"), "");
+assert.equal(youtubeWatchId("https://youtu.be/42TV0hS59OA"), "");
+assert.equal(youtubeWatchId("https://www.youtube.com/shorts/42TV0hS59OA"), "");
 
 const embed = youtubeEmbedUrl(videoUrl, origin);
 assert.ok(embed, "watch URLs should produce an embed URL");
