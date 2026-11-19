@@ -62,3 +62,11 @@
 - Switch tab sides and hide/restore optional toolbar shortcuts without losing their menu actions. Toggle Game Focus and reduced motion, and preview or mute the opt-in tab sounds.
 - Save, switch, export, import and remove a named setup. Reject invalid imports without applying anything. Verify reload persistence and that resetting the look leaves unrelated settings intact.
 - At desktop and 375px, check the Studio, New tab, search, History, account UI and the signed-out Console Lab guard.
+
+## Velocity controls and quick tools
+
+- Open Performance from the browser menu and `veyra://performance`. Switch between Standard, Balanced and Boost; reload and confirm the mode is retained. Refresh the shell timing snapshot; unsupported readings should show as unavailable, not zero.
+- With two settled Fast Proxy tabs, park an eligible background tab from its context menu or Performance. Cancel once, then confirm and look for the `Parked` status. Select the parked tab and confirm it reloads once. A pinned, loading, active, streamed, popup-linked, or split-pane tab must not be parked.
+- In Boost, open a bookmark in a background tab. The frame and page request should wait until selection. Standard and Balanced should still open background tabs normally. An active Fast Proxy page remains navigable in every mode.
+- Use F2 or the New Tab “Commands” button. Use Commands, Tabs, Bookmarks and History filters, Arrow keys, Enter and Escape. Search an unknown term; no command should run. Private windows should offer only commands and their currently open tabs.
+- Open Quick Tools. Convert distances and temperatures; check a bad value, count words and characters, and format valid and invalid JSON. Closing and reopening the tools should clear pasted content. Check both dialog surfaces and the Performance view at 375px.

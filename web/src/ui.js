@@ -2,13 +2,15 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.30.0-studio";
-import { initExtensions } from "./extensions.js?v=8.30.0-studio";
-import { initSettings } from "./settings.js?v=8.30.0-studio";
+} from "./core.js?v=8.31.0-velocity";
+import { initExtensions } from "./extensions.js?v=8.31.0-velocity";
+import { initSettings } from "./settings.js?v=8.31.0-velocity";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=2";
 import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=1";
-import { applyStudioVisuals, playStudioSound } from "./studio.js?v=1";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=2";
+import { openLauncher, openQuickTools } from "./velocity.js?v=1";
+import { performanceMode } from "./velocity-model.js?v=1";
 
 let B;
 
@@ -48,6 +50,7 @@ export function applyTheme() {
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);
   document.body.classList.toggle("focus-rings", !!settings.focusRings);
   document.body.classList.toggle("game-focus", !!settings.gameFocus);
+  document.body.classList.toggle("velocity-boost", performanceMode(settings.performanceMode) === "boost");
   const app = $("app"), strip = $("tabsList").parentElement;
   app.dataset.tabLayout = tabLayout(settings.tabLayout);
   app.dataset.railCompact = String(!!settings.tabRailCompact);
@@ -107,14 +110,26 @@ export const COMMANDS = [
   { id: "history", label: "History", group: "Veyra", keys: ["Mod+H"], run: () => B.openInternal("history") },
   { id: "bookmarksBar", label: "Show bookmarks bar", group: "Veyra", keys: ["Mod+Shift+B"], run: () => { settings.showBookmarksBar = !settings.showBookmarksBar; saveSettings(); } },
   { id: "search", label: "Veyra Search", group: "Veyra", keys: ["Mod+K"], run: () => B.showSearch("") },
-  { id: "commandPalette", label: "Command palette", group: "Veyra", keys: ["Mod+Shift+P"], run: () => openCommandPalette() },
+  { id: "commandPalette", label: "Command palette", group: "Veyra", keys: ["F2", "Mod+Shift+P"], run: () => openCommandPalette() },
   { id: "vpn", label: "Veyra VPN", group: "Veyra", keys: ["Mod+Shift+V"], run: () => B.openInternal("vpn") },
   { id: "settings", label: "Settings", group: "Veyra", keys: ["Mod+,"], run: () => B.openInternal("settings") },
   { id: "clearData", label: "Clear browsing data", group: "Veyra", keys: ["Mod+Shift+Delete"], run: () => openClearData() },
   { id: "devtools", label: "Developer tools", group: "Developer", keys: ["Mod+Shift+I", "F12"], run: () => hooks.dt?.toggle() },
   { id: "console", label: "DevTools console", group: "Developer", keys: ["Mod+Shift+J"], run: () => hooks.dt?.open("console") },
   { id: "picker", label: "Inspect element", group: "Developer", keys: ["Mod+Shift+C"], run: () => hooks.dt?.inspect() },
-  { id: "viewSource", label: "View source resources", group: "Developer", keys: ["Mod+U"], run: () => B.openInternal("resources") }
+  { id: "viewSource", label: "View source resources", group: "Developer", keys: ["Mod+U"], run: () => B.openInternal("resources") },
+  { id: "findTab", label: "Find open tab", group: "Quick access", keys: ["Alt+Shift+T"], run: () => openCommandPalette("tab") },
+  { id: "performance", label: "Performance", group: "Quick access", keywords: "velocity boost anti lag parking", keys: ["Alt+Shift+P"], run: () => B.openInternal("settings", { section: "performance" }) },
+  { id: "quickTools", label: "Quick Tools", group: "Quick access", keywords: "unit converter json text word counter", keys: ["Alt+Shift+U"], run: () => openQuickTools({ browser: B, copyText }) },
+  { id: "studio", label: "Customization Studio", group: "Quick access", keywords: "appearance theme wallpaper", keys: ["Alt+Shift+A"], run: () => B.openInternal("settings", { section: "appearance" }) },
+  { id: "split", label: "Toggle split screen", group: "Quick access", keys: ["Alt+Shift+S"], run: () => B.toggleSplitScreen() },
+  { id: "group", label: "Create tab group", group: "Quick access", keys: ["Alt+Shift+G"], run: () => B.groupActiveTab() },
+  { id: "calculator", label: "Open Calculator", group: "Quick access", keys: ["Alt+Shift+C"], run: () => B.openInternal("calculator") },
+  { id: "shortcutSettings", label: "Keyboard shortcuts", group: "Quick access", keys: ["Alt+Shift+K"], run: () => B.openInternal("settings", { section: "shortcuts" }) },
+  { id: "extensions", label: "Extensions", group: "Quick access", keys: ["Alt+Shift+E"], run: () => B.openInternal("extensions") },
+  { id: "gameFocus", label: "Toggle Game Focus", group: "Quick access", keys: ["Alt+Shift+F"], run: toggleGameFocus },
+  { id: "duplicateTab", label: "Duplicate current tab", group: "Quick access", keys: ["Alt+Shift+D"], run: () => { const t = B.activeTab(); if (t) B.duplicateTab(t); } },
+  { id: "copyPageAddress", label: "Copy page address", group: "Quick access", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().url) }
 ];
 export const cmd = id => COMMANDS.find(c => c.id === id);
 export function keysFor(id) { const o = settings.shortcuts?.[id]; return Array.isArray(o) ? o : cmd(id)?.keys || []; }
@@ -138,10 +153,12 @@ export function comboFromEvent(e) {
 function commandForCombo(combo) { if (!combo) return null; return COMMANDS.find(c => keysFor(c.id).includes(combo)) || null; }
 function isEditable(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
 export let recordingShortcut = null; export function setRecording(fn) { recordingShortcut = fn; }
-function runCombo(combo, { fromPage = false, editable = false } = {}) {
+function runCombo(combo, { fromPage = false, editable = false, repeat = false } = {}) {
   if (hooks.privacyCoverOpen?.()) return false;
+  if (document.querySelector("dialog[open]")) return false;
   if (!$("landing").classList.contains("hidden")) return false;
-  const c = commandForCombo(combo); if (!c) return false;
+  const c = commandForCombo(combo); if (!c || c.available?.() === false) return false;
+  if (repeat && ["closeTab", "newTab", "newIncognito", "reopenTab", "duplicateTab"].includes(c.id)) return true;
   const bare = !/Mod|Alt|Ctrl|Meta/.test(combo) && !/^F\d/.test(combo) && combo !== "Esc";
   if (bare) return false;
   if (editable && ["back", "forward"].includes(c.id)) return false;
@@ -152,13 +169,12 @@ function runCombo(combo, { fromPage = false, editable = false } = {}) {
 function onKeyDown(e) {
   if (hooks.privacyCoverOpen?.()) return;
   if (recordingShortcut) { e.preventDefault(); e.stopPropagation(); const combo = comboFromEvent(e); if (combo) recordingShortcut(combo, e); return; }
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented || e.isComposing || document.querySelector("dialog[open]")) return;
   const combo = comboFromEvent(e);
   if (combo === "Esc") { if (escape()) e.preventDefault(); return; }
-  if (runCombo(combo, { editable: isEditable(e.target) })) { e.preventDefault(); e.stopPropagation(); }
+  if (runCombo(combo, { editable: isEditable(e.target), repeat: e.repeat })) { e.preventDefault(); e.stopPropagation(); }
 }
 function escape() {
-  if (document.querySelector(".command-palette")) { closeCommandPalette(); return true; }
   if (!$("mainMenu").classList.contains("hidden") || !$("popover").classList.contains("hidden") || !$("ctxMenu").classList.contains("hidden")) { closeFloating(); return true; }
   if (!$("omniPop").classList.contains("hidden")) { hideOmni(); B.updateIdentity(); return true; }
   if (hooks.dt?.cancelPicking?.()) return true;
@@ -167,22 +183,24 @@ function escape() {
   const t = B.activeTab(); if (t?.readerOpen) { hooks.closeReader?.(); return true; }
   return false;
 }
-let commandPalette;
-function closeCommandPalette() { commandPalette?.remove(); commandPalette = null; }
-function openCommandPalette() {
-  closeFloating();
-  const wrap = document.createElement("div"); commandPalette = wrap; wrap.className = "command-palette";
-  wrap.innerHTML = `<div class="command-backdrop" data-close></div><section class="command-card" role="dialog" aria-modal="true" aria-label="Command palette"><header><svg><use href="#i-search"/></svg><input id="commandSearch" autocomplete="off" placeholder="Search commands…" aria-label="Search commands"><kbd>Esc</kbd></header><div class="command-results" id="commandResults"></div><footer><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></footer></section>`;
-  document.body.appendChild(wrap);
-  const input = wrap.querySelector("#commandSearch"), results = wrap.querySelector("#commandResults"); let selected = 0;
-  const draw = () => { const q = input.value.trim().toLowerCase(); const list = COMMANDS.filter(c => !c.hidden && (!q || `${c.label} ${c.group}`.toLowerCase().includes(q))).slice(0, 18); selected = Math.min(selected, Math.max(0, list.length - 1)); results.innerHTML = list.length ? list.map((c, i) => `<button class="command-item ${i === selected ? "on" : ""}" data-command="${esc(c.id)}"><span class="command-item-icon"><svg><use href="#${c.group === "Developer" ? "i-code" : c.group === "Navigation" ? "i-globe" : "i-bolt"}"/></svg></span><span><b>${esc(c.label)}</b><small>${esc(c.group)}</small></span><span class="command-keys">${keysFor(c.id).slice(0, 1).map(k => `<kbd>${esc(prettyCombo(k))}</kbd>`).join("")}</span></button>`).join("") : `<div class="command-empty">No matching commands</div>`; };
-  const run = () => { const b = results.querySelectorAll("[data-command]")[selected]; if (!b) return; const c = cmd(b.dataset.command); closeCommandPalette(); c?.run(); };
-  input.addEventListener("input", () => { selected = 0; draw(); });
-  input.addEventListener("keydown", e => { const n = results.querySelectorAll("[data-command]").length; if (e.key === "ArrowDown") { e.preventDefault(); selected = n ? (selected + 1) % n : 0; draw(); } else if (e.key === "ArrowUp") { e.preventDefault(); selected = n ? (selected - 1 + n) % n : 0; draw(); } else if (e.key === "Enter") { e.preventDefault(); run(); } else if (e.key === "Escape") { e.preventDefault(); closeCommandPalette(); } });
-  results.addEventListener("click", e => { const b = e.target.closest("[data-command]"); if (!b) return; selected = [...results.querySelectorAll("[data-command]")].indexOf(b); run(); });
-  wrap.addEventListener("click", e => { if (e.target.matches("[data-close]")) closeCommandPalette(); }); draw(); input.focus();
+function toggleGameFocus() {
+  settings.gameFocus = !settings.gameFocus; saveSettings();
+  toast(settings.gameFocus ? "Game Focus on. Background diagnostics are paused." : "Game Focus off.");
 }
-hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true }); };
+function openCommandPalette(scope = "all") {
+  closeFloating();
+  openLauncher({ isPrivate: INCOGNITO, scope, esc, rows: () => [
+    ...COMMANDS.filter(c => !c.hidden && !["commandPalette", "findTab", "stop"].includes(c.id) && c.available?.() !== false)
+      .map(c => ({ kind: "command", label: c.label, detail: c.group, keywords: c.keywords, key: kbdFor(c.id), run: c.run, priority: c.group === "Quick access" ? 6 : 0 })),
+    ...B.state.tabs.map(t => ({ kind: "tab", label: t.title || "New tab", detail: INCOGNITO ? "Open tab" : hostOf(t.url) || "Open tab", keywords: INCOGNITO ? "" : t.url,
+      priority: t.id === B.state.activeId ? 2 : 10, run: () => B.switchTab(t.id) })),
+    ...(!INCOGNITO ? [
+      ...B.state.bookmarks.slice(0, 300).map(b => ({ kind: "bookmark", label: b.title || hostOf(b.url) || "Bookmark", detail: hostOf(b.url), keywords: b.url, run: () => openBookmark(b, true) })),
+      ...B.state.history.slice(0, 300).filter(h => /^https?:\/\//i.test(h.url)).map(h => ({ kind: "history", label: h.title || hostOf(h.url), detail: hostOf(h.url), keywords: h.url, run: () => B.go(h.url, { newTab: true }) }))
+    ] : [])
+  ] });
+}
+hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true, repeat: !!d.repeat }); };
 hooks.forwardableCombos = () => COMMANDS.flatMap(c => keysFor(c.id));
 function focusAddress() { const a = $("address"); if (B.activeTab()?.view === "newtab" && document.activeElement !== a) { $("ntpInput")?.focus(); return; } a.focus(); a.select(); }
 
@@ -309,7 +327,7 @@ hooks.onAuthChanged = onAuthChanged;
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
-  for (const key of DEVICE_APPEARANCE_KEYS) delete s[key];
+  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode"]) delete s[key];
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
   return {
     v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
@@ -339,7 +357,7 @@ export async function pullSync() {
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
-      for (const key of DEVICE_APPEARANCE_KEYS) delete remote[key];
+      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode"]) delete remote[key];
       for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }
@@ -535,10 +553,10 @@ function openMainMenu() {
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
     menuItem("i-grid", "Create tab group…", "", () => B.groupActiveTab()),
     menuItem("i-sliders", "Customization Studio", "", () => B.openInternal("settings", { section: "appearance" })),
-    menuItem("i-bolt", settings.gameFocus ? "Turn off Game Focus" : "Turn on Game Focus", "", () => {
-      settings.gameFocus = !settings.gameFocus; saveSettings();
-      toast(settings.gameFocus ? "Game Focus on. Background diagnostics are paused." : "Game Focus off");
-    }, { badge: settings.gameFocus ? "ON" : "" }),
+    menuItem("i-bolt", settings.gameFocus ? "Turn off Game Focus" : "Turn on Game Focus", "gameFocus", toggleGameFocus, { badge: settings.gameFocus ? "ON" : "" }),
+    menuItem("i-keyboard", "Command palette", "commandPalette", () => openCommandPalette()),
+    menuItem("i-gauge", "Performance", "performance", () => cmd("performance").run()),
+    menuItem("i-calc", "Quick Tools", "quickTools", () => cmd("quickTools").run()),
     "-",
     menuItem("i-history", "History", "history", () => B.openInternal("history")),
     menuItem("i-download", "Downloads", "downloads", () => B.openInternal("downloads")),
@@ -665,9 +683,10 @@ hooks.openClearData = openClearData;
 
 export function initUI(b) {
   B = b;
-  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); B.syncAdminAccess(); renderBookmarksBar(); };
+  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); B.syncBackgroundDiagnostics(); B.syncAdminAccess(); renderBookmarksBar(); };
   hooks.playStudioSound = playStudioSound;
   for (const id of ["studioBtn", "ntpStudioBtn"]) $(id).onclick = () => B.openInternal("settings", { section: "appearance" });
+  $("ntpVelocityBtn").onclick = () => openCommandPalette();
   document.addEventListener("keydown", onKeyDown, true);
   wireOmnibox();
   $("menuBtn").onclick = () => $("mainMenu").classList.contains("hidden") ? openMainMenu() : closeFloating();
@@ -679,7 +698,13 @@ export function initUI(b) {
   $("authDialog").addEventListener("cancel", e => { if (authPending) e.preventDefault(); });
   qsa("#authForm .seg button").forEach(b => b.onclick = () => openAuth(b.dataset.mode));
   document.addEventListener("click", e => { const a = e.target.closest("[data-auth]"); if (a) { e.preventDefault(); openAuth(a.dataset.auth); } const x = e.target.closest("[data-explore]"); if (x) B.goRoute(`/browse?url=${encodeURIComponent(x.dataset.explore)}`); });
-  setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
+  const updateNtpClock = () => {
+    if (document.hidden || B.activeTab()?.view !== "newtab" || !settings.ntpClock) return;
+    const clock = $("ntpClock"), text = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (clock.textContent !== text) clock.textContent = text;
+  };
+  setInterval(updateNtpClock, 10000);
+  document.addEventListener("visibilitychange", updateNtpClock);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
   if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
   initPrivacyCover();
