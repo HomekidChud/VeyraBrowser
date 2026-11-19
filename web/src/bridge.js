@@ -1,4 +1,4 @@
-import { api, API_ORIGIN, uid } from "./core.js?v=8.33.0-studio";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.34.0-actions";
 
 const pending = new Map();
 const listeners = new Set();

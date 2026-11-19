@@ -67,6 +67,13 @@
 - Choose a wallpaper. Test fit, horizontal and vertical position, dimming and intensity against the preview and New tab. Hide and restore the logo and dashboard search independently. The address bar must always be reachable.
 - Change the active-tab indicator and top tab width. Move Downloads to the first optional toolbar slot and verify its visual and keyboard order. Hide an optional tool without losing its menu action.
 - Undo and redo a look change (including a slider drag), and verify that changing a non-appearance setting is not reverted. Rename and update a saved setup, switch away and reapply it, then export it. Verify an older setup file still imports and that an invalid toolbar order or wallpaper setting is rejected.
+- Export Sakura and Tide, inspect the downloaded JSON for the selected palette and wallpaper framing, then re-import. Check the wallpaper controls by touch and reload at phone width.
+
+## Extension actions
+
+- In Developer mode, load an unpacked fixture with an action and background worker. Check compatibility details, pin from the manager or puzzle menu, and invoke the button with the keyboard to update its badge. Verify the pin survives reload.
+- Check the pin limit, disabling and re-enabling a pinned action, unpinning, removing, and re-importing the same package. A popup manifest must display its compatibility warning without running the popup. A private window must not load normal-window pins.
+- On a phone, check the puzzle menu still offers actions and the address bar has space. Explain that this is a compatibility layer, not full Chrome Web Store support.
 
 ## Velocity controls and quick tools
 

@@ -27,7 +27,7 @@ for (const prefix of ["/VeyraBrowser/web", "/web", ""]) {
     assert.equal(target.hash, "#details");
   }
 }
-for (const suffix of ["/admin", "/admin/", "/admin/logs/", "/settings", "/settings/appearance", "/settings/appearance/"]) {
+for (const suffix of ["/admin", "/admin/", "/admin/logs/", "/settings", "/settings/appearance", "/settings/appearance/", "/extensions", "/extensions/store/"]) {
   const target = follow(pagesFallback, `https://example.test/VeyraBrowser/web${suffix}?view=compact#details`);
   assert.equal(target.pathname, "/VeyraBrowser/web/");
   assert.equal(target.searchParams.get("veyra_route"), suffix.replace(/^\/|\/$/g, ""));
@@ -35,7 +35,8 @@ for (const suffix of ["/admin", "/admin/", "/admin/logs/", "/settings", "/settin
   assert.equal(target.hash, "#details");
 }
 assert.equal(follow(pagesFallback, "https://example.test/VeyraBrowser/unknown").pathname, "/VeyraBrowser/web/");
+assert.equal(follow(pagesFallback, "https://example.test/VeyraBrowser/web/unknown/").pathname, "/VeyraBrowser/web/");
 for (const shell of ["web/index.html", "web/browse/index.html"]) {
   assert.match(read(shell), /id="view-admin"[\s\S]*?id="adminPanel"/);
 }
-console.log("Admin entry and Pages fallback routes for admin and settings passed");
+console.log("Admin entry and Pages fallback routes for admin, settings and extensions passed");

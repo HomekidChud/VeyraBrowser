@@ -103,7 +103,7 @@ assert.match(ext, /veyraTabsQuery/);
 assert.match(ext, /veyraTabCreate/);
 assert.match(ext, /veyraExecuteScript/);
 assert.match(ext, /fireActionClick/);
-assert.match(ext, /data-action-ext/);
+assert.match(ext, /data-run-extension/);
 
 assert.match(manifest, /iconData/);
 assert.match(ext, /iconData/);

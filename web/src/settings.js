@@ -1,5 +1,5 @@
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.33.0-studio";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.33.0-studio";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.34.0-actions";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.34.0-actions";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=4";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
@@ -126,8 +126,8 @@ function shortcutsSection() {
 }
 function extensionsSection() {
   return section("extensions", "Extensions", "", `
-    ${row("Manage extensions", "Install verified CSS-only packages from the Veyra Store or load your own safe CSS package in Developer mode.", `<button class="btn" data-act="openExtensions">Open extensions</button>`)}
-    ${toggle("extensionDeveloperMode", "Developer mode", "Lets you load local Veyra CSS packages for development.")}`);
+    ${row("Manage extensions", "Install CSS from the Veyra Store, review imported extensions, or pin compatible toolbar actions.", `<button class="btn" data-act="openExtensions">Open extensions</button>`)}
+    ${toggle("extensionDeveloperMode", "Developer mode", "Load local CSS packages or compatible unpacked Chrome and Edge extensions.")}`);
 }
 function vpnSection() {
   return section("vpn", "Veyra VPN", "", `

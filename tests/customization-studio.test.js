@@ -54,6 +54,23 @@ assert.equal(config.appearance.tabWidth, 250);
 assert.deepEqual(config.appearance.toolbarOrder, ["downloads", "vpn", "extensions"]);
 assert.deepEqual(Object.keys(config.appearance), Object.keys(APPEARANCE));
 assert.deepEqual(readSetup(JSON.stringify(config)), config);
+for (const [id, name, mode, accent, wallpaper] of [
+  ["sakura", "Sakura", "light", "#963b69", "bloom"],
+  ["tide", "Tide", "dark", "#8acfff", "tide"]
+]) {
+  const preset = WORKSPACE_PRESETS[id];
+  const look = { ...APPEARANCE, workspacePreset: id, theme: preset.mode, accent: preset.accent, studioWallpaper: "auto",
+    wallpaperFit: "contain", wallpaperX: 27, wallpaperY: 81, wallpaperShade: 64 };
+  const exported = JSON.parse(JSON.stringify(setupForExport(name, look)));
+  assert.equal(exported.name, name);
+  assert.equal(exported.format, "veyra-appearance");
+  assert.equal(exported.version, 1);
+  assert.equal(exported.appearance.workspacePreset, id);
+  assert.equal(exported.appearance.theme, mode);
+  assert.equal(exported.appearance.accent, accent);
+  assert.equal(resolvedWallpaper(exported.appearance, ""), wallpaper);
+  assert.deepEqual(readSetup(JSON.stringify(exported)).appearance, look);
+}
 assert.deepEqual(readSetup('{"format":"veyra-appearance","version":1,"appearance":{"theme":"light","__proto__":{"polluted":true},"adminToken":"ignored"}}').appearance, { ...APPEARANCE, theme: "light" });
 assert.equal({}.polluted, undefined);
 for (const invalid of [

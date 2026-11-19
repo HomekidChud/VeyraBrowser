@@ -2,12 +2,12 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.33.0-studio";
+} from "./core.js?v=8.34.0-actions";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.33.0-studio";
-import { initUI } from "./ui.js?v=8.33.0-studio";
-import { initDevtools } from "./devtools.js?v=8.33.0-studio";
-import { maybeOfferRenew } from "./renew.js?v=8.33.0-studio";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.34.0-actions";
+import { initUI } from "./ui.js?v=8.34.0-actions";
+import { initDevtools } from "./devtools.js?v=8.34.0-actions";
+import { maybeOfferRenew } from "./renew.js?v=8.34.0-actions";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
@@ -17,14 +17,14 @@ import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.33.0-studio").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.34.0-actions").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
 
-  const url = "./admin.js?v=8.33.0-studio";
+  const url = "./admin.js?v=8.34.0-actions";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;

@@ -1,9 +1,9 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.33.0-studio";
-import { initExtensions } from "./extensions.js?v=8.33.0-studio";
-import { initSettings } from "./settings.js?v=8.33.0-studio";
+} from "./core.js?v=8.34.0-actions";
+import { initExtensions } from "./extensions.js?v=8.34.0-actions";
+import { initSettings } from "./settings.js?v=8.34.0-actions";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
 import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=2";
@@ -559,6 +559,7 @@ function openMainMenu() {
     menuItem("i-vpn", "Veyra VPN", "vpn", () => B.openInternal("vpn"), { badge: B.state.vpn.connected ? "ON" : "" }),
     menuItem("i-link", "Google sign-in options", "", () => B.showAccountOptions()),
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
+    menuItem("i-puzzle", "Extension actions", "", () => hooks.openExtensionActions?.()),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
     ...(!INCOGNITO ? [menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast"))] : []),

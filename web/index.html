@@ -14,7 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.33.0-studio.1"></script>
+  <script src="./src/bootstrap.js?v=8.34.0-actions"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -185,6 +185,7 @@
         <button class="icon-btn" id="vpnBtn" title="Veyra VPN"><svg><use href="#i-vpn"/></svg></button>
         <button class="icon-btn" id="extBtn" title="Extensions"><svg><use href="#i-puzzle"/></svg></button>
         <button class="icon-btn" id="downloadBtn" title="Downloads"><svg><use href="#i-download"/></svg></button>
+        <div id="pinnedExtensions" role="group" aria-label="Pinned extension actions" hidden></div>
         <button class="avatar" id="profileBtn" title="Profile"><span id="avatarText"><svg><use href="#i-user"/></svg></span></button>
         <button class="icon-btn studio-trigger" id="studioBtn" aria-label="Customization Studio" title="Customization Studio"><svg><use href="#i-sliders"/></svg></button>
         <button class="icon-btn" id="menuBtn" title="Customise and control Veyra" aria-haspopup="menu"><svg><use href="#i-menu"/></svg></button>
@@ -289,7 +290,7 @@
         <!-- Extensions -->
         <section class="view" id="view-extensions">
           <div class="page-shell">
-            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Extensions are isolated CSS-only packages that run through the Veyra page bridge.</p></div>
+            <header class="page-head row"><div><h1>Extensions</h1><p class="muted">Install CSS from the Veyra Store or load compatible Chrome and Edge extensions in Developer mode.</p></div>
               <div class="head-actions"><label class="switch-row"><span>Developer mode</span><input type="checkbox" class="switch" id="extDevMode"></label></div></header>
             <div class="ext-dev hidden" id="extDevBar">
               <button class="btn ghost" id="loadExtensionBtn">Install package…</button><button class="btn ghost" id="loadFolderBtn">Load unpacked…</button><button class="btn ghost" id="exportExtensionsBtn">Export</button>
