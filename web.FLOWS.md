@@ -78,6 +78,7 @@
 - Search for “wallpaper fit” and “focus rings”, edit a match, and clear with Escape. A second query must reuse matching sections and keep unrelated sections detached without making requests for off-screen sections.
 - Open a YouTube watch, Shorts or timed share link. The official player should fill the active Veyra tab without waiting for a Veyra session. The direct YouTube link must open separately. Non-video links, private windows, VPN sessions and the inline-player opt-out must stay on regular routes.
 - Open a now.gg game URL. Use the direct launch button to reach the same official URL in a browser tab, without attempting to frame it. Normal Bloxity links must remain on the existing Fast Proxy path.
+- In an ordinary tab, open a YouTube watch link. With the eligibility API returning `ready`, verify the official player on the left and a Watch queue on the right; at phone width the queue stacks below. Paste a second link, switch to it without leaving the tab, use Back, and remove it. On `external`, `unavailable`, or API failure, verify that no player loads and Open on YouTube is still available. Private and VPN sessions must not instantiate the direct player.
 
 ## Website recovery
 

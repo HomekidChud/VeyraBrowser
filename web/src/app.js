@@ -32,7 +32,7 @@ function ensureAdminModule() {
   });
   return adminModulePromise;
 }
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=2";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, wireYouTubeDesk } from "./youtube.js?v=3";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
 import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
@@ -947,7 +947,7 @@ function getOrCreateFrame(t) {
   f = document.createElement("iframe"); f.id = "frame-" + t.id; f.name = "veyraFrame_" + t.id; f.className = "tab-frame"; f.title = "Page content";
 
   f.setAttribute("sandbox", t.localPage === "now" ? "allow-popups allow-popups-to-escape-sandbox"
-    : t.localPage === "youtube" ? "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+    : t.localPage === "youtube" ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
       : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
   f.setAttribute("allow", INCOGNITO
     ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
@@ -995,6 +995,17 @@ function setFrameSrc(f, src, tab = null) {
   f.src = src;
 }
 function onFrameLoad(t) {
+  if (t.localPage === "youtube" && state.tabs.includes(t) && t.view === "page") {
+    const frame = frameFor(t), url = t.url, load = t.pageLoad, doc = frame?.contentDocument;
+    const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "youtube"
+      && t.url === url && t.pageLoad === load && frameFor(t) === frame && frame?.contentDocument === doc
+      && !INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false;
+    if (current()) wireYouTubeDesk(doc, url, t.youtubeQueue ||= [], {
+      current, check: id => api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 6500 }),
+      open: url => navigate(url, { tab: t, activate: false, push: activeTab() === t })
+    });
+    return;
+  }
   if (!state.tabs.includes(t) || t.view !== "page" || t.localPage) return;
   if (frameFor(t)?.hasAttribute("data-site-error")) return;
   probeFrameForEscape(t);

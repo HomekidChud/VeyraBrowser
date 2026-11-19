@@ -31,6 +31,10 @@ python3 -m http.server 8080 --directory web
 
 The override is accepted only when the page itself is served from `localhost`, `127.0.0.1`, or `::1`; public deployments continue using the fixed Render metadata.
 
+### YouTube Watch Desk
+
+The official player is available only after the Veyra API returns `ready` from `GET /api/media/youtube/:id`. Configure `YOUTUBE_DATA_API_KEY` in the server environment (not in this repository or the static client). The [YouTube status lookup](https://developers.google.com/youtube/data/guides/made_for_kids_status) checks whether the selected video is embeddable and not Made for Kids; the watch page links out when eligibility cannot be established. The queue is held in the active tab's memory and is not a recommendation feed.
+
 ## Structure
 
 See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
