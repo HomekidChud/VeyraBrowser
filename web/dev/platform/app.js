@@ -1,8 +1,3 @@
-// Veyra Developer Platform portal.
-// Static ES module following the VeyraBrowser conventions: no build step,
-// versioned query imports (see index.html), and the same request/auth pattern
-// as `api()` in web/src/core.js — a Bearer session token from localStorage
-// ("veyra-auth"), JSON envelopes, and { error, code } error payloads.
 "use strict";
 
 const API = (document.querySelector('meta[name="veyra-api"]')?.content || "https://veyraserver-xscy.onrender.com").replace(/\/$/, "");
@@ -417,7 +412,7 @@ function wireSecretEye() {
 /* ---------- usage ---------- */
 function renderUsageChart(keys) {
   const wrap = $("usageChartWrap"); if (!wrap) return;
-  // Aggregate the rolling 24h byHour buckets across every key.
+
   const buckets = {};
   for (const k of keys) for (const [hour, n] of Object.entries(k.usage?.byHour || {})) buckets[hour] = (buckets[hour] || 0) + n;
   const hours = [];
@@ -563,7 +558,7 @@ async function pgSend() {
 }
 function pgCode(lang) {
   const { ep, url, body } = pgBuildRequest();
-  const auth = ep.auth === "key"; // never print a real key into samples
+  const auth = ep.auth === "key";
   const quoted = s => `'${s.replaceAll("'", "'\\''")}'`;
   if (lang === "curl") {
     return [`curl --fail-with-body -sS ${ep.method === "GET" ? "" : `-X ${ep.method} `}${quoted(url)}`,
@@ -612,7 +607,7 @@ function wirePlayground() {
     const active = document.querySelector('[data-code-tabs="playground"] .code-tab.active')?.dataset.lang || "curl";
     copyText(pgCode(active));
   });
-  // Eye mode for the pasted key: password field until the eye reveals it.
+
   $("pgKeyEye").addEventListener("click", () => {
     const input = $("pgKey");
     const revealed = $("pgKeyEye").classList.toggle("revealed");
@@ -660,7 +655,7 @@ function filterReference() {
 }
 function wireReferenceFilter() {
   const index = $("referenceGroups");
-  // Start with the API the guide teaches, followed by search and key observability.
+
   const heading = [...index.querySelectorAll(".ref-group")].at(-1);
   index.prepend(heading, heading.nextElementSibling);
   index.querySelectorAll(".endpoint").forEach(el => {

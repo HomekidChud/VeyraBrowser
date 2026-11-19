@@ -7,8 +7,7 @@
   const GATE_KEY = "veyra-gate";
   const apiFromMeta = () => {
     try {
-      // Mirror core.js: on a loopback page the ?veyra_api= hint overrides the
-      // fixed deployment metadata, so local development can exercise the gate.
+
       const localPage = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
       let hinted = "";
       if (localPage) {
@@ -44,7 +43,6 @@
     return headers;
   }
 
-  // Capture ?gate=<token> from an invite link or key unlock and clean the URL.
   try {
     const params = new URLSearchParams(location.search);
     const gateParam = params.get("gate");
@@ -56,7 +54,6 @@
     }
   } catch {}
 
-  // Attach the gate token to every request that targets the Veyra API.
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
     try {
@@ -72,7 +69,6 @@
     } catch {}
     return nativeFetch(input, init);
   };
-
 
   function gateStatus() {
     return nativeFetch(`${API_ORIGIN}/api/gate/status`, { headers: staffHeaders(), credentials: "omit", cache: "no-store" })
@@ -180,11 +176,10 @@ ${available && status.mode ? `<details style="border-top:1px solid #323a47;paddi
     });
   }
 
-  // Gate the whole app: expose a promise the bootstrap can await before booting.
   window.veyraGateCheck = async () => {
     try {
       const status = await gateStatus();
-      if (!status) return true;               // API unreachable -> let the app handle errors.
+      if (!status) return true;
       if (status.code !== "ACCESS_POLICY_UNAVAILABLE" && (!status.gated || status.unlocked)) return true;
       renderScreen(status);
       return false;

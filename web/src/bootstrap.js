@@ -28,7 +28,7 @@
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
-  // Veyra Access Gate: block the whole app behind the invite waitlist.
+
   const gateScript = document.createElement("script");
   gateScript.src = `${base}src/gate.js?v=8.29.1-session-privacy`;
   gateScript.onload = async () => {

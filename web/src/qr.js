@@ -1,13 +1,3 @@
-
-
-
-
-
-
-
-
-
-
 const EXP = new Uint8Array(512);
 const LOG = new Uint8Array(256);
 (() => {
@@ -17,21 +7,19 @@ const LOG = new Uint8Array(256);
 })();
 const gmul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
 
-
 function rsGenerator(degree) {
   let poly = [1];
   for (let i = 0; i < degree; i++) {
     const root = EXP[i];
     const next = new Array(poly.length + 1).fill(0);
     for (let j = 0; j < poly.length; j++) {
-      next[j] ^= poly[j];                    
-      next[j + 1] ^= gmul(poly[j], root);    
+      next[j] ^= poly[j];
+      next[j + 1] ^= gmul(poly[j], root);
     }
     poly = next;
   }
   return poly;
 }
-
 
 function rsEncode(data, degree) {
   const gen = rsGenerator(degree);
@@ -43,8 +31,6 @@ function rsEncode(data, degree) {
   return buf.slice(data.length);
 }
 
-
-
 const VERSIONS_L = [
   { v: 1, data: 19, ecc: 7, blocks: 1 }, { v: 2, data: 34, ecc: 10, blocks: 1 },
   { v: 3, data: 55, ecc: 15, blocks: 1 }, { v: 4, data: 80, ecc: 20, blocks: 1 },
@@ -54,7 +40,6 @@ const VERSIONS_L = [
 ];
 
 const ALIGN = { 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34], 7: [6, 22, 38], 8: [6, 24, 42], 9: [6, 26, 46] };
-
 
 class BitBuf {
   constructor() { this.bytes = []; this.bits = 0; }
@@ -66,20 +51,19 @@ class BitBuf {
   }
 }
 
-
 function makeCodewords(text, spec) {
   const bytes = Array.from(new TextEncoder().encode(text));
   const bb = new BitBuf();
-  bb.put(4, 4);                    
-  bb.put(bytes.length, 8);         
+  bb.put(4, 4);
+  bb.put(bytes.length, 8);
   for (const b of bytes) bb.put(b, 8);
   const capacityBits = spec.data * 8;
-  for (let i = 0; i < 4 && bb.bits < capacityBits; i++) bb.putBit(0); 
+  for (let i = 0; i < 4 && bb.bits < capacityBits; i++) bb.putBit(0);
   while (bb.bits % 8 !== 0) bb.putBit(0);
   const pads = [0xec, 0x11];
   let pi = 0;
   while (bb.bytes.length < spec.data) bb.bytes.push(pads[pi++ % 2]);
-  
+
   const per = spec.data / spec.blocks;
   const dataBlocks = [], eccBlocks = [];
   for (let b = 0; b < spec.blocks; b++) {
@@ -93,16 +77,12 @@ function makeCodewords(text, spec) {
   return out;
 }
 
-
-
-
 function buildMatrix(version, codewords) {
   const size = 17 + 4 * version;
   const m = Array.from({ length: size }, () => new Array(size).fill(0));
   const fn = Array.from({ length: size }, () => new Array(size).fill(false));
   const set = (x, y, v) => { m[y][x] = v ? 1 : 0; fn[y][x] = true; };
 
-  
   const finder = (fx, fy) => {
     for (let dy = -1; dy <= 7; dy++) for (let dx = -1; dx <= 7; dx++) {
       const x = fx + dx, y = fy + dy;
@@ -114,13 +94,11 @@ function buildMatrix(version, codewords) {
   };
   finder(0, 0); finder(size - 7, 0); finder(0, size - 7);
 
-  
   for (let i = 8; i < size - 8; i++) {
     set(i, 6, i % 2 === 0 ? 1 : 0);
     set(6, i, i % 2 === 0 ? 1 : 0);
   }
 
-  
   const pos = ALIGN[version] || [];
   for (const cy of pos) for (const cx of pos) {
     if ((cx < 9 && cy < 9) || (cx > size - 10 && cy < 9) || (cx < 9 && cy > size - 10)) continue;
@@ -129,13 +107,11 @@ function buildMatrix(version, codewords) {
     }
   }
 
-  
   for (let i = 0; i < 9; i++) { set(i, 8, 0); set(8, i, 0); }
   for (let i = 0; i < 8; i++) { set(size - 1 - i, 8, 0); set(8, size - 1 - i, 0); }
-  
+
   set(8, size - 8, 1);
 
-  
   if (version >= 7) {
     let rem = version;
     for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
@@ -143,18 +119,16 @@ function buildMatrix(version, codewords) {
     for (let i = 0; i < 18; i++) {
       const bit = (bits >>> i) & 1;
       const a = size - 11 + (i % 3), b = Math.floor(i / 3);
-      set(a, b, bit);           
-      set(b, a, bit);           
+      set(a, b, bit);
+      set(b, a, bit);
     }
   }
 
-  
-  
   const totalBits = codewords.length * 8;
   let bitIndex = 0;
   let goingUp = true;
   for (let x = size - 1; x >= 1; x -= 2) {
-    if (x === 6) x = 5; 
+    if (x === 6) x = 5;
     for (let vert = 0; vert < size; vert++) {
       const y = goingUp ? size - 1 - vert : vert;
       for (const px of [x, x - 1]) {
@@ -168,7 +142,6 @@ function buildMatrix(version, codewords) {
   }
   return { m, fn };
 }
-
 
 const MASKS = [
   (x, y) => (x + y) % 2 === 0,
@@ -241,22 +214,21 @@ function applyMask(matrix, mask) {
 
 function placeFormat(m, maskIndex) {
   const size = m.length;
-  
+
   const data = (1 << 3) | maskIndex;
   let rem = data;
   for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
   const bits = ((data << 10) | (rem & 0x3ff)) ^ 0x5412;
   const bit = i => (bits >>> i) & 1;
-  
+
   for (let i = 0; i <= 5; i++) m[i][8] = bit(i);
   m[7][8] = bit(6); m[8][8] = bit(7); m[8][7] = bit(8);
   for (let i = 9; i <= 14; i++) m[8][14 - i] = bit(i);
-  
+
   for (let i = 0; i <= 7; i++) m[8][size - 1 - i] = bit(i);
   for (let i = 8; i <= 14; i++) m[size - 15 + i][8] = bit(i);
-  m[size - 8][8] = 1; 
+  m[size - 8][8] = 1;
 }
-
 
 export function qrMatrix(text) {
   const bytes = new TextEncoder().encode(text);
@@ -278,7 +250,7 @@ export function qrSvg(text, size = 280) {
   const m = qrMatrix(text);
   const cells = m.length;
   const cs = size / cells;
-  const quiet = Math.ceil(cs * 4); 
+  const quiet = Math.ceil(cs * 4);
   const total = size + quiet * 2;
   let rects = "";
   for (let y = 0; y < cells; y++) for (let x = 0; x < cells; x++) {
@@ -286,7 +258,6 @@ export function qrSvg(text, size = 280) {
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" class="qr-code" role="img" aria-label="QR code" style="background:#fff;color:#000;border-radius:12px;box-sizing:content-box;width:${total}px;height:${total}px"><rect width="${total}" height="${total}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
 }
-
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { qrMatrix, qrSvg };

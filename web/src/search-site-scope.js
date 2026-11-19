@@ -1,4 +1,3 @@
-// Defense in depth for an older search backend during a rolling deployment.
 export function siteScope(query) {
   const include = [], exclude = [];
   let invalid = false;

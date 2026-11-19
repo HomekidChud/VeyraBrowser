@@ -35,7 +35,7 @@ export function toast(message, {
   if (message) copy.append(element("div", "toast-message", message));
   card.setAttribute("aria-labelledby", id);
   content.append(copy);
-  if (node) content.append(node); // App-owned DOM only, never third-party HTML.
+  if (node) content.append(node);
   const close = element("button", "toast-close", "×");
   close.type = "button";
   close.setAttribute("aria-label", title ? `Dismiss ${title}` : "Dismiss notification");

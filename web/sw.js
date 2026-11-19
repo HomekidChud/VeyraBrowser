@@ -25,13 +25,11 @@ self.addEventListener("fetch", event => {
     if (staticAsset) {
       const cached = await cache.match(request);
       const network = fetch(request).then(response => {
-        // A failed cache write (quota, etc.) must never surface as an
-        // unhandled rejection; the fetched response is still returned.
+
         if (response.ok) cache.put(request, response.clone()).catch(() => {});
         return response;
       }).catch(() => {
-        // If the network fails and nothing is cached, respondWith(undefined)
-        // throws a TypeError. Answer with a network-error response instead.
+
         return cached || Response.error();
       });
       return cached || network;

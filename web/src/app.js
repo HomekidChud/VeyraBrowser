@@ -1,4 +1,3 @@
-
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
@@ -15,9 +14,7 @@ import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
-// Lazy modules: Device Cast and the admin console are rare destinations, so
-// their code is only fetched when first used instead of joining the critical
-// boot path. Each module registers its render hooks as soon as it loads.
+
 let castModulePromise = null;
 function ensureCastModule() {
   castModulePromise ||= import("./device-cast.js?v=8.33.0-studio").then(m => { m.initCast(B); return m; });
@@ -26,7 +23,7 @@ function ensureCastModule() {
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
-  // A failed module fetch can be sticky for this document. Retry at a new URL.
+
   const url = "./admin.js?v=8.33.0-studio";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
@@ -36,11 +33,6 @@ function ensureAdminModule() {
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=8.28.31-in-app-popups";
-
-
-
-
-
 
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -52,9 +44,9 @@ export const state = {
   session: null, sessionTimer: null, sessionHeartbeat: null, lastUserActivity: Date.now(), sessionWarned: {}, sessionEnding: false, serverLimitMs: 120000, capabilityCache: new Map(),
   vpn: { status: null, connected: false, profile: null },
   incognito: INCOGNITO, server: { leanMode: false, chromiumEnabled: null, version: "", checked: false }, sessionPromise: null,
-  
+
   tabGroups: auth.user ? load("veyra-tab-groups", []) : [],
-  
+
   splitScreen: { active: false, leftTabId: null, rightTabId: null },
   historyRenderLimit: 600
 };
@@ -92,19 +84,12 @@ if (!INCOGNITO && !load(GITHUB_BOOKMARK_SEEDED, false)) {
   save(GITHUB_BOOKMARK_SEEDED, true);
 }
 const saveTabGroups = () => { if (!ephemeralSession()) save("veyra-tab-groups", state.tabGroups); };
-// Tab-group membership lives on the tab objects, so persisting the group list
-// is not enough: every membership change must refresh a per-tab snapshot too,
-// otherwise a reload (or a reload-style handoff) forgets which tab was in
-// which group. saveTabGroups stays as the groups-only writer for sync code.
+
 function persistTabGroups() {
   saveTabGroups();
   persistTabState();
 }
-// Snapshot of the tab strip (id, url/title, group, pin state) so a reload can
-// put the exact same tabs back into the exact same groups. Incognito never
-// writes; internal views are cheap to recreate so only page tabs are kept,
-// and the new-tab view is only kept when it is the single tab (so the first
-// boot after install still looks like a first boot).
+
 let lastSavedTabState = "";
 function persistTabState() {
   if (ephemeralSession()) return;
@@ -139,9 +124,7 @@ function restoreTabState() {
     restored++;
   }
   if (!restored) return false;
-  // The snapshot replaces the strip, so drop the empty newtab boot() seeded.
-  // (restoreTabState only runs at boot when the strip holds no page tabs,
-  // so any newtab here is the throwaway one boot() created.)
+
   state.tabs = state.tabs.filter(t => t.view !== "newtab");
   state.seq = seq;
   state.activeId = tabById(snap.activeId)?.id || state.tabs[state.tabs.length - 1].id;
@@ -159,7 +142,6 @@ export function clearLocalAccountData() {
   save("veyra-notes", {}); save("veyra-extensions", {}); save("veyra-dev-extensions", []);
   settings.ntpTiles = null; saveSettings();
 }
-
 
 export function createTabGroup(name = "New Group", color = "") {
   const group = { id: uid(), name: String(name).trim().slice(0, 48) || "New group", color: validColour(color) ? color : GROUP_COLOURS[state.tabGroups.length % GROUP_COLOURS.length], collapsed: false };
@@ -299,8 +281,7 @@ function renderSplitScreen() {
     splitContainer.className = "split-container";
     wrap.appendChild(splitContainer);
   }
-  // Frames stay attached to #frameWrap. Swapping or resizing only changes
-  // their CSS bounds, not their browsing context or running game.
+
   splitDragCleanup?.();
   splitContainer.innerHTML = `
     <div class="split-pane split-left"><div class="split-header">
@@ -368,7 +349,6 @@ function renderSplitScreen() {
   syncSplitFrames();
 }
 
-
 function makeTab(extra = {}) {
   return {
     id: "t" + (++state.seq), title: "New tab", favicon: "", url: "", view: "newtab", section: "", history: [], histIndex: -1,
@@ -398,11 +378,7 @@ export function renderTabs() {
   const ordered = arrangeTabs(state.tabs, state.tabGroups);
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
   let html = "";
-  // Groups are rendered as contiguous blocks that always open and close with
-  // their run of tabs. The old renderer never closed a collapsed group's
-  // container and left foreign tabs nested inside group blocks when a group's
-  // tabs were not contiguous (drag reorder, pinned tabs), which swallowed
-  // every tab after it.
+
   let openGroupId = null;
   const renderedCollapsed = new Set();
   const headerFor = g => {
@@ -441,8 +417,7 @@ export function renderTabs() {
       <button class="tab-close" data-close="${t.id}" title="Close tab" aria-label="Close tab"><svg><use href="#i-x"/></svg></button></div>`;
   }
   if (openGroupId) html += "</div>";
-  // A group whose last tab closed is dead — drop it so the strip (and the
-  // persisted state) does not keep collecting empty groups.
+
   const emptyGroups = state.tabGroups.filter(g => !state.tabs.some(t => t.groupId === g.id));
   if (emptyGroups.length) { state.tabGroups = state.tabGroups.filter(g => !emptyGroups.includes(g)); saveTabGroups(); }
   persistTabState();
@@ -467,14 +442,14 @@ export function renderTabs() {
     el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); moveTab(from, el.dataset.tab); };
   });
   list.querySelectorAll("[data-close]").forEach(b => b.onclick = e => { e.stopPropagation(); closeTab(b.dataset.close); });
-  
+
   list.querySelectorAll("[data-group]").forEach(el => {
     el.querySelector(".tab-group-toggle").onclick = () => {
       toggleGroupCollapse(el.dataset.group);
       [...list.querySelectorAll("[data-group]")].find(x => x.dataset.group === el.dataset.group)?.querySelector(".tab-group-toggle")?.focus();
     };
     el.oncontextmenu = e => { e.preventDefault(); openGroupMenu(el.dataset.group, e.clientX, e.clientY); };
-    // Drop a tab onto a group header to add it to that group.
+
     el.ondragover = e => e.preventDefault();
     el.ondrop = e => { e.preventDefault(); const from = e.dataTransfer.getData("text/veyra-tab"); if (from) assignTabToGroup(from, el.dataset.group); };
   });
@@ -489,9 +464,7 @@ function moveTab(fromId, toId) {
   if (a < 0 || b < 0) return;
   const [t] = state.tabs.splice(a, 1);
   state.tabs.splice(b, 0, t);
-  // Dropping a tab onto a grouped tab joins that group; dropping it on an
-  // ungrouped tab leaves the group. This is the only way tabs could be
-  // placed inside a group — the old drop handler silently ignored groups.
+
   const anchor = tabById(toId);
   if (anchor) {
     if (anchor.groupId && anchor.groupId !== t.groupId) { t.groupId = anchor.groupId; t.pinned = false; persistTabGroups(); }
@@ -505,7 +478,7 @@ function tabContextMenu(id, x, y) {
     { label: t.groupId ? "Remove from group" : "Add to group", action: () => {
       if (t.groupId) { removeTabFromGroup(id); }
       else {
-        
+
         if (state.tabGroups.length === 1) { assignTabToGroup(id, state.tabGroups[0].id); }
         else {
           const items = state.tabGroups.map(g => ({ label: g.name, action: () => assignTabToGroup(id, g.id) }));
@@ -541,8 +514,7 @@ function tabContextMenu(id, x, y) {
 export function switchTab(id) {
   const t = tabById(id); if (!t) return;
   if (state.activeId !== id) hooks.playStudioSound?.("switch");
-  // Split view only makes sense while one of its panes is active; switching
-  // to any other tab leaves the split overlay hiding that tab, so exit split.
+
   const ss = state.splitScreen;
   if (ss.active && id !== ss.leftTabId && id !== ss.rightTabId) teardownSplitScreen();
   state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
@@ -610,21 +582,18 @@ export function closeTab(id, { silent = false } = {}) {
   if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
   else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section });
   teardownTab(t); hooks.dt?.onTabClosed(t);
-  // If this tab was an OAuth/popup tab, tell the opener's runtime so its
-  // popup handle flips to .closed = true (site polling loops exit).
+
   teardownPopupLinks(t);
   state.tabs.splice(idx, 1);
   if (!state.tabs.length) { const nt = makeTab(); state.tabs.push(nt); state.activeId = nt.id; }
   else if (state.activeId === id) state.activeId = state.tabs[Math.min(idx, state.tabs.length - 1)].id;
-  // A pane tab was closed: its frame is already gone, so exit split view
-  // instead of leaving a blank pane behind a full-viewport overlay.
+
   if (state.splitScreen.active && (state.splitScreen.leftTabId === id || state.splitScreen.rightTabId === id)) teardownSplitScreen();
   renderTabs(); renderActive({ push: true, replace: true });
 }
 export function reopenClosedTab() { const c = state.closed.pop(); if (!c) return toast("No recently closed tabs"); if (c.url) newTab({ url: c.url, index: Math.min(c.index, state.tabs.length) }); else newTab({ view: c.view, section: c.section, index: Math.min(c.index, state.tabs.length) }); }
 export function cycleTab(delta) { if (state.tabs.length < 2) return; const i = state.tabs.findIndex(t => t.id === state.activeId); switchTab(state.tabs[(i + delta + state.tabs.length) % state.tabs.length].id); }
 export function selectTabIndex(n) { const t = n === 9 ? state.tabs[state.tabs.length - 1] : state.tabs[n - 1]; if (t) switchTab(t.id); }
-
 
 function routeUrl(path, query = "") { return `${APP_BASE}${path}${query}`; }
 function currentRoute() {
@@ -684,8 +653,7 @@ function applyRoute() {
   const [, first, second, third] = route.split("/");
   const view = first === "dev" && second === "platform" ? "platform" : { browse: "newtab", search: "search", calculator: "calculator", downloads: "downloads", history: "history", extensions: "extensions", settings: "settings", vpn: "vpn", dev: "dev", admin: "admin", console: "console", resources: "resources", links: "links", cast: "cast", internet: "internet" }[first];
   if (!view) {
-    
-    
+
     const fallback = routeUrl("/browse");
     try { history.replaceState({ veyra: true }, "", fallback); } catch {}
     if (t.view === "page") teardownTab(t);
@@ -710,7 +678,6 @@ function applyRoute() {
 }
 window.addEventListener("popstate", () => applyRoute());
 
-
 export function openInternal(view, { tab = null, push = true, section = "", calc = "" } = {}) {
   if (INCOGNITO && view === "cast") {
     toast("Device Cast is disabled in incognito.", { kind: "warn" });
@@ -723,8 +690,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
     renderActive({ push: false }); return;
   }
   let t = tab || activeTab();
-  
-  
+
   const existing = state.tabs.find(x => x.view === view && !["resources", "links", "calculator"].includes(view));
   if (!tab && existing && existing !== t) { t = existing; state.activeId = t.id; }
   else if (!tab && t && t.view === "page" && t.url) {
@@ -849,9 +815,7 @@ function renderConsoleLabEntry() {
 
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
-  // Split view overlays the whole viewport; if the active pane tab stops
-  // being a proxy page (home, internal view, remote Chromium), exit split
-  // so the new view is actually visible.
+
   const ss = state.splitScreen;
   if (ss.active && (t.view !== "page" || isRemote(t) || (t.id !== ss.leftTabId && t.id !== ss.rightTabId))) teardownSplitScreen();
   qsa(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + t.view));
@@ -884,8 +848,7 @@ function incognitoAddressToken() {
   return incognitoToken;
 }
 function rotateIncognitoAddressToken() {
-  // 32 random chars — the address never reveals the real site, and it keeps
-  // rotating so the visible URL can't be used to track or share a position.
+
   const bytes = new Uint8Array(32);
   try { crypto.getRandomValues(bytes); } catch { for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256); }
   incognitoToken = "veyra://private/" + Array.from(bytes, b => INCOGNITO_TOKEN_ALPHABET[b % INCOGNITO_TOKEN_ALPHABET.length]).join("");
@@ -899,10 +862,7 @@ function rotateIncognitoAddressToken() {
 function startIncognitoAddressRotation() {
   if (!INCOGNITO || window.__veyraIncognitoAddressRotation) return;
   rotateIncognitoAddressToken();
-  // Rotate at 500ms: fast enough that the address keeps visibly changing, but
-  // slow enough to stay under Chrome's silent history.replaceState throttle
-  // (~100 calls per 30s) — the old 1ms interval hit it instantly, freezing the
-  // URL on one token. 500ms is 60 calls per 30s, under the budget.
+
   window.__veyraIncognitoAddressRotation = window.setInterval(rotateIncognitoAddressToken, 500);
 }
 function updateNavButtons() {
@@ -925,13 +885,12 @@ export function updateIdentity() {
   $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
   $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
   $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
-  // Window title: the active page's title (like every browser), not a debug path.
+
   document.title = t.view === "page" && t.title && t.title !== "New tab" ? `${t.title} — Veyra` : "Veyra";
-  
+
   const sc = $("statusCenter");
   if (sc) {
-    // TEMPORARY: the "Retry full browser" (Chromium) button is hidden until
-    // streamed Chromium fully works (see CHROMIUM_TRY_DISABLED above).
+
     if (!CHROMIUM_TRY_DISABLED && t.failoverReason && t.view === "page" && !t.loading) {
       sc.innerHTML = `<button class="retry-browser-btn" id="retryBrowserBtn" title="Reset the circuit breaker and retry Chromium">Retry full browser</button>`;
       const btn = $("retryBrowserBtn");
@@ -955,16 +914,10 @@ export function setLoading(on, pct = 0, message = "Loading…") {
 }
 let tabsRaf = 0; function renderTabsSoon() { if (tabsRaf) return; tabsRaf = requestAnimationFrame(() => { tabsRaf = 0; renderTabs(); }); }
 
-
 function getOrCreateFrame(t) {
   let f = frameFor(t); if (f) return f;
   f = document.createElement("iframe"); f.id = "frame-" + t.id; f.name = "veyraFrame_" + t.id; f.className = "tab-frame"; f.title = "Page content";
-  
-  
-  // Proxy pages are served from the Veyra API origin. Without allow-same-origin
-  // the sandbox gives them an opaque origin, which makes rewritten CSS, fonts,
-  // images and resource requests fail even though the HTML itself renders.
-  // The API origin remains cross-origin from the GitHub Pages shell.
+
   f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
   f.setAttribute("allow", INCOGNITO
     ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
@@ -974,27 +927,21 @@ function getOrCreateFrame(t) {
   syncSplitFrames();
   return f;
 }
-// Escape watchdog: when a proxied page's own scripts navigate the frame to a
-// real site (e.g. MSN's auth page bouncing window.location to
-// https://www.msn.com/, which the sandboxed iframe cannot show — Chrome
-// blocks it with "This content is blocked"), the frame no longer runs the
-// Veyra runtime. Probe it after load; silence means it escaped, so reload
-// the tab's virtual URL back inside the proxy. Capped to avoid loops.
+
 function probeFrameForEscape(t) {
   try {
     const f = frameFor(t);
     if (!f || isRemote(t) || t.youtubeEmbed) return;
-    // Only frames actually pointed at a proxy URL carry the runtime. Empty
-    // src (boot/about:blank, srcdoc embeds) must not count as escapes.
+
     if (!f.src || !/^https?:/i.test(f.src)) return;
     let origin = ""; try { origin = new URL(f.src, location.href).origin; } catch { return; }
-    if (origin !== API_ORIGIN) return; // only proxy frames carry the runtime
+    if (origin !== API_ORIGIN) return;
     const loadedAt = Date.now();
     try { f.contentWindow?.postMessage?.({ type: "veyra:embed-probe" }, API_ORIGIN); } catch {}
     setTimeout(() => {
       try {
         if (!state.tabs.includes(t) || t.view !== "page" || frameFor(t) !== f) return;
-        if ((t.lastRuntimeAckAt || 0) > loadedAt) return; // runtime answered — still proxied
+        if ((t.lastRuntimeAckAt || 0) > loadedAt) return;
         t.escapeRecoveries = (t.escapeRecoveries || 0) + 1;
         if (t.escapeRecoveries > 3) {
           if (t.escapeRecoveries === 4) toast(`${hostOf(t.url)} keeps leaving the proxy, so it can't be shown here. Open it directly outside Veyra.`, { kind: "warn", ms: 7000 });
@@ -1006,15 +953,10 @@ function probeFrameForEscape(t) {
     }, 2500);
   } catch { /* not a probeable frame — ignore */ }
 }
-// Assigning the same value to iframe.src does NOT navigate the frame — but
-// reload paths (the sign-in handoff's post-import reload, escape recovery)
-// legitimately re-load the same URL. Dropping the attribute first makes the
-// assignment always navigate.
+
 function setFrameSrc(f, src, tab = null) {
   try { if (f.src === src) f.removeAttribute("src"); } catch {}
-  // A popup tab's frame URL carries veyra_popup=1: the runtime sees it at
-  // injection time (synchronously, before any site script) and installs
-  // the window.opener shim + window.close patch for the popup relay.
+
   if (tab?.popupOf && /^https?:/i.test(src)) {
     try { const u = new URL(src); if (!u.searchParams.has("veyra_popup")) { u.searchParams.set("veyra_popup", "1"); src = u.href; } } catch {}
   }
@@ -1024,9 +966,6 @@ function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page") return;
   probeFrameForEscape(t);
 
-  
-  
-  
   try {
     const f = frameFor(t);
     const doc = f && f.contentDocument;
@@ -1068,22 +1007,18 @@ function onFrameLoad(t) {
     const session = state.session?.id === t.sessionId ? state.session : null;
     if (session) scheduleDeferredCrawler(t, t.url, session, true, 250);
   }
-  
-  
-  
+
   renderTabsSoon(); updateIdentity();
-  
+
   const loadedFrame = frameFor(t);
   setTimeout(() => {
     if (!loadedFrame || frameFor(t) !== loadedFrame) return;
     if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {});
     hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t);
   }, 120);
-  
-  
+
   setTimeout(() => { if (loadedFrame && frameFor(t) === loadedFrame) detectBlankProxyPage(t); }, 2200);
 }
-
 
 function proxyDocStats(t) {
   const f = frameFor(t);
@@ -1095,12 +1030,12 @@ function proxyDocStats(t) {
     const text = (body?.innerText || "").replace(/\s+/g, " ").trim();
     const kids = body ? body.children.length : 0;
     const nodes = doc.getElementsByTagName("*").length;
-    
+
     const root = doc.querySelector("#root, #app, #__next, [data-reactroot]");
     const emptyRoot = !!(root && !(root.textContent || "").trim() && root.children.length === 0);
     return { sameOrigin: true, text, kids, nodes, emptyRoot };
   } catch {
-    
+
     return { sameOrigin: false, allowlisted: hostNeedsRealBrowser(t.url) };
   }
 }
@@ -1108,7 +1043,7 @@ function proxyDocLooksBlank(t) {
   const s = proxyDocStats(t);
   if (!s) return { blank: false, nodes: -1 };
   if (!s.sameOrigin) return { blank: !!(s.allowlisted && !t.renderWinner), nodes: -1 };
-  
+
   const blank = (s.text.length < 40 && s.kids < 4) || s.emptyRoot;
   return { blank, nodes: s.nodes };
 }
@@ -1156,14 +1091,10 @@ function detectBlankProxyPage(t) {
   const checkedUrl = t.url, checkedFrame = frameFor(t);
   const key = `${checkedUrl}|blank-shell`;
   if (t.compatFallbackTried.has(key)) return;
-  
-  
-  
+
   const first = proxyDocLooksBlank(t);
   if (!first.blank) return;
-  
-  
-  
+
   if (first.nodes >= 0 && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {
     setTimeout(() => {
       if (!state.tabs.includes(t) || t.view !== "page" || t.url !== checkedUrl || t.browserMode === "BROWSER_ENGINE" || frameFor(t) !== checkedFrame) return;
@@ -1219,26 +1150,22 @@ function ensureRemoteSurface() {
         : mode === "snapshot" ? "Screenshot fallback" : mode === "snapshot-unavailable" ? "Waiting for frame…" : "Connecting…";
     }
   });
-  
+
   const VW = 1365, VH = 820;
-  
-  
-  
-  
-  
+
   const pos = e => {
     const r = img.getBoundingClientRect();
     const containerAspect = r.width / r.height;
     const imageAspect = img.width > 1 && img.height > 1 ? img.width / img.height : VW / VH;
     let imgW, imgH, offsetX, offsetY;
     if (containerAspect > imageAspect) {
-      
+
       imgH = r.height;
       imgW = r.height * imageAspect;
       offsetX = (r.width - imgW) / 2;
       offsetY = 0;
     } else {
-      
+
       imgW = r.width;
       imgH = r.width / imageAspect;
       offsetX = 0;
@@ -1251,9 +1178,7 @@ function ensureRemoteSurface() {
       y: Math.max(0, Math.min(VH, py * VH / imgH)),
     };
   };
-  
-  
-  
+
   let inputQueue = [], sending = false;
   const send = payload => {
     const t = activeTab(), id = t?.browserSessionId;
@@ -1344,9 +1269,6 @@ function showFrameForTab(t) {
   loadRestoredTab(t);
 }
 
-
-
-
 const WAKE_CODES = new Set(["API_TIMEOUT", "API_NETWORK_ERROR"]);
 export async function wakeServer(maxMs = 100000) {
   const until = Date.now() + maxMs; let n = 0;
@@ -1371,8 +1293,7 @@ async function createSessionWithWake() {
 export async function ensureSession() {
   const s = state.session;
   if (s && s.expiresAt - Date.now() > 800) return s;
-  
-  
+
   if (state.sessionPromise) return state.sessionPromise;
   state.sessionPromise = (async () => {
     if (s) await endSession("timer");
@@ -1396,8 +1317,7 @@ async function startNewSession() {
   const body = await createSessionWithWake();
   adoptSession(body);
   if (settings.vpnAutoProfile) connectVpn(settings.vpnAutoProfile, { quiet: true }).catch(e => {
-    
-    
+
     settings.vpnAutoProfile = "";
     saveSettings();
     addLog("warn", `Automatic VPN was disabled: ${e.message}`);
@@ -1463,7 +1383,7 @@ function tickSession() {
     if (left <= 30000 && !state.sessionWarned[30]) { state.sessionWarned[30] = 1; toast("30 seconds left in this session", { kind: "warn" }); }
     if (left <= 10000 && !state.sessionWarned[10]) { state.sessionWarned[10] = 1; toast("10 seconds left. The session will be deleted", { kind: "err" }); }
   }
-  
+
   if (left > 0 && left <= 60000) maybeOfferRenew(s, left);
   hooks.onSessionTick?.(left, s);
   if (left <= 0) endSession("timer");
@@ -1473,12 +1393,11 @@ export async function endSession(reason = "timer") {
   const ephemeral = ephemeralSession();
   state.sessionEnding = true;
   try {
-    // Session cookies are temporary, but signed-in user storage is not. Flush
-    // it before closing the session; incognito is excluded by the hook.
+
     try { if (!ephemeral) await hooks.flushSync?.(); } catch (e) { addLog("warn", `Could not save account storage before session end: ${e.message}`); }
     state.session = null; clearInterval(state.sessionTimer); clearInterval(state.sessionHeartbeat);
     s.controller?.abort();
-    
+
     const pageTabs = ephemeral ? state.tabs : state.tabs.filter(t => t.view === "page");
     const restoreUrls = ephemeral ? [] : [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
     for (const t of pageTabs) { teardownTab(t); hooks.dt?.onTabClosed(t); }
@@ -1494,7 +1413,7 @@ export async function endSession(reason = "timer") {
       logs.length = 0; netLog.length = 0;
       closeFloating();
       clearNotifications();
-      // Inactive views are hidden, not removed; discard their previous content too.
+
       for (const id of ["searchInput", "historyFilter", "downloadsFilter", "findInput", "resFilter", "linkFilter", "consoleSearch", "omnibox"]) {
         const input = $(id); if (input) input.value = "";
       }
@@ -1526,8 +1445,7 @@ export async function endSession(reason = "timer") {
       $("sessionOverText").textContent = reason === "server"
         ? "The server reports this session has expired. Local tabs are closed; any server cleanup is controlled by the server."
         : `Your ${fmtClock(s.limitMs)} session ended. Local tabs are closed${closeConfirmed ? "; server cleanup was confirmed." : "; server cleanup could not be confirmed."}`;
-      
-      
+
       if (hadPage && active?.view === "page") { $("sessionOverlay").classList.remove("hidden"); $("sessionRestart").focus(); }
       else toast(reason === "server" ? "Session expired" : (closeConfirmed ? "Session ended; server cleanup confirmed" : "Session ended locally; server cleanup was not confirmed"), { kind: closeConfirmed ? "" : (reason === "server" ? "warn" : "err") });
     }
@@ -1535,18 +1453,14 @@ export async function endSession(reason = "timer") {
 }
 hooks.onSessionExpired = reason => { if (state.session) endSession(reason); };
 
-
 hooks.currentSessionId = () => state.session?.id || "";
 hooks.onSessionRenewed = expiresAt => {
   if (!state.session || !expiresAt) return;
   state.session.expiresAt = expiresAt;
-  state.sessionWarned = {};   
+  state.sessionWarned = {};
   tickSession();
   addLog("info", `Session renewed — new expiry ${new Date(expiresAt).toLocaleTimeString()}`);
 };
-// Refresh is not an explicit close. The server reclaims sessions after 60
-// seconds without a visible, active browser heartbeat.
-
 
 function looksLikeCalc(v) { return /[0-9]/.test(v) && /[+\-*/%^()]/.test(v) && /^[\d\s+\-*/%^().,]+$/.test(v); }
 export function classify(input) {
@@ -1599,16 +1513,14 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
     renderTabs();
     return;
   }
-  sendNeuralFeedback(url, true, 0.5); 
+  sendNeuralFeedback(url, true, 0.5);
   await loadInTab(t, url, { loadFrame: true, record, displayUrl });
   if (push && activeTab() === t) syncRoute();
 }
 async function capability(url) {
   if (settings.runtime === "proxy") return "FAST_PROXY";
   if (settings.runtime === "crawler") return "FAST_PROXY";
-  // TEMPORARY: the "browser" and "combined" runtimes depend on streamed
-  // Chromium, so while Chromium is not fully working they degrade to the
-  // fast proxy (see CHROMIUM_TRY_DISABLED in core.js).
+
   if (settings.runtime === "browser" || settings.runtime === "combined") return CHROMIUM_TRY_DISABLED ? "FAST_PROXY" : "BROWSER_ENGINE";
   if (ephemeralSession()) return "FAST_PROXY";
   const host = hostOf(url); const c = state.capabilityCache.get(host); if (c) return c;
@@ -1617,9 +1529,7 @@ async function capability(url) {
 }
 function desiredStrategy(url) {
   const r = String(settings.runtime || "auto");
-  // TEMPORARY: the Chromium-only "browser" runtime and the Chromium-racing
-  // "combined" runtime degrade to Automatic while streamed Chromium is not
-  // fully working (see CHROMIUM_TRY_DISABLED in core.js).
+
   const degraded = CHROMIUM_TRY_DISABLED && (r === "browser" || r === "combined");
   if (degraded) return { key: "auto", proxy: true, crawler: true, browser: false, race: false, auto: true };
   if (r === "proxy") return { key: "proxy", proxy: true, crawler: false, browser: false, race: false };
@@ -1632,7 +1542,6 @@ export function isGoogleSearchUrl(url) {
   try { const u = new URL(url); return /(^|\.)google\.[a-z.]+$/i.test(u.hostname) && /^\/(search|webhp)?$/.test(u.pathname) && u.searchParams.has("q"); } catch { return false; }
 }
 
-
 function hostNeedsRealBrowser(url) {
   try {
     const h = new URL(url).hostname.toLowerCase();
@@ -1644,35 +1553,23 @@ function hostNeedsRealBrowser(url) {
 }
 function resolveStrategy(url) {
   const base = desiredStrategy(url);
-  
-  
-  
-  
+
   if (isYouTubeUrl(url)) {
     if (youtubeEmbedUrl(url)) {
       return { key: "youtube-proxy", proxy: true, crawler: false, browser: false, race: false, youtubeProxy: true };
     }
     return { key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true };
   }
-  
-  
-  // Google search pages frequently return a cloud-IP CAPTCHA before the page
-  // can render. Keep the default path useful by showing Veyra's multi-provider
-  // results instead. Users who explicitly choose the Browser runtime still
-  // get direct Chromium, where they can complete Google's own check.
+
   if (isGoogleSearchUrl(url) && String(settings.runtime || "auto") !== "browser") {
     return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
   }
-  
-  
-  
+
   if (hostNeedsRealBrowser(url) && browserFallbackAllowed()) {
     return { key: "combined", proxy: true, crawler: false, browser: true, race: true, auto: true, forceBrowserHost: true };
   }
   if (!base.auto) return base;
-  
-  
-  
+
   const cached = state.capabilityCache.get(hostOf(url));
   if (cached === "BROWSER_ENGINE" && browserFallbackAllowed()) return { ...base, key: "combined", proxy: true, crawler: true, browser: true, race: true, auto: true };
   if (cached === "ACCELERATED_PROXY") return { ...base, accelerate: true };
@@ -1747,9 +1644,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   let session;
   try { session = await ensureSession(); }
   catch (e) { t.loading = false; if (activeTab() === t) setLoading(false); return renderError(t, "server", e); }
-  // Cold Render instances serve a platform loading page that Chrome refuses
-  // to frame (ERR_BLOCKED_BY_RESPONSE). Wait until the API answers quickly
-  // before any iframe navigation so users see a wake-up note instead.
+
   if (loadFrame) await ensureApiAwake(msg => { if (activeTab() === t) setLoading(true, 18, msg); });
   if (!state.tabs.includes(t) || t.url !== url) return;
   t.sessionId = session.id;
@@ -1769,8 +1664,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
-  
-  
   const switchToFastProxy = (tab, targetUrl, sess, reason) => {
     if (!state.tabs.includes(tab) || tab.url !== targetUrl) return;
     tab.browserMode = "FAST_PROXY";
@@ -1809,23 +1702,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       return;
     }
     f.removeAttribute("srcdoc");
-    
-    
-    
-    
-    
+
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
     setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl), t);
     if (activeTab() === t) showFrameForTab(t);
-    
-    
-    
+
     if (isYouTubeUrl(url)) setTimeout(() => {
-      
-      
-      
+
       if (state.tabs.includes(t) && t.browserMode === "FAST_PROXY" && t.loading) {
         t.loading = false;
         if (activeTab() === t) setLoading(false);
@@ -1834,10 +1719,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     }, 3500);
   };
 
-  
-  
-  
-  
   const raceChromium = () => startBrowserSession(t, url, { background: true }).then(result => {
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (result?.ok === false) {
@@ -1875,14 +1756,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     });
 
   if (strategy.race) {
-    
-    
-    
+
     if (strategy.forceBrowserHost) {
       t.loadStrategy = "browser"; t.renderWinner = ""; t.requiresBrowser = true;
-      
-      
-      
+
       if (loadFrame) {
         t.browserMode = "FAST_PROXY";
         const f = getOrCreateFrame(t);
@@ -1893,9 +1770,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         if (activeTab() === t) showFrameForTab(t);
       }
       void raceChromium();
-      
-      
-      
+
       const softTimeoutMs = state.server.leanMode ? 12000 : 25000;
       t.loadGuard = setTimeout(() => {
         if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
@@ -1914,18 +1789,11 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       }, softTimeoutMs);
       return renderTabs();
     }
-    
-    
-    
-    
-    
+
     await useProxy();
     if (state.server.leanMode && !strategy.forceBrowserHost) {
       scheduleDeferredCrawler(t, url, session, true, 150);
-      
-      
-      
-      
+
       t.combinedGraceTimer = setTimeout(() => {
         t.combinedGraceTimer = null;
         if (!state.tabs.includes(t) || t.url !== url || t.browserSessionId || t.renderWinner === "browser") return;
@@ -1935,11 +1803,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         }).catch(() => {});
       }, 1800);
     } else {
-      
+
       void raceChromium();
     }
-    
-    
+
     const combinedSoftMs = state.server.leanMode ? 12000 : Math.max(60000, Number(settings.requestTimeoutMs) || 30000);
     t.loadGuard = setTimeout(() => {
       if (!t.renderWinner && t.url === url && state.tabs.includes(t)) {
@@ -1958,7 +1825,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     try {
       const result = await startBrowserSession(t, url);
       if (result?.ok === false) {
-        
+
         addLog("info", `Chromium failover for ${hostOf(url)}: ${result.reason}. Using fast proxy.`);
       } else {
         t.renderWinner = "browser";
@@ -1969,7 +1836,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       if (e.code === "SESSION_EXPIRED") return;
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (strategy.google) {
-        
+
         addLog("info", `Google via Chromium unavailable (${e.message}); showing Veyra web results.`);
         if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
         t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
@@ -1993,13 +1860,13 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
 
   t.renderWinner = "proxy";
   await useProxy();
-  
+
   if (strategy.accelerate) scheduleDeferredCrawler(t, url, session, true, 150);
   if (strategy.probe) {
     capability(url).then(mode => {
       if (!state.tabs.includes(t) || t.url !== url) return;
       if (mode === "ACCELERATED_PROXY" && !state.server.leanMode) scheduleDeferredCrawler(t, url, session, true, 150);
-      
+
       else if (mode === "BROWSER_ENGINE" && browserFallbackAllowed() && t.loading && !state.server.leanMode) {
         t.loadStrategy = "combined"; t.renderWinner = "";
         void raceChromium();
@@ -2013,7 +1880,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
 }
 
 export function recordHistory(kind, url, title, sid = state.session?.id) {
-  // Incognito keeps no history at all — nothing recorded, nothing persisted.
+
   if (INCOGNITO) return;
   if (!url) return; const prev = state.history[0];
   if (prev && prev.url === url) { prev.time = new Date().toISOString(); if (title) prev.title = title; saveHistory(); return; }
@@ -2029,7 +1896,6 @@ function renderError(t, kind, error) {
   if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
   addLog("error", `Open failed: ${error?.message}`, { requestId: error?.requestId });
 }
-
 
 function startPolling(t) { if (t.poll) clearInterval(t.poll); t.poll = null; if (!tabDiagnosticsAllowed(t)) return; pollJob(t); t.poll = setInterval(() => pollJob(t), 1200); }
 async function pollJob(t) {
@@ -2050,7 +1916,6 @@ async function stopJob(id) { try { await api(`/api/crawl/${encodeURIComponent(id
 async function loadResources(t) { if (!t?.jobId) return; try { const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}/resources`); t.resources = b.resources || []; if (activeTab()?.view === "resources") renderResources(); } catch {} }
 async function loadLinks(t) { if (!t?.jobId) return; try { const b = await api(`/api/crawl/${encodeURIComponent(t.jobId)}/links?offset=0&limit=2000`); t.links = b.links || []; if (activeTab()?.view === "links") renderLinks(); } catch {} }
 
-
 async function refreshRemote(t, loop = false) {
   if (!t?.browserSessionId || activeTab() !== t || t.view !== "page" || document.hidden) return;
   const expectedId = t.browserSessionId;
@@ -2064,15 +1929,11 @@ async function refreshRemote(t, loop = false) {
     if (!t.youtubeEmbed) t.url = s.canonicalUrl || t.url;
     t.title = s.title || hostOf(t.url); t.browserStatus = s.status; t.loading = false;
     if (t.url && prev && t.url !== prev) { pushTabHistory(t, t.url); recordHistory("page", t.url, t.title); }
-    // Security check finished in real Chromium: the clearance cookies are
-    // already synced into the fast-proxy session server-side. Close the
-    // Chromium view and reload the page through the fast proxy so the user
-    // keeps browsing there — the verify screen never comes back for that
-    // site (the clearance cookie carries over).
+
     if (t.challengeEscalated && s.status === "VERIFICATION_REQUIRED") t.wasVerifying = true;
     else if (t.wasVerifying && s.status === "NORMAL" && !t.challengeReturned) {
       if (hostOf(s.canonicalUrl || t.url) !== hostOf(t.url)) {
-        t.wasVerifying = false; // user navigated elsewhere in Chromium; stay there
+        t.wasVerifying = false;
       } else {
         t.challengeReturned = true;
         const backUrl = t.url;
@@ -2126,8 +1987,7 @@ async function refreshRemote(t, loop = false) {
 function releaseInactiveBrowserSlot(exclude) {
   const candidates = state.tabs.filter(t => t !== exclude && t.view === "page" && t.browserSessionId && t.browserMode === "BROWSER_ENGINE");
   if (!candidates.length) return false;
-  
-  
+
   candidates.sort((a, b) => (Number(a.lastBrowserUse || 0) - Number(b.lastBrowserUse || 0)) || (state.tabs.indexOf(a) - state.tabs.indexOf(b)));
   const victim = candidates[0];
   addLog("info", `Chromium capacity full; releasing inactive Chromium tab ${hostOf(victim.url) || "(unknown)"} for ${hostOf(exclude?.url) || "the requested site"}.`);
@@ -2137,8 +1997,7 @@ function releaseInactiveBrowserSlot(exclude) {
 
 async function startBrowserSession(t, url, { background = false } = {}) {
   const sid = state.session?.id || "";
-  
-  
+
   const browserUrl = url;
   if (t.browserSessionId) {
     try {
@@ -2153,7 +2012,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
   try {
     b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
   } catch (e) {
-    
+
     if (e.fallbackMode === "FAST_PROXY" || e.code === "BROWSER_FAILOVER") {
       t.browserMode = "FAST_PROXY"; t.failoverReason = e.reason || "breaker_open"; t.failoverRetryAfterMs = e.retryAfterMs || 60000;
       addLog("info", `Chromium in cooldown — using fast proxy. ${e.error || ""}`);
@@ -2161,7 +2020,7 @@ async function startBrowserSession(t, url, { background = false } = {}) {
       return { ok: false, fallback: true, reason: e.reason || "breaker_open" };
     }
     if (e.code !== "BROWSER_CAPACITY" || !releaseInactiveBrowserSlot(t)) throw e;
-    
+
     await new Promise(r => setTimeout(r, 150));
     try {
       b = await api("/api/browser/session", { json: { tabId: t.id, url: browserUrl, proxySessionId: sid, fastStart: !!background }, timeoutMs: 45000 });
@@ -2201,7 +2060,6 @@ export async function retryFullBrowser() {
 }
 async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); remoteFrames?.refresh(t.browserSessionId); await refreshRemote(t, true); return true; } catch { return false; } }
 
-
 export async function back() {
   const t = activeTab(); if (!t) return;
   if (isRemote(t) && t.view === "page" && await remoteHistory(t, "back")) return;
@@ -2222,9 +2080,7 @@ export async function reload({ hard = false } = {}) {
   const t = activeTab(); if (!t) return;
   if ($("reloadBtn").dataset.loading === "1" && !hard) return stopLoad();
   if (t.view === "page" && t.url) {
-    // A site-level robot check can be tied to the current Chromium context.
-    // Reusing that context only reloads the same rejected cookies/session, so
-    // make the normal browser reload action start a clean context instead.
+
     if (isRemote(t) && t.browserStatus === "VERIFICATION_REQUIRED") {
       const url = t.url;
       setLoading(true, 20, "Starting a clean Chromium session…");
@@ -2268,7 +2124,6 @@ export function setZoom(z, t = activeTab()) {
 const ZOOM_STEPS = [.25, .33, .5, .67, .75, .8, .9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5];
 export function zoomStep(dir) { const t = activeTab(); const cur = t?.view === "page" ? t.zoom : settings.fontScale || 1; if (dir === 0) return setZoom(1); const next = dir > 0 ? ZOOM_STEPS.find(z => z > cur + .001) : [...ZOOM_STEPS].reverse().find(z => z < cur - .001); setZoom(next ?? cur); }
 
-
 export function toggleBookmark() {
   const t = activeTab(); if (!t?.url) return;
   const i = state.bookmarks.findIndex(b => b.url === t.url);
@@ -2277,7 +2132,6 @@ export function toggleBookmark() {
   updateIdentity();
 }
 
-
 export function openFind() {
   const t = activeTab(); if (t?.view !== "page" || !t.url) { toast("Open a website to search inside it"); return; }
   if (isRemote(t)) { toast("Find isn't available in Chromium tabs yet", { kind: "warn" }); return; }
@@ -2285,7 +2139,6 @@ export function openFind() {
 }
 function findQuery(q, direction = "forward") { pageCommand("veyra:find", { query: q, direction }); if (!q) $("findCount").textContent = "0/0"; }
 export function closeFind() { $("findBar").classList.add("hidden"); pageCommand("veyra:find-close"); }
-
 
 export function showSearch(query = "", { tab = null, push = true, pushHist = true, source = "", engine = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
@@ -2315,8 +2168,7 @@ async function runSearch(query, offset = 0, opts = {}) {
       const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal });
       if (correction.changed && correction.corrected && correction.corrected.toLowerCase() !== query.toLowerCase()) {
         t.searchCorrection = { original: query, corrected: correction.corrected };
-        
-        
+
       }
     } catch {}
   }
@@ -2358,7 +2210,7 @@ async function runSearch(query, offset = 0, opts = {}) {
       t.searchData = { ...b, results: [...merged.values()] };
     } else t.searchData = b;
     renderSearch();
-    
+
     if (!ephemeralSession() && !offset && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results, source);
   } catch (e) { if (!current()) return; if (offset && t.searchData) { renderSearch(); toast("Could not load more search results. Try again.", { kind: "warn" }); return; } $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
 }
@@ -2454,7 +2306,6 @@ export async function omniSuggest(q) {
   try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=5`, { timeoutMs: 3000 }); return b.suggestions || []; } catch { return []; }
 }
 
-
 function tokenize(s) {
   const out = []; let i = 0; s = String(s).replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
   while (i < s.length) {
@@ -2497,7 +2348,6 @@ function setupCalculator() {
   $("calcInput").oninput = () => { activeTab().calcExpression = $("calcInput").value; renderCalculator(); syncRoute({ replace: true }); };
   $("calcInput").onkeydown = e => { if (e.key === "Enter") { try { $("calcInput").value = String(evaluate($("calcInput").value)); renderCalculator(); } catch {} } };
 }
-
 
 const MAX_IN_MEMORY_DOWNLOAD = 100 * 1024 * 1024;
 function safeDownloadName(value, fallback = "download") {
@@ -2566,7 +2416,6 @@ function renderDownloads() {
     if (b.dataset.cancel) state.downloadControllers.get(d.id)?.abort(); else if (b.dataset.again) startDownload(d.url, d.name); else { state.downloads.splice(state.downloads.indexOf(d), 1); saveDownloads(); renderDownloads(); } };
 }
 
-
 function renderHistory() {
   const box = $("historyList"); if (!box) return;
   const q = $("historyFilter").value.toLowerCase();
@@ -2592,13 +2441,12 @@ export function clearBrowsingData({ history = true, downloads = false, cookies =
   if (activeTab()?.view === "history") renderHistory();
 }
 
-
 function sourceTab() { const t = activeTab(); return tabById(t?.sourceTabId) || state.tabs.find(x => x.view === "page" && x.url) || null; }
 async function renderResources() {
   const src = sourceTab(); const box = $("resourceList");
   if (!src) { box.innerHTML = `<div class="empty">Open a website first, then choose View source resources.</div>`; $("sourceCode").innerHTML = ""; return; }
   activeTab().title = `Resources · ${hostOf(src.url)}`; renderTabsSoon();
-  
+
   let live = null; try { live = await dtCall(src, "sources.list", {}, 5000); } catch {}
   const rows = [{ id: "doc", type: "html", url: src.url, label: "Document (live DOM)" }];
   if (live) { live.scripts.forEach(s => rows.push({ id: `script:${s.index}`, type: "js", url: s.url, inline: s.inline, index: s.index, kind: "script", label: s.inline ? `inline script #${s.index + 1}` : "" })); live.styles.forEach(s => rows.push({ id: `style:${s.index}`, type: "css", url: s.url, inline: s.inline, index: s.index, kind: "style", label: s.inline ? `inline style #${s.index + 1}` : "" })); }
@@ -2617,7 +2465,6 @@ function highlightCode(text, type) {
     : esc;
   return lines.map(l => `<span class="ln">${hl(l) || " "}</span>`).join("");
 }
-
 
 export function prettyPrint(text, type) {
   text = String(text || "");
@@ -2679,7 +2526,6 @@ async function renderLinks() {
   body.onclick = e => { const a = e.target.closest("[data-open]"); if (a) { e.preventDefault(); navigate(a.dataset.open); } const n = e.target.closest("[data-new]"); if (n) newTab({ url: n.dataset.new, background: true }); };
 }
 
-
 function renderConsole() {
   if (!isAdmin()) return;
   const f = $("consoleFilter").value, q = $("consoleSearch").value.toLowerCase();
@@ -2718,7 +2564,6 @@ async function refreshDev() {
   $("devReqs").innerHTML = (reqs.value?.requests || []).slice(0, 120).map(r => `<tr><td>${new Date(r.time || r.startedAt || Date.now()).toLocaleTimeString([], { hour12: false })}</td><td>${esc(r.method)}</td><td class="mono" style="max-width:520px">${esc(r.path || r.url)}</td><td>${esc(r.status)}</td><td>${esc(r.ms ?? r.durationMs ?? "")}</td></tr>`).join("");
   $("devConfig").textContent = JSON.stringify(cfg.value?.config || cfg.value || {}, null, 2);
 }
-
 
 let platformModel = null;
 async function renderPlatform() {
@@ -2839,7 +2684,6 @@ async function platformRenameKey(workspaceId, keyId, currentName) { const name =
 async function platformRotateKey(workspaceId, keyId) { if (!confirm("Rotate this API key? The current key will stop working immediately.")) return; try { const r = await api(`/api/platform/workspaces/${encodeURIComponent(workspaceId)}/keys/${encodeURIComponent(keyId)}/rotate`, { method: "POST", json: {} }); await copyText(r.key); alert(`${r.warning}\n\n${r.key}`); renderPlatform(); } catch (e) { toast(e.message, { kind: "err" }); } }
 async function platformDeleteWorkspace(id) { if (!confirm("Delete this workspace and revoke all its keys?")) return; try { await api(`/api/platform/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" }); toast("Workspace deleted"); renderPlatform(); } catch (e) { toast(e.message, { kind: "err" }); } }
 
-
 let vpnRefresh = 0;
 export async function refreshVpnStatus(onProfiles) {
   const revision = ++vpnRefresh;
@@ -2886,7 +2730,7 @@ async function renderVpnPanel() {
   box.innerHTML = `<div class="vpn-hero"><div class="vpn-orb ${v.connected ? "on" : ""}"><svg><use href="#i-vpn"/></svg></div><div><h2>${v.sessionError ? "Connection status unknown" : v.connected ? "Protected" : "Not connected"}</h2><p class="muted">${v.connected ? `Traffic in this session leaves through <b>${esc(cur?.name || "")}</b>${cur?.region ? ` · ${esc(cur.region)}` : ""}${cur?.health?.exitIp ? ` · exit ${esc(cur.health.exitIp)}` : ""}.` : st.enabled === false ? "The VPN is turned off on this server." : v.sessionError ? esc(v.sessionError) : v.error ? esc(v.error) : !profiles.length ? "No VPN exits are configured on the server yet." : "Choose an exit below. Every tab in this session will use it."}</p></div><span class="spacer"></span>${v.connected ? `<button class="btn ghost" id="vpnRotate">Rotate exit</button><button class="btn danger" id="vpnOff">Disconnect</button>` : ""}</div>
     <div class="s-section"><h2>Exits by country</h2><p class="muted">${st.killSwitch ? "Kill switch is on: if a tunnel drops, requests are blocked instead of leaking through the server's own IP." : st.killSwitch === false ? "Kill switch is off on this server." : ""}${st.failover ? " Failover moves you to a healthy exit automatically." : ""}</p>
     ${(() => {
-      // Group exits by country (or region) so users can pick an exit location at a glance.
+
       const byCountry = new Map();
       for (const p of profiles) {
         const key = String(p.country || p.region || "Other").toUpperCase();
@@ -2894,7 +2738,7 @@ async function renderVpnPanel() {
         byCountry.get(key).push(p);
       }
       const keys = [...byCountry.keys()].sort((a, b) => {
-        // Connected country first, then alphabetical.
+
         const curKey = String(cur?.country || cur?.region || "").toUpperCase();
         if (curKey && a === curKey) return -1; if (curKey && b === curKey) return 1;
         return a.localeCompare(b);
@@ -2926,7 +2770,6 @@ async function renderVpnPanel() {
 }
 export { renderVpnPanel };
 
-
 function tabForSource(src) {
   for (const t of state.tabs) { const f = frameFor(t); if (!f) continue; let w = src; for (let i = 0; i < 6 && w; i++) { if (w === f.contentWindow) return t; try { if (w === w.parent) break; w = w.parent; } catch { break; } } }
   return null;
@@ -2934,7 +2777,7 @@ function tabForSource(src) {
 function isConsoleLabPageUrl(value) {
   try {
     const u = new URL(String(value || ""));
-    // Pages may serve the legacy repository root or the web/ Actions artifact.
+
     const path = u.pathname.replace(/\/+$/, "");
     return u.protocol === "https:" && u.hostname === "homekidchud.github.io" && ["/VeyraBrowser/web/console-lab", "/VeyraBrowser/console-lab"].includes(path);
   } catch { return false; }
@@ -3002,19 +2845,7 @@ function pageConsoleEntry(d, t) {
     kind: isException ? "exception" : "console"
   };
 }
-// ---------- In-proxy sign-in + popup relay ----------
-// The cross-session cookie handoff is gone: no bookmarklet, no cookie
-// paste, no "open the real site in your browser and bring your session
-// back". Sign-in happens inside the fast proxy — the site's login page
-// loads through the proxy in the tab, credentials land in this session's
-// own cookie jar, and OAuth popups open as proxied Veyra tabs whose
-// opener semantics (postMessage, .closed, .close(), window.opener) are
-// relayed by the app between the two frames. No cookie ever crosses
-// between the user's browser and a Veyra session, or between sessions.
-//
-// Popup bookkeeping: a tab opened on behalf of another tab's frame keeps
-// popupOf (opener tab id) + popupId (the runtime's handle id), so relayed
-// postMessages find their way between the two frames.
+
 function relayIntoFrame(tab, payload) {
   try { const f = frameFor(tab); if (!f?.contentWindow) return false; f.contentWindow.postMessage(payload, API_ORIGIN); return true; } catch { return false; }
 }
@@ -3025,9 +2856,7 @@ function notifyPopupClosed(openerTab, popupId) {
 function teardownPopupLinks(tab) {
   if (tab.popupOf) { const opener = state.tabs.find(x => x.id === tab.popupOf); notifyPopupClosed(opener, tab.popupId); }
 }
-// A proxied frame asked for a popup (window.open from the page — OAuth
-// sign-in, share dialogs, …): open it as a proxied Veyra tab and remember
-// the opener relationship so postMessage relay works both ways.
+
 function openProxiedPopup(sourceTab, d) {
   const target = canonical(String(d.url || ""));
   if (!target) return null;
@@ -3038,16 +2867,13 @@ function openProxiedPopup(sourceTab, d) {
   popup.popupId = String(d.popupId || "");
   return popup;
 }
-// The popup's frame embed-pings on every load; ack it and, for popup
-// tabs, re-assert the popup role (installs window.opener + window.close
-// shims in the runtime — covers post-navigation reloads of the popup).
+
 function ackEmbedPing(e) {
   try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {}
   const t = tabForSource(e.source);
   if (t?.popupOf) relayIntoFrame(t, { type: "veyra:popup-role" });
 }
-// Ordinary sites can sign in through their Fast Proxy session. Recognized
-// account providers instead get a direct entry point without session transfer.
+
 function chooseSignin(t, url) {
   if (interceptAccount(url, t.url)) return;
   addLog("info", `Sign-in on ${hostOf(url)} loading through the fast proxy.`);
@@ -3143,11 +2969,7 @@ function interceptAccount(url, from = "") {
 }
 async function handleMessage(e) {
   const d = e.data; if (!d || typeof d !== "object" || typeof d.type !== "string" || !d.type.startsWith("veyra:")) return;
-  // The challenge card asks the app to open the handoff because a popup
-  // opened by the sandboxed iframe inherits the sandbox, and sites that send
-  // Cross-Origin-Opener-Policy (chess.com, Google, Twitter, …) then fail with
-  // ERR_BLOCKED_BY_RESPONSE. A popup opened by the top-level app is a normal
-  // tab and always works.
+
   if (d.type === "veyra:open-direct-ping" || d.type === "veyra:open-direct") {
     if (e.origin !== API_ORIGIN) return;
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
@@ -3160,10 +2982,7 @@ async function handleMessage(e) {
     if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Opened directly: ${hostOf(url)}`); }
     return;
   }
-  // A proxied page asks whether it is embedded in the app (its parent is
-  // cross-origin, so it cannot tell on its own). The ack switches its popup
-  // guards on: window.open()/target=_blank become Veyra tabs instead of
-  // raw browser tabs at path-based proxy URLs.
+
   if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
   if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   if (d.type === "veyra:console-lab:open-proxy") {
@@ -3174,13 +2993,9 @@ async function handleMessage(e) {
     }
     return;
   }
-  
-  
-  
+
   const t = tabForSource(e.source); if (!t) return;
-  // Answer from a frame still running the Veyra runtime (escape watchdog
-  // handshake): confirms the loaded frame is a proxied page, not a real
-  // site that jumped out of the proxy.
+
   if (d.type === "veyra:embed-probe-ack") { t.lastRuntimeAckAt = Date.now(); t.escapeRecoveries = 0; return; }
   const consoleLabAuthCheck = d.type === "veyra:console-lab:auth-check";
   const trustedConsoleLabOrigin = consoleLabAuthCheck && e.origin === "https://homekidchud.github.io";
@@ -3255,23 +3070,20 @@ async function handleMessage(e) {
   if (d.type === "veyra:open" && d.url) {
     const u = canonical(d.url); if (!u) return;
     if (interceptAccount(u, t.url)) return;
-    // The page said where the destination belongs: _top/_parent means "replace
-    // this whole view", which is in-place navigation for the tab — never a
-    // second tab. Everything else (_blank, named windows) opens a new Veyra
-    // tab as before.
+
     const tgt = String(d.target || "_blank").toLowerCase();
     if ((tgt === "_top" || tgt === "_parent") && t.view === "page" && !isRemote(t)) { void loadInTab(t, u, { loadFrame: true }); return; }
     newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return;
   }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
   if (d.type === "veyra:retry") { if (activeTab() === t) reload(); return; }
-  // The page's sign-in button was clicked; use the appropriate site route.
+
   if (d.type === "veyra:signin" && d.url) {
     const target = canonical(d.url);
     if (target && t.view === "page" && !isRemote(t)) chooseSignin(t, target);
     return;
   }
-  // ----- Popup relay (OAuth/sign-in popups as proxied Veyra tabs) -----
+
   if (d.type === "veyra:popup-open" && d.url) {
     const target = canonical(String(d.url));
     if (target && t.view === "page" && !isRemote(t)) {
@@ -3280,27 +3092,25 @@ async function handleMessage(e) {
     }
     return;
   }
-  // Opener frame → its popup tab (e.g. the opener replying to the popup).
+
   if (d.type === "veyra:popup-message" && d.popupId) {
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
     if (popup) relayIntoFrame(popup, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "opener", popupId: String(d.popupId) });
     return;
   }
-  // Popup tab → its opener (e.g. Google's OAuth response postMessage).
+
   if (d.type === "veyra:popup-to-opener") {
     const opener = t.popupOf ? state.tabs.find(x => x.id === t.popupOf) : null;
     if (opener) relayIntoFrame(opener, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "popup", popupId: t.popupId || "" });
     return;
   }
-  // The popup's own scripts closed it (window.close) or the opener asked
-  // it closed (handle.close()): close the tab and tell the opener's
-  // runtime so its popup handle flips to .closed = true.
+
   if (d.type === "veyra:popup-self-close" || (d.type === "veyra:popup-close" && d.popupId)) {
     const popup = d.type === "veyra:popup-self-close" ? t : state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
     if (popup) closeTab(popup.id, { silent: true });
     return;
   }
-  // The opener navigated its popup handle (w.location = url).
+
   if (d.type === "veyra:popup-navigate" && d.url) {
     const target = canonical(String(d.url));
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
@@ -3309,17 +3119,15 @@ async function handleMessage(e) {
     return;
   }
   if (d.type === "veyra:challenge" && d.url) {
-    
+
     const u = canonical(d.url); if (!u || t.view !== "page") return;
     if (interceptAccount(u, t.url)) return;
     t.challengeTried ||= new Set();
-    // TEMPORARY: the Chromium handoff for security checks is disabled until
-    // streamed Chromium fully works (see CHROMIUM_TRY_DISABLED above).
+
     if (CHROMIUM_TRY_DISABLED) { toast("This site wants a security check, which Veyra can't complete through the fast proxy yet. Open it directly or retry through Veyra.", { kind: "warn", ms: 6000 }); return; }
     if (!d.manual && (!d.auto || settings.challengeHandoff === false || t.challengeTried.has(u))) { if (!d.manual) toast("This site wants a security check. Use \u201cVerify in real Chromium\u201d to complete it", { kind: "warn", ms: 5000 }); return; }
     t.challengeTried.add(u);
-    // The tab is about to hand off to real Chromium for the check; once the
-    // user finishes it there, refreshRemote returns it to the fast proxy.
+
     t.challengeEscalated = true; t.wasVerifying = false; t.challengeReturned = false;
     void routeBrowserRequired(t, u, `${u}|security-challenge`, "security-challenge");
     return;
@@ -3327,8 +3135,7 @@ async function handleMessage(e) {
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
     if (accountDestination(target)) {
-      // A child frame may run silent OAuth; never prompt for it or promote
-      // its URL. If a root frame already followed a redirect, remove it.
+
       if (frameFor(t)?.contentWindow === e.source) {
         if (activeTab() === t) showAccountOptions(target, t.url);
         if (t.popupOf) closeTab(t.id, { silent: true });
@@ -3339,24 +3146,17 @@ async function handleMessage(e) {
     const sourceDisplayUrl = validateSourceDisplayUrl(d.veyraSourceUri, target, API_ORIGIN);
     if (d.title) t.title = String(d.title).slice(0, 200); if (d.favicon) t.favicon = canonical(d.favicon) || "";
     if (String(d.source).startsWith("history.")) {
-      // Same rule as below: only the tab's own root frame drives the tab URL —
-      // nested frames' history/heal events must not hijack the address bar.
+
       const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
       if (!fromRootFrame) return;
       t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target;
     }
     else if (d.source === "document-navigation") {
       const same = t.url && t.url.split("#")[0] === target.split("#")[0];
-      // Only the tab's own root frame drives the tab: a nested proxied frame
-      // (game/artwork iframes) loading or navigating must never hijack it.
+
       const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
       if (!same && fromRootFrame) {
-        // The proxied frame already navigated itself (link click, redirect,
-        // form post). Adopt the new URL in place instead of tearing the tab
-        // down and reloading it: the frame session, console and network
-        // capture stay continuous across the redirect, the page is not
-        // loaded twice, and redirect flows (security checks that land on
-        // the real page) keep working instead of restarting from scratch.
+
         t.url = target;
         t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
         pushTabHistory(t, target);
@@ -3371,18 +3171,12 @@ async function handleMessage(e) {
       t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
       const h = state.history.find(x => x.url === target); if (h && d.title) { h.title = t.title; saveHistory(); }
     } else {
-      // Only the tab's own root frame drives the tab URL. Nested proxied
-      // frames emit location.assign/replace and history events too — e.g.
-      // MSN's MSAL silent-auth hidden iframes navigating to the OAuth
-      // authorize URL. Adopting those here hijacked the address bar and broke
-      // the post-handoff reload (it reloaded the hijacked auth URL instead of
-      // the page the user was on).
+
       const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
       if (!fromRootFrame) return;
       t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
     }
-    
-    
+
     if (d.source === "document-navigation" && t.loading) { t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false); }
     if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
     renderTabsSoon();
@@ -3411,7 +3205,6 @@ function submitForm(t, msg) {
 }
 function pushKeybindings(t) { const list = hooks.forwardableCombos?.(); if (list) pageCommand("veyra:keys", { combos: list }, t); }
 window.addEventListener("message", e => { handleMessage(e).catch(err => addLog("error", `Message handling failed: ${err.message}`)); });
-
 
 function wire() {
   splitMobile.addEventListener("change", syncSplitFrames);
@@ -3462,7 +3255,6 @@ function wire() {
   document.addEventListener("visibilitychange", () => { const t = activeTab(); if (!document.hidden && t?.needsReload && t.url) { t.needsReload = false; loadInTab(t, t.url); } });
 }
 
-
 export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
@@ -3473,15 +3265,13 @@ export const B = {
 };
 hooks.B = B;
 
-
 function applyStartup(params) {
   if (currentRoute() !== "/browse" || params.get("url") || params.get("q") || location.hash) return;
   if (settings.startup === "url" && settings.startupUrl) { go(settings.startupUrl, { tab: activeTab(), push: false }); return; }
   if (!ephemeralSession() && settings.startup === "continue") {
     const urls = load("veyra-last-tabs", []).filter(u => /^https?:/.test(u));
     const first = urls.shift(); if (first) go(first, { tab: activeTab(), push: false });
-    
-    
+
     urls.forEach((u, i) => setTimeout(() => newTab({ url: u, background: true }), (i + 1) * 75));
   }
 }
@@ -3496,8 +3286,7 @@ setInterval(() => {
 async function boot() {
   try {
     wire();
-    // Warm the Render instance in the background so the first page the user
-    // opens never lands on the platform's unframeable loading page.
+
     void ensureApiAwake();
     startIncognitoAddressRotation();
     cleanupUnfinishedSessionHistory();
@@ -3514,17 +3303,13 @@ async function boot() {
     } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B);
-    // Rebuild the tab strip from the last snapshot (URLs, groups, pin state)
-    // so a reload keeps grouped tabs grouped. The fresh newtab from above is
-    // replaced unless the snapshot says the strip was a single empty newtab.
+
     restoreTabState();
     renderTabs(); tickSession();
     if (!/^\/admin(?:\/|$)/.test(currentRoute())) await revisitSavedSession();
     applyRoute();
     applyStartup(params);
-    // (Removed) the veyra_handoff return-trip param: with the cookie
-    // handoff gone, nothing navigates back into the app with a target URL
-    // anymore. Sign-in happens inside the fast proxy.
+
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }
 }

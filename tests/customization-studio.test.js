@@ -78,6 +78,6 @@ for (const entry of ["index.html", "browse/index.html"]) {
 assert.match(file("src/core.js"), /EPHEMERAL_KEYS = new Set\(\[[\s\S]*?\.\.\.STUDIO_LOCAL_KEYS/);
 assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS,[^\]]*\]\) delete s\[key\]/);
 assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS,[^\]]*\]\) delete remote\[key\]/);
-assert.ok(!DEVICE_APPEARANCE_KEYS.includes(STUDIO_LOCAL_KEYS[0])); // Image data lives outside the settings object.
+assert.ok(!DEVICE_APPEARANCE_KEYS.includes(STUDIO_LOCAL_KEYS[0]));
 assert.match(file("src/app.js"), /"customize", "customise", "customization-studio"[\s\S]*?view: "settings", section: "appearance"/);
 console.log("Customization Studio: defaults, presets, safe setup imports, device-only assets and route wiring passed.");

@@ -1,34 +1,10 @@
-// Chrome (MV2/MV3) extension manifest handling for Veyra Browser.
-//
-// This module is intentionally dependency-free (no imports): the browser app
-// loads it for manifest parsing and shim building, and the node test suite
-// imports it directly to unit-test the normalization logic.
-//
-// Design notes
-// ------------
-// - parseChromeManifest() is the pure parser: it never touches Veyra storage
-//   or settings, so it can run inside `node tests/chrome-extensions.test.js`.
-// - buildContentScriptSource() returns JS source that runs inside the page
-//   through the existing `ext.script` DevTools-bridge channel. It prepends a
-//   chrome.*-compatible shim (runtime messaging, storage, unsupported-API
-//   stubs that throw helpful errors) and wraps every content_scripts entry so
-//   run_at is respected whenever the injection point allows it.
-// - buildBackgroundWorkerSource() returns JS source for an inline Web Worker
-//   (classic, or module for MV3 `background.type: "module"`). The worker shim
-//   talks to the Veyra host over postMessage RPC: storage is persisted by the
-//   host under a per-extension namespace, so background code never touches
-//   Veyra's own storage keys.
-
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 const arr = v => Array.isArray(v) ? v : [];
 
 export const RUN_AT_VALUES = ["document_start", "document_end", "document_idle"];
 
-// Permissions the Veyra shim actually implements.
 export const SUPPORTED_PERMISSIONS = new Set(["storage", "unlimitedStorage"]);
 
-// Dangerous / impossible-in-a-web-app permissions: the extension still
-// installs, but these are stripped and surfaced as a visible warning badge.
 export const DENIED_PERMISSIONS = new Set([
   "nativeMessaging", "cookies", "webRequest", "webRequestBlocking", "webRequestAuthProvider",
   "debugger", "management", "proxy", "privacy", "downloads", "downloads.ui", "identity",
@@ -46,14 +22,6 @@ export function classifyPermissions(list) {
   }
   return { granted, denied, unsupported };
 }
-
-// --- Unpacked-folder reading ("Load unpacked", Chrome-style) ---------------
-//
-// The browser app reads a picked folder into {path, text|dataUrl} entries
-// (text for source files, data URLs for binaries like icons); this pure
-// reader locates manifest.json (root or a single subfolder), strips junk,
-// enforces size caps, and returns the manifest + file map the existing
-// Chrome pipeline already consumes.
 
 export const FOLDER_LIMITS = { maxFiles: 300, maxFileKb: 150, maxTotalKb: 900 };
 
@@ -77,8 +45,6 @@ export function readExtensionFolder(entries) {
   if (!clean.length) throw new Error("The folder doesn't contain any readable files.");
   if (clean.length > FOLDER_LIMITS.maxFiles) throw new Error(`Too many files (${clean.length}); Veyra reads at most ${FOLDER_LIMITS.maxFiles} files per extension.`);
 
-  // manifest.json at the root, or in exactly one subfolder (user picked a
-  // parent directory) — the manifest's folder becomes the bundle root.
   let root = "";
   if (!clean.some(e => e.path === "manifest.json")) {
     const cands = [...new Set(clean
@@ -92,7 +58,7 @@ export function readExtensionFolder(entries) {
   const files = {};
   let total = 0;
   for (const e of clean) {
-    if (root && !e.path.startsWith(root)) continue; // file outside the extension folder
+    if (root && !e.path.startsWith(root)) continue;
     const rel = root ? e.path.slice(root.length) : e.path;
     if (e.content.length > FOLDER_LIMITS.maxFileKb * 1024) throw new Error(`File "${e.path}" is larger than ${FOLDER_LIMITS.maxFileKb} KB.`);
     total += e.content.length;
@@ -105,8 +71,6 @@ export function readExtensionFolder(entries) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("manifest.json must contain a JSON object.");
   return { manifest, files, rootPath: root };
 }
-
-// --- i18n (_locales) --------------------------------------------------------
 
 function loadLocaleMessages(files, locale) {
   const raw = files[`_locales/${locale}/messages.json`];
@@ -138,8 +102,6 @@ export function isHostPattern(p) {
   return v === "<all_urls>" || v.includes("://") || v.includes("/") || v.startsWith("*.");
 }
 
-// --- URL pattern matching (same semantics the old matches() used) -----------
-
 export function patternMatchesUrl(rawPattern, rawUrl) {
   let url;
   try { url = new URL(rawUrl); } catch { return false; }
@@ -163,8 +125,6 @@ export function matchesUrl(patterns, rawUrl, excludes = []) {
   if (excludes.some(x => patternMatchesUrl(x, rawUrl))) return false;
   return list.some(p => patternMatchesUrl(p, rawUrl));
 }
-
-// --- Manifest parsing -------------------------------------------------------
 
 function manifestId(name, version) {
   const seed = `${name}:${version}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
@@ -205,8 +165,7 @@ export function parseChromeManifest(manifest, files = {}) {
     throw new Error(`Unsupported manifest_version ${str(manifest.manifest_version, 20) || "(missing)"}; Veyra supports Chrome MV2 and MV3 extensions.`);
   }
   const warnings = [];
-  // i18n: _locales/<default_locale>/messages.json + __MSG_key__ substitution
-  // in name/description, exactly like Chrome resolves localized manifest strings.
+
   const defaultLocale = str(manifest.default_locale, 40);
   let messages = null;
   if (defaultLocale) {
@@ -218,9 +177,6 @@ export function parseChromeManifest(manifest, files = {}) {
   const version = str(manifest.version, 20);
   if (!version) warnings.push("Manifest has no version; defaulting to 1.0.0.");
 
-  // icons: paths kept as metadata, plus ready-to-render data URLs (binaries
-  // arrive as data URLs; SVG text is encoded on the fly) so the UI can show
-  // the extension's real icon like Chrome's extension page does.
   const icons = {};
   const iconData = {};
   for (const [size, path] of Object.entries(manifest.icons && typeof manifest.icons === "object" ? manifest.icons : {})) {
@@ -231,7 +187,6 @@ export function parseChromeManifest(manifest, files = {}) {
     else if (/\.svg$/i.test(String(path))) iconData[size] = "data:image/svg+xml," + encodeURIComponent(content.slice(0, 65536));
   }
 
-  // content_scripts: multiple entries, each with its own match/run_at rules
   const contentScripts = [];
   const matchSet = new Set(), excludeSet = new Set(), cssParts = [], jsParts = [];
   for (const group of arr(manifest.content_scripts)) {
@@ -255,7 +210,6 @@ export function parseChromeManifest(manifest, files = {}) {
     jsParts.push(...js);
   }
 
-  // background: MV3 service worker or MV2 scripts, run in an inline worker
   let background = null;
   const bg = manifest.background;
   if (bg && typeof bg === "object") {
@@ -277,11 +231,9 @@ export function parseChromeManifest(manifest, files = {}) {
 
   if (!contentScripts.length && !background) throw new Error("This manifest has no supported content scripts, styles, or background code.");
 
-  // Remote userscript-style dependencies stay blocked for code we execute.
   const allCode = [...jsParts, ...(background ? background.scripts : [])].join("\n");
   if (allCode && /@(?:require|resource|connect)\b/i.test(allCode)) throw new Error("Remote userscript dependencies and network grants are blocked.");
 
-  // permissions: allow/deny model with visible warnings, never install blockers
   const permList = arr(manifest.permissions).map(String);
   const optionalList = arr(manifest.optional_permissions).map(String);
   const hostPatterns = permList.filter(isHostPattern);
@@ -293,10 +245,6 @@ export function parseChromeManifest(manifest, files = {}) {
   for (const p of [...new Set([...classified.unsupported, ...optionalClassified.unsupported])]) warnings.push(`Permission "${p}" has no Veyra implementation; calls to that API throw a helpful error.`);
   const denied = [...new Set([...classified.denied, ...optionalClassified.denied])];
 
-  // web_accessible_resources (MV3 objects / MV2 strings). The referenced
-  // files are embedded into the record so chrome.runtime.getURL() can serve
-  // real, working URLs (data URLs for binaries, blob URLs for text) inside
-  // the proxied page — the one Chrome resource rule Veyra can honor fully.
   const war = arr(manifest.web_accessible_resources).map(r => r && typeof r === "object"
     ? { resources: arr(r.resources).map(String), matches: arr(r.matches).map(String) }
     : String(r));
@@ -315,7 +263,6 @@ export function parseChromeManifest(manifest, files = {}) {
     resBytes += content.length;
   }
 
-  // action / browser_action metadata
   const actionMeta = manifest.action || manifest.browser_action || null;
   const action = actionMeta && typeof actionMeta === "object" ? {
     defaultTitle: str(actionMeta.default_title, 100),
@@ -368,15 +315,6 @@ export function parseChromeManifest(manifest, files = {}) {
     author: str(manifest.author, 100)
   };
 }
-
-// --- chrome.* shim for content scripts --------------------------------------
-//
-// Runs inside the remote page (via the DevTools bridge's ext.script channel).
-// Storage is namespaced per extension id in the page's own localStorage
-// (a remote page can never reach Veyra's origin storage) with an in-memory
-// fallback for opaque origins. Unsupported APIs (webRequest, tabs, ...) become
-// proxies that throw a descriptive error when called, so a real Chrome
-// content script keeps running as unchanged as possible.
 
 export function buildContentScriptShim(ext) {
   const manifest = {
@@ -589,12 +527,6 @@ ${code}
   }
   return parts.join("\n\n");
 }
-
-// --- chrome.* shim for background workers -----------------------------------
-//
-// Runs inside an inline Web Worker owned by the Veyra app. Storage and
-// runtime.sendMessage go through postMessage RPC to the host, which persists
-// them under a per-extension namespace (never Veyra's own storage keys).
 
 export function buildBackgroundWorkerSource(ext) {
   const manifest = {

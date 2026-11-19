@@ -48,7 +48,7 @@ export function playStudioSound(event = "open") {
   if (!Audio || (!soundContext && !navigator.userActivation?.hasBeenActive)) return;
   try {
     soundContext ||= new Audio();
-    // Don't queue sounds on boot or while playback is suspended by the browser.
+
     if (soundContext.state !== "running") { void soundContext.resume().then(() => { if (event === "preview" && soundContext.state === "running") playStudioSound(event); }).catch(() => {}); return; }
     const osc = soundContext.createOscillator(), gain = soundContext.createGain(), at = soundContext.currentTime;
     osc.type = { soft: "sine", synth: "triangle", arcade: "square" }[studioSound];

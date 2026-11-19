@@ -23,7 +23,6 @@ export const tabLayout = value => ["top", "left", "right"].includes(value) ? val
 export const paneLayout = value => value === "stack" ? "stack" : "columns";
 export const paneRatio = value => Math.round(clampNumber(value, 20, 80, 50));
 
-// Pinned tabs stay first. Emit each group as a whole at its first occurrence.
 export function arrangeTabs(tabs, groups) {
   const known = new Set(groups.map(group => group.id));
   const pinned = tabs.filter(tab => tab.pinned);

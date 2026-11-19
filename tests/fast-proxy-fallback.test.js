@@ -22,9 +22,6 @@ assert.match(appSource, /newTab\(\{ url, index: state\.tabs\.indexOf\(t\) \+ 1 \
 assert.doesNotMatch(appSource, /trustedYouTubeFallbackLink/, "YouTube links no longer depend on inline srcdoc postMessage code");
 assert.match(appSource, /f\.srcdoc = youtubeFallbackHtml\(url\);[\s\S]{0,200}t\.loading = false;[\s\S]{0,100}setLoading\(false\)/, "the official player is visible while YouTube initializes");
 
-// Service worker: a failed static-asset fetch with no cached copy must answer
-// with a network-error Response, never undefined (respondWith(undefined)
-// throws), and cache writes must not leak unhandled rejections.
 assert.match(swSource, /cache\.put\(request, response\.clone\(\)\)\.catch\(\(\) => \{\}\)/, "cache writes must be failure-safe");
 assert.match(swSource, /return cached \|\| Response\.error\(\);/, "a network failure with no cached copy must return a network-error response");
 

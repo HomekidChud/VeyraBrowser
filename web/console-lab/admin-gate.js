@@ -98,10 +98,7 @@
   }
 
   async function start() {
-    // When embedded in Veyra, trust only Veyra's own server-backed session check.
-    // The child frame may not share the browser app's auth storage context.
-    // A first-party internal frame shares the browser's verified session storage.
-    // A proxied frame remains on the distinct, server-backed message handshake.
+
     let firstPartyFrame = false;
     try { firstPartyFrame = location.origin === TRUSTED_VEYRA_ORIGIN && window.frameElement?.id === "consoleLabFrame"; } catch {}
     const access = window.parent === window || firstPartyFrame ? await verifyDirectSession() : await verifyThroughVeyra();
