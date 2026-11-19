@@ -8,10 +8,10 @@
 <body>
   <script>
     const target = new URL(location.href);
-    const admin = target.pathname.match(/^(.*\/web)\/(admin(?:\/[a-z-]+)?)\/?$/);
-    if (admin) {
-      target.pathname = `${admin[1]}/`;
-      target.searchParams.set("veyra_route", admin[2]);
+    const route = target.pathname.match(/^(.*\/web)\/((?:admin|settings)(?:\/[a-z-]+)?)\/?$/);
+    if (route) {
+      target.pathname = `${route[1]}/`;
+      target.searchParams.set("veyra_route", route[2]);
       location.replace(target.href);
     } else location.replace("./web/" + location.search + location.hash);
   </script>
