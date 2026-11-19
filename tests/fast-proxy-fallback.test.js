@@ -11,7 +11,8 @@ assert.match(appSource, /async function routeBrowserRequired\(t, url, key, reaso
 assert.match(appSource, /keeping the FAST_PROXY page/, "when Chromium is unavailable the proxy frame is retained");
 assert.match(appSource, /t\.requiresBrowser = false/, "a failed or unavailable browser attempt must not prevent proxy fallback");
 assert.doesNotMatch(appSource, /showHttpReaderFallback|httpReaderFallback|\/api\/reader|HTTP Reader/, "the browser UI no longer replaces the upstream page with an extracted-text reader");
-assert.match(appSource, /inlineYouTubeAllowed\(\) && !youtubeWatchId\(url\) && youtubeEmbedUrl\(url\)/, "valid watch pages are excluded from the standalone player");
+assert.match(appSource, /inlineYouTubeAllowed\(\) && !watchInline && youtubeEmbedUrl\(url\)/, "servers without the in-place player keep the standalone player");
+assert.match(appSource, /status\?\.inlineWatch === true && status\.state === "ready"/, "only positive capability and eligibility enable replacement");
 assert.match(appSource, /watchInline && inlineYouTubeAllowed\(\) \? `\$\{src\}&__veyra_youtube_inline=1`/, "watch pages keep their proxied document and opt into the in-place player");
 assert.match(appSource, /if \(isYouTubeUrl\(url\)\) \{\s*return \{ key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true \};/, "YouTube home and non-video pages retain the previous routing");
 assert.match(appSource, /url = normalizeYouTubeUrl\(url\)/, "m.youtube.com URLs are normalized before they are loaded");

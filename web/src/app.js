@@ -1589,8 +1589,14 @@ hooks.disableInlineYouTube = () => {
     }
   }
 };
-function localPageKind(url) {
-  if (inlineYouTubeAllowed() && !youtubeWatchId(url) && youtubeEmbedUrl(url)) return "youtube";
+async function serverAllowsInlineWatch(id) {
+  try {
+    const status = await api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 5500 });
+    return status?.inlineWatch === true && status.state === "ready";
+  } catch { return false; }
+}
+function localPageKind(url, watchInline = false) {
+  if (inlineYouTubeAllowed() && !watchInline && youtubeEmbedUrl(url)) return "youtube";
   return nowGameUrl(url) ? "now" : "";
 }
 function resolveStrategy(url) {
@@ -1683,10 +1689,13 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
-  const watchInline = loadFrame && !forceBrowser && inlineYouTubeAllowed() && !!youtubeWatchId(url);
+  const watchId = loadFrame ? youtubeWatchId(url) : "";
+  const watchInline = !!(watchId && !forceBrowser && inlineYouTubeAllowed()
+    && await serverAllowsInlineWatch(watchId) && inlineYouTubeAllowed());
+  if (!current()) return;
   t.youtubeInlineWatch = watchInline;
   if (watchInline && t.browserSessionId) void stopBrowserSession(t);
-  const direct = loadFrame && localPageKind(url);
+  const direct = loadFrame && !(forceBrowser && watchId) && localPageKind(url, watchInline);
   if (direct) {
     frameFor(t)?.remove();
     if (t.browserSessionId) void stopBrowserSession(t);
