@@ -50,11 +50,12 @@ for (const invalid of [
 for (const entry of ["index.html", "browse/index.html"]) {
   assert.match(file(entry), /id="studioBtn"/);
   assert.match(file(entry), /id="ntpStudioBtn"/);
-  assert.match(file(entry), /bootstrap\.js\?v=8\.30\.0-studio/);
+  const bootstrap = file(entry).match(/bootstrap\.js\?v=[\w.-]+/)?.[0];
+  assert.ok(bootstrap && file("sw.js").includes(bootstrap), "Studio entry and service worker agree on the shell release");
 }
 assert.match(file("src/core.js"), /EPHEMERAL_KEYS = new Set\(\[[\s\S]*?\.\.\.STUDIO_LOCAL_KEYS/);
-assert.match(file("src/ui.js"), /for \(const key of DEVICE_APPEARANCE_KEYS\) delete s\[key\]/);
-assert.match(file("src/ui.js"), /for \(const key of DEVICE_APPEARANCE_KEYS\) delete remote\[key\]/);
+assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS, "performanceMode"\]\) delete s\[key\]/);
+assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS, "performanceMode"\]\) delete remote\[key\]/);
 assert.ok(!DEVICE_APPEARANCE_KEYS.includes(STUDIO_LOCAL_KEYS[0])); // Image data lives outside the settings object.
 assert.match(file("src/app.js"), /"customize", "customise", "customization-studio"[\s\S]*?view: "settings", section: "appearance"/);
 console.log("Customization Studio: defaults, presets, safe setup imports, device-only assets and route wiring passed.");

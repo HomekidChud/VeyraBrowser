@@ -1,4 +1,4 @@
-import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.30.0-studio";
+import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.31.0-velocity";
 import { WORKSPACE_PRESETS } from "./workspace.js?v=2";
 import {
   APPEARANCE, WALLPAPERS, SOUND_PACKS, TOOLBAR_ITEMS, MAX_SETUPS, MAX_SETUP_BYTES, MAX_IMAGE_BYTES,

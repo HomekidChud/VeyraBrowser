@@ -1,7 +1,8 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.30.0-studio";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.30.0-studio";
-import { studioMarkup, wireStudio } from "./studio.js?v=1";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.31.0-velocity";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.31.0-velocity";
+import { studioMarkup, wireStudio } from "./studio.js?v=2";
+import { performanceMarkup } from "./velocity.js?v=1";
 
 let B;
 const SECTIONS = [
@@ -14,6 +15,7 @@ const SECTIONS = [
   { id: "sessions", label: "Sessions", desc: "Session timer, warnings and auto-restart", icon: "i-timer" },
   { id: "downloads", label: "Downloads and history", desc: "Download and history limits", icon: "i-download" },
   { id: "accessibility", label: "Accessibility", desc: "Motion, focus rings and link styles", icon: "i-zoom" },
+  { id: "performance", label: "Performance", desc: "Boost, background tab parking and shell timings", icon: "i-gauge" },
   { id: "shortcuts", label: "Keyboard shortcuts", desc: "View and rebind keyboard shortcuts", icon: "i-keyboard" },
   { id: "extensions", label: "Extensions", desc: "Installed and published extensions", icon: "i-puzzle" },
   { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
@@ -27,7 +29,7 @@ const SECTIONS = [
 const SECTION_GROUPS = [
   ["Personalization", ["account", "appearance", "startup", "newtab", "accessibility"]],
   ["Search and privacy", ["search", "privacy", "sessions", "downloads"]],
-  ["Veyra features", ["shortcuts", "extensions", "vpn", "system", "neural"]],
+  ["Veyra features", ["performance", "shortcuts", "extensions", "vpn", "system", "neural"]],
   ["Advanced", ["developer", "admin", "reset", "about"]]
 ];
 
@@ -195,7 +197,7 @@ function aboutSection() {
 
 
 
-const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
+const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, performance: () => performanceMarkup(B, settings, esc), shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
 export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
 export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
 let lastRendered = null;
@@ -266,7 +268,7 @@ async function loadAdmin() {
 function filter(q) {
   q = q.toLowerCase(); let any = false;
   qsa("#settingsBody .s-section").forEach(sec => {
-    let hit = false; const inTitle = (sec.querySelector("h2").textContent + " " + (sec.classList.contains("studio") ? sec.querySelector(".studio-panel[data-studio-content=look]").textContent : "")).toLowerCase().includes(q);
+    let hit = false; const inTitle = (sec.querySelector("h2").textContent + " " + (sec.classList.contains("studio") ? sec.querySelector(".studio-panel[data-studio-content=look]").textContent : sec.classList.contains("velocity-panel") ? "Boost anti lag tab parking timing diagnostics" : "")).toLowerCase().includes(q);
     sec.querySelectorAll(".s-row, .radio-row, .theme-cards").forEach(r => {
       const m = !!q && (r.textContent + " " + (r.dataset.label || "")).toLowerCase().includes(q);
       r.classList.toggle("hit", m && r.classList.contains("s-row")); if (m) hit = true;
@@ -512,9 +514,23 @@ export function initSettings(b) {
   nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
   body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
+  body.addEventListener("change", e => { const profile = e.target.closest("[data-performance-mode]"); if (profile?.checked) B.setPerformanceMode(profile.value); });
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el?.isConnected && ["text", "password", "url"].includes(el.type)) setValue(el); }, 450));
   wireStudio(body, () => { if (B.activeTab()?.view === "settings") render(curSection()); });
   body.addEventListener("click", async e => {
+    const park = e.target.closest("[data-park-tab]");
+    if (park) {
+      const tab = B.activeTab();
+      if (await B.parkTab(park.dataset.parkTab)) {
+        if (B.activeTab() === tab && tab?.view === "settings" && body.contains(park)) {
+          render(curSection()); body.querySelector("[data-performance-refresh]")?.focus();
+        }
+      }
+      return;
+    }
+    const wake = e.target.closest("[data-wake-tab]");
+    if (wake) { B.switchTab(wake.dataset.wakeTab); return; }
+    if (e.target.closest("[data-performance-refresh]")) { render(curSection()); body.querySelector("[data-performance-refresh]")?.focus(); return; }
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
     const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
@@ -526,5 +542,5 @@ export function initSettings(b) {
   $("settingsSearch").addEventListener("input", debounce(() => render(B.activeTab()?.section || ""), 120));
   $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.target.value = ""; render(B.activeTab()?.section || ""); } });
   hooks.onSessionTickSettings = () => { const el = $("setSessLeft"); const s = B.state.session; if (el && s) el.textContent = fmtClock(Math.max(0, s.expiresAt - Date.now())) + " left"; };
-  setInterval(() => { if (B.activeTab()?.view === "settings") hooks.onSessionTickSettings(); }, 1000);
+  setInterval(() => { if (!document.hidden && B.activeTab()?.view === "settings") hooks.onSessionTickSettings(); }, 1000);
 }
