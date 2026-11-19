@@ -20,11 +20,11 @@
     if (saved.fontScale) document.documentElement.style.setProperty("--ui-scale", saved.fontScale);
   } catch {}
   const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.35.0-deck`; document.head.appendChild(stylesheet);
+  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.36.0-workbench`; document.head.appendChild(stylesheet);
   const studioStyle = document.createElement("link");
   studioStyle.rel = "stylesheet"; studioStyle.href = `${base}styles/studio.css?v=3`; document.head.appendChild(studioStyle);
   const deckStyle = document.createElement("link");
-  deckStyle.rel = "stylesheet"; deckStyle.href = `${base}styles/settings-deck.css?v=1`; document.head.appendChild(deckStyle);
+  deckStyle.rel = "stylesheet"; deckStyle.href = `${base}styles/settings-deck.css?v=2`; document.head.appendChild(deckStyle);
   const velocityStyle = document.createElement("link");
   velocityStyle.rel = "stylesheet"; velocityStyle.href = `${base}styles/velocity.css?v=2`; document.head.appendChild(velocityStyle);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
@@ -36,14 +36,14 @@
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.35.0-deck`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.0-workbench`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
       const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
       if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.35.0-deck`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.0-workbench`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();

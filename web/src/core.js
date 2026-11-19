@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.35.0";
+export const VERSION = "8.36.0";
 
 export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);
@@ -149,7 +149,7 @@ export function migrateSettings(obj) {
 }
 { const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 6) { Object.assign(settings, migrateSettings(stored)); delete settings.clearOnSessionEnd; delete settings.wifiPass; save("veyra-settings", settings); } }
 { const stored = load("veyra-settings", null); if (stored && ("wifiPass" in stored || "clearOnSessionEnd" in stored)) save("veyra-settings", settings); }
-export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
+export function saveSettings({ refresh = true } = {}) { save("veyra-settings", settings); if (refresh) hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
 export const SEARCH_ENGINES = {

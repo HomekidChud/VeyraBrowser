@@ -1,15 +1,17 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.35.0-deck";
-import { initExtensions } from "./extensions.js?v=8.35.0-deck";
-import { initSettings } from "./settings.js?v=8.35.0-deck";
+} from "./core.js?v=8.36.0-workbench";
+import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
+import { initSettings } from "./settings.js?v=8.36.0-workbench";
+import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
 import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=3";
 import { applyStudioVisuals, playStudioSound } from "./studio.js?v=5";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
+import { assignableBinding, shortcutKeys, shortcutMap } from "./shortcuts-model.js?v=1";
 
 let B;
 
@@ -99,7 +101,7 @@ export const COMMANDS = [
   { id: "back", label: "Back", group: "Navigation", keys: ["Alt+Left"], run: () => B.back() },
   { id: "forward", label: "Forward", group: "Navigation", keys: ["Alt+Right"], run: () => B.forward() },
   { id: "home", label: "Home", group: "Navigation", keys: ["Alt+Home"], run: () => B.goHome() },
-  { id: "stop", label: "Stop loading", group: "Navigation", keys: ["Esc"], run: escape },
+  { id: "stop", label: "Stop loading", group: "Navigation", keys: ["Esc"], run: () => B.stopLoad() },
   { id: "find", label: "Find in page", group: "Page", keys: ["Mod+F"], run: () => B.openFind() },
   { id: "print", label: "Print page", group: "Page", keys: ["Mod+P"], run: () => B.printPage() },
   { id: "bookmark", label: "Bookmark this tab", group: "Page", keys: ["Mod+D"], run: () => B.toggleBookmark() },
@@ -129,10 +131,31 @@ export const COMMANDS = [
   { id: "extensions", label: "Extensions", group: "Quick access", keys: ["Alt+Shift+E"], run: () => B.openInternal("extensions") },
   { id: "gameFocus", label: "Toggle Game Focus", group: "Quick access", keys: ["Alt+Shift+F"], run: toggleGameFocus },
   { id: "duplicateTab", label: "Duplicate current tab", group: "Quick access", keys: ["Alt+Shift+D"], run: () => { const t = B.activeTab(); if (t) B.duplicateTab(t); } },
-  { id: "copyPageAddress", label: "Copy page address", group: "Quick access", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().url) }
+  { id: "copyPageAddress", label: "Copy page address", group: "Quick access", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().url) },
+  { id: "copyPageTitle", label: "Copy page title", group: "Page", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().title) },
+  { id: "findNext", label: "Find next match", group: "Page", keys: [], run: () => { if ($("findBar").classList.contains("hidden")) B.openFind(); else $("findNext").click(); } },
+  { id: "findPrevious", label: "Find previous match", group: "Page", keys: [], run: () => { if ($("findBar").classList.contains("hidden")) B.openFind(); else $("findPrev").click(); } },
+  { id: "pinTab", label: "Pin or unpin tab", group: "Tabs", keys: ["Alt+Shift+Y"], run: () => B.toggleTabPin() },
+  { id: "moveTabEarlier", label: "Move tab earlier", group: "Tabs", keys: [], run: () => B.shiftActiveTab(-1) },
+  { id: "moveTabLater", label: "Move tab later", group: "Tabs", keys: [], run: () => B.shiftActiveTab(1) },
+  { id: "newTabNext", label: "New tab beside current", group: "Tabs", keys: [], run: () => B.newTab({ index: B.state.tabs.indexOf(B.activeTab()) + 1 }) },
+  { id: "settingsSearch", label: "Search Settings", group: "Quick access", keys: ["Alt+Shift+O"], run: () => {
+    if (B.activeTab()?.view !== "settings") B.openInternal("settings");
+    $("settingsSearch").focus(); $("settingsSearch").select();
+  } },
+  ...[["privacySettings","Privacy and security","privacy"],["systemSettings","System and engine","system"],
+    ["accessibilitySettings","Accessibility","accessibility"],["sessionsSettings","Session settings","sessions"],
+    ["videoGuides","Video guides","guides"]].map(([id, label, section]) => ({
+    id, label, group: "Quick access", keys: [], run: () => B.openInternal("settings", { section })
+  })),
+  ...["standard","balanced","boost"].map(mode => ({
+    id: `profile-${mode}`, label: `Performance profile: ${mode[0].toUpperCase()}${mode.slice(1)}`, group: "Performance", keys: [],
+    run: () => { B.setPerformanceMode(mode); if (B.activeTab()?.section === "performance") B.renderActive({ push: false }); toast(`Performance profile: ${mode}`); }
+  }))
 ];
-export const cmd = id => COMMANDS.find(c => c.id === id);
-export function keysFor(id) { const o = settings.shortcuts?.[id]; return Array.isArray(o) ? o : cmd(id)?.keys || []; }
+const commandsById = new Map(COMMANDS.map(command => [command.id, command]));
+export const cmd = id => commandsById.get(id);
+export function keysFor(id) { return shortcutKeys(cmd(id), settings.shortcuts); }
 export function prettyCombo(c) { return String(c).replace(/Mod/g, isMac ? "⌘" : "Ctrl").replace(/Alt/g, isMac ? "⌥" : "Alt").replace(/Shift\+=/, "Shift+=").replace(/\+(?=.)/g, isMac ? "" : "+").replace(/^⌘(.)/, "⌘$1"); }
 export const kbdFor = id => { const k = keysFor(id)[0]; return k ? prettyCombo(k) : ""; };
 const CODE_KEYS = { Equal: "=", NumpadAdd: "=", Minus: "-", NumpadSubtract: "-", Comma: ",", Period: ".", Slash: "/", Backslash: "\\", Semicolon: ";", Quote: "'", BracketLeft: "[", BracketRight: "]", Backquote: "`", ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down", Escape: "Esc", Numpad0: "0" };
@@ -150,28 +173,34 @@ export function comboFromEvent(e) {
   if (e.altKey) parts.push("Alt"); if (e.shiftKey) parts.push("Shift"); parts.push(key);
   return parts.join("+");
 }
-function commandForCombo(combo) { if (!combo) return null; return COMMANDS.find(c => keysFor(c.id).includes(combo)) || null; }
+let bindingsSource, bindingsMap;
+function activeBindings() {
+  if (!bindingsMap || bindingsSource !== settings.shortcuts) {
+    bindingsSource = settings.shortcuts;
+    bindingsMap = shortcutMap(COMMANDS, bindingsSource);
+  }
+  return bindingsMap;
+}
 function isEditable(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
-export let recordingShortcut = null; export function setRecording(fn) { recordingShortcut = fn; }
+const repeatableCommands = new Set(["nextTab", "prevTab", "back", "forward", "zoomIn", "zoomOut", "findNext", "findPrevious"]);
 function runCombo(combo, { fromPage = false, editable = false, repeat = false } = {}) {
-  if (hooks.privacyCoverOpen?.()) return false;
-  if (document.querySelector("dialog[open]")) return false;
-  if (!$("landing").classList.contains("hidden")) return false;
-  const c = commandForCombo(combo); if (!c || c.available?.() === false) return false;
-  if (repeat && ["closeTab", "newTab", "newIncognito", "reopenTab", "duplicateTab"].includes(c.id)) return true;
-  const bare = !/Mod|Alt|Ctrl|Meta/.test(combo) && !/^F\d/.test(combo) && combo !== "Esc";
-  if (bare) return false;
+  if (combo !== "Esc" && !assignableBinding(combo)) return false;
+  const c = activeBindings().get(combo);
+  if (!c || hooks.privacyCoverOpen?.() || document.querySelector("dialog[open]") || !$("landing").classList.contains("hidden") || c.available?.() === false) return false;
+  if (repeat && !repeatableCommands.has(c.id)) return true;
   if (editable && ["back", "forward"].includes(c.id)) return false;
   if (c.id === "stop" && editable && !fromPage) return false;
   try { c.run(); } catch (err) { addLog("error", `Shortcut ${c.id} failed: ${err.message}`); }
   return true;
 }
 function onKeyDown(e) {
-  if (hooks.privacyCoverOpen?.()) return;
-  if (recordingShortcut) { e.preventDefault(); e.stopPropagation(); const combo = comboFromEvent(e); if (combo) recordingShortcut(combo, e); return; }
-  if (e.defaultPrevented || e.isComposing || document.querySelector("dialog[open]")) return;
+  if (e.defaultPrevented || e.isComposing || e.getModifierState("AltGraph")) return;
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key !== "Escape" && !/^F\d{1,2}$/.test(e.key)) return;
   const combo = comboFromEvent(e);
-  if (combo === "Esc") { if (escape()) e.preventDefault(); return; }
+  if (combo === "Esc") {
+    if (!hooks.privacyCoverOpen?.() && !document.querySelector("dialog[open]") && escape()) e.preventDefault();
+    return;
+  }
   if (runCombo(combo, { editable: isEditable(e.target), repeat: e.repeat })) { e.preventDefault(); e.stopPropagation(); }
 }
 function escape() {
@@ -179,7 +208,7 @@ function escape() {
   if (!$("omniPop").classList.contains("hidden")) { hideOmni(); B.updateIdentity(); return true; }
   if (hooks.dt?.cancelPicking?.()) return true;
   if (!$("findBar").classList.contains("hidden")) { B.closeFind(); return true; }
-  if ($("reloadBtn").dataset.loading === "1") { B.stopLoad(); return true; }
+  if ($("reloadBtn").dataset.loading === "1" && activeBindings().get("Esc")?.id === "stop") { B.stopLoad(); return true; }
   const t = B.activeTab(); if (t?.readerOpen) { hooks.closeReader?.(); return true; }
   return false;
 }
@@ -200,8 +229,8 @@ function openCommandPalette(scope = "all") {
     ] : [])
   ] });
 }
-hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true, repeat: !!d.repeat }); };
-hooks.forwardableCombos = () => COMMANDS.flatMap(c => keysFor(c.id));
+hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true, repeat: !!d.repeat, editable: !!d.editable }); };
+hooks.forwardableCombos = () => [...activeBindings().keys()];
 function focusAddress() { const a = $("address"); if (B.activeTab()?.view === "newtab" && document.activeElement !== a) { $("ntpInput")?.focus(); return; } a.focus(); a.select(); }
 
 const EXPLORE = [
@@ -540,6 +569,7 @@ function openMainMenu() {
   const items = [
     menuItem("i-tab", "New tab", "newTab", () => B.newTab()),
     menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
+    ...(onPage && originalSiteUrl(t.url) ? [menuItem("i-external", "Site not working?", "", () => B.showSiteRecovery(t))] : []),
     ...(INCOGNITO ? [menuItem("i-shield", "Hide incognito screen", "", () => hooks.lockPrivacyCover?.()), menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
@@ -599,18 +629,20 @@ async function openSiteInfo() {
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
   if (t.localPage) {
     const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN." : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
-    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p>`, anchor);
+    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p><button class="btn ghost sm" id="popDirect">Site options</button>`, anchor, p => {
+      p.querySelector("#popDirect").onclick = () => { closeFloating(); B.showSiteRecovery(t); };
+    });
     return;
   }
   const host = hostOf(t.url); const s = B.state.session; const secure = /^https:/.test(t.url);
   pop(`<h4>${esc(host)}</h4><p class="pop-sub">${secure ? "Connection between Veyra and this site is encrypted." : "This site doesn't use HTTPS. Don't enter passwords."}</p>
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button>${originalSiteUrl(t.url) ? `<button class="btn ghost sm" id="popDirect">Site options</button>` : ""}<button class="btn ghost sm" id="popCopy">Copy URL</button></div>
     <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra when they support Fast Proxy. Google and GitHub account pages open directly for verification.</p>`, anchor, p => {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
-    p.querySelector("#popDirect").onclick = () => { if (!B.showAccountOptions(t.url)) window.open(t.url, "_blank", "noopener,noreferrer"); closeFloating(); };
+    p.querySelector("#popDirect")?.addEventListener("click", () => { closeFloating(); B.showSiteRecovery(t); });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
     else p.querySelector("#popCookies").textContent = "0";

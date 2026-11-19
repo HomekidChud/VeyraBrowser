@@ -1,9 +1,11 @@
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.35.0-deck";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.35.0-deck";
+import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
+import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.0-workbench";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 import { settingsPins, settingSearchTerms, settingTextMatches } from "./settings-model.js?v=1";
+import { assignableBinding, shortcutClashes, storeShortcutKeys } from "./shortcuts-model.js?v=1";
+import { GUIDES } from "./settings-guides.js?v=1";
 
 let B;
 const SECTIONS = [
@@ -18,6 +20,7 @@ const SECTIONS = [
   { id: "accessibility", label: "Accessibility", desc: "Motion, focus rings and link styles", icon: "i-zoom" },
   { id: "performance", label: "Performance", desc: "Boost, stream quality, connection timing and tab parking", icon: "i-gauge" },
   { id: "shortcuts", label: "Keyboard shortcuts", desc: "View and rebind keyboard shortcuts", icon: "i-keyboard" },
+  { id: "guides", label: "Video guides", desc: "Short tutorials for Settings, shortcuts and performance", icon: "i-info" },
   { id: "extensions", label: "Extensions", desc: "Installed and published extensions", icon: "i-puzzle" },
   { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
   { id: "system", label: "System and engine", desc: "Page engine, Chromium and timeouts", icon: "i-bolt" },
@@ -30,7 +33,7 @@ const SECTIONS = [
 const SECTION_GROUPS = [
   ["Personalization", ["account", "appearance", "startup", "newtab", "accessibility"]],
   ["Search and privacy", ["search", "privacy", "sessions", "downloads"]],
-  ["Veyra features", ["performance", "shortcuts", "extensions", "vpn", "system", "neural"]],
+  ["Veyra features", ["performance", "shortcuts", "extensions", "vpn", "system", "neural", "guides"]],
   ["Advanced", ["developer", "admin", "reset", "about"]]
 ];
 
@@ -96,7 +99,7 @@ function sessionsSection() {
   const s = B.state.session; const left = s ? Math.max(0, s.expiresAt - Date.now()) : 0;
   return section("sessions", "Sessions", "Each browsing session has a time limit so server resources are freed quickly.", `
     ${row("Session time limit", lim ? `Set by the server: sessions end after ${fmtClock(lim)} and are deleted.` : "The server did not report a limit.", `<span class="chip">${lim ? fmtClock(lim) : "—"}</span>`)}
-    ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? fmtClock(left) + " left" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
+    ${row("Current session", s ? `ID ${esc(s.id.slice(0, 8))}… · started ${new Date(s.startedAt).toLocaleTimeString()}` : "No active session. One starts when you open a page.", `<span class="chip" id="setSessLeft">${s ? Number.isFinite(left) ? fmtClock(left) + " left" : "No time limit" : "Idle"}</span>${s ? `<button class="btn danger" data-act="endSession">End session now</button>` : ""}`)}
     ${toggle("sessionWarnings", "Warn before a session ends", "Shows a warning 30 and 10 seconds before the limit.")}
     ${toggle("autoRestartSession", "Start a new session automatically", "When a signed-in, non-incognito session ends, reopen its tabs in a fresh session. Guest and incognito tabs aren’t restored.")}
     ${row("Sign-in method", "Compatible sites use this Fast Proxy session. Google and GitHub account pages offer a direct browser tab instead. No login session is copied back into Veyra.", `<span class="chip">Site dependent</span>`)}
@@ -116,15 +119,28 @@ function a11ySection() {
     ${toggle("focusRings", "Always show focus rings", "Makes keyboard focus visible everywhere.")}
     ${toggle("linkUnderline", "Underline links", "In Veyra pages.")}`);
 }
+const shortcutGroups = () => [...new Set(COMMANDS.map(c => c.group))];
+const keyBadge = key => `<kbd>${esc(prettyCombo(key))}</kbd>`;
+function shortcutRow(c) {
+  const keys = keysFor(c.id), custom = Array.isArray(settings.shortcuts?.[c.id]);
+  const status = custom ? keys.length ? "Custom" : "Disabled" : keys.length ? "" : "Not assigned";
+  const label = `${c.label} ${c.group} ${c.keywords || ""} ${keys.map(prettyCombo).join(" ")} ${status}`.toLowerCase();
+  return `<li class="s-row shortcut-row" data-shortcut-row="${c.id}" data-label="${esc(label)}"><div class="s-label"><b>${esc(c.label)}</b>${status ? `<span>${status}</span>` : ""}</div>
+    <div class="shortcut-row-actions"><span class="shortcut-keys">${keys.map(keyBadge).join("")}</span><button type="button" class="btn ghost sm" data-rebind="${c.id}" aria-label="Edit ${esc(c.label)}">Edit</button></div></li>`;
+}
 function shortcutsSection() {
-  const groups = [...new Set(COMMANDS.map(c => c.group))];
-  const body = groups.map(g => `<div class="s-row" style="min-height:0;padding:10px 18px;background:var(--surface-2)"><div class="s-label"><b>${esc(g)}</b></div></div>
-    <table class="shortcut-table">${COMMANDS.filter(c => c.group === g && !c.hidden).map(c => {
-      const ks = keysFor(c.id); const custom = Array.isArray(settings.shortcuts?.[c.id]);
-      return `<tr class="s-row" style="display:table-row" data-label="${esc(c.label)} ${esc(ks.join(" "))}"><td>${esc(c.label)}${custom ? ` <span class="chip" style="font-size:.75em">custom</span>` : ""}</td><td><button class="kbd-btn" data-rebind="${c.id}" title="Click to record a new shortcut">${ks.length ? ks.map(k => `<kbd>${esc(prettyCombo(k))}</kbd>`).join("") : `<span class="muted">None</span>`}</button>${custom ? `<button class="icon-btn" data-unbind="${c.id}" title="Restore default" aria-label="Restore default"><svg><use href="#i-reload"/></svg></button>` : ""}</td></tr>`;
-    }).join("")}</table>`).join("");
-  return `<section class="s-section" id="s-shortcuts" data-section="shortcuts"><h2>Keyboard shortcuts</h2><p class="muted">Click a shortcut, then press the new keys. Press Esc to cancel or Backspace to remove it. Shortcuts also work while a page has focus.</p>
-    <div class="s-card">${body}</div><div style="margin-top:12px"><button class="btn" data-act="resetShortcuts">Restore all defaults</button></div></section>`;
+  const groups = shortcutGroups();
+  return `<section class="s-section shortcuts-panel" id="s-shortcuts" data-section="shortcuts"><h2>Keyboard shortcuts</h2>
+    <p class="muted">Set up to three key combinations per command, or leave a command unbound. A hardware keyboard is required; system shortcuts and embedded players can take priority.</p>
+    <div class="shortcut-toolbar"><input type="search" class="input" data-shortcut-filter aria-label="Find a command" placeholder="Find a command…">
+    <select class="input" data-shortcut-category aria-label="Command category"><option value="">All categories</option>${groups.map(g => `<option>${esc(g)}</option>`).join("")}</select>
+    <button type="button" class="btn ghost sm" data-act="resetShortcuts">Restore all defaults</button></div>
+    <p class="shortcut-count muted" data-shortcut-count role="status">${COMMANDS.length} commands</p>
+    <div class="shortcut-groups">${groups.map(g => `<section data-shortcut-group="${esc(g)}"><h3>${esc(g)}</h3><ul class="s-card">${COMMANDS.filter(c => c.group === g).map(shortcutRow).join("")}</ul></section>`).join("")}</div>
+    </section>`;
+}
+function guidesSection() {
+  return `<section class="s-section" id="s-guides" data-section="guides"><h2>Video guides</h2><p class="muted">Three short, silent motion-graphics tutorials. Videos load only when you choose one.</p><div class="guide-list">${GUIDES.map((g, i) => `<article class="guide-card s-row" data-label="${esc(`${g.title} ${g.description}`)}"><div class="guide-meta"><span>Guide ${String(i + 1).padStart(2, "0")}</span><span>${g.time}</span></div><h3>${esc(g.title)}</h3><p>${esc(g.description)}</p><div class="guide-actions"><button type="button" class="btn" data-guide="${g.id}" aria-label="Watch ${esc(g.title)}">Watch video</button><button type="button" class="linkish" data-snav="${g.section}">${esc(g.link)}</button></div><details><summary>Read the steps</summary><ol>${g.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol></details></article>`).join("")}</div></section>`;
 }
 function extensionsSection() {
   return section("extensions", "Extensions", "", `
@@ -194,22 +210,74 @@ function aboutSection() {
   </div></section>`;
 }
 
-const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, performance: () => performanceMarkup(B, settings, esc), shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
+const PARTS = { account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, performance: () => performanceMarkup(B, settings, esc), shortcuts: shortcutsSection, guides: guidesSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection };
 export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
 export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
 let lastRendered = null;
 let searchIndex = null;
+let navStamp = "";
 const curSection = () => { const t = B?.activeTab?.(); return t && t.view === "settings" ? t.section || "" : ""; };
-const navItem = (s, cur) => `<button type="button" class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}>${icon(s.icon)}<span>${esc(s.label)}</span></button>`;
+const navItem = s => `<button type="button" class="snav" data-snav="${s.id}">${icon(s.icon)}<span>${esc(s.label)}</span></button>`;
 const pinButton = (s, pinned) => `<button type="button" class="deck-pin" data-deck-pin="${s.id}" aria-pressed="${pinned}" aria-label="${pinned ? "Unpin" : "Pin"} ${esc(s.label)}">${icon("i-star")}</button>`;
+const pinnedLink = s => `<button type="button" data-snav="${s.id}">${icon(s.icon)}${esc(s.label)}</button>`;
+function syncPinnedButtons(root, pins, byId, markup) {
+  const previous = new Map([...root.children].filter(node => node.dataset.snav).map(node => [node.dataset.snav, node]));
+  for (const [id, node] of previous) if (!pins.includes(id)) node.remove();
+  let prior = root.firstElementChild;
+  for (const id of pins) {
+    const node = previous.get(id);
+    if (!node) prior.insertAdjacentHTML("afterend", markup(byId.get(id)));
+    else if (prior.nextElementSibling !== node) prior.after(node);
+    prior = prior.nextElementSibling;
+  }
+}
+function syncPinLists(byId, pins) {
+  const group = $("settingsNavPins");
+  const tags = pins.join(" ");
+  if (group && group.dataset.pins !== tags) {
+    group.hidden = !pins.length;
+    group.dataset.pins = tags;
+    syncPinnedButtons(group, pins, byId, navItem);
+  }
+  const list = $("deckPinnedList");
+  if (list && list.dataset.pins !== tags) {
+    list.dataset.pins = tags;
+    list.firstElementChild.hidden = !!pins.length;
+    syncPinnedButtons(list, pins, byId, pinnedLink);
+  }
+}
+function syncNavigation(byId, pins, current) {
+  const nav = $("settingsNav");
+  const stamp = [...byId.keys()].join(" ");
+  if (stamp !== navStamp) {
+    navStamp = stamp;
+    nav.innerHTML = navItem({ id: "", label: "Overview", icon: "i-grid" }) + `<div class="snav-group" id="settingsNavPins" hidden><span class="snav-group-label">Pinned</span></div>`
+      + SECTION_GROUPS.map(([group, ids]) => `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${ids.filter(id => byId.has(id)).map(id => navItem(byId.get(id))).join("")}</div>`).join("");
+  }
+  syncPinLists(byId, pins);
+  syncCurrentNav(nav, current);
+}
+function syncCurrentNav(nav, current) {
+  const prev = nav.querySelector('[aria-current="page"]');
+  const selector = `button[data-snav="${current}"]`;
+  const next = current === null ? null : $("settingsNavPins").querySelector(selector) || nav.querySelector(selector);
+  if (prev !== next) {
+    prev?.classList.remove("on"); prev?.removeAttribute("aria-current");
+    next?.classList.add("on"); next?.setAttribute("aria-current", "page");
+    if (next && matchMedia("(max-width:840px)").matches) {
+      const item = next.getBoundingClientRect(), rail = nav.getBoundingClientRect();
+      nav.scrollLeft += Math.max(0, item.right - rail.right) || Math.min(0, item.left - rail.left);
+    }
+  }
+}
 function overview(byId, pins) {
   const card = s => `<div class="deck-directory-item"><button type="button" class="s-home-card" data-snav="${s.id}"><span class="s-home-ic">${icon(s.icon)}</span><span class="s-home-txt"><b>${esc(s.label)}</b><small>${esc(s.desc)}</small></span></button>${pinButton(s, pins.includes(s.id))}</div>`;
-  return `<header class="deck-overview"><div><p class="deck-kicker">Veyra Control Deck</p><h1>Settings</h1><p>Make Veyra yours. Find a control or pin a section for quick access.</p></div><div class="deck-schematic" aria-hidden="true"><i></i><i></i><i></i><b></b></div></header>
-    <section class="deck-pinned"><h2>Pinned sections</h2><div class="deck-pinned-list">${pins.length ? pins.map(id => { const s = byId.get(id); return `<button type="button" data-snav="${id}">${icon(s.icon)}${esc(s.label)}</button>`; }).join("") : "<p>No pins yet. Use a star in the directory below.</p>"}</div></section>
+  return `<header class="deck-overview"><div><h1>Settings</h1><p>Find a control or pin a section for quick access.</p></div><button type="button" class="btn ghost" data-snav="guides">${icon("i-info")} Video guides</button></header>
+    <section class="deck-pinned"><h2>Pinned sections</h2><div class="deck-pinned-list" id="deckPinnedList" data-pins="${pins.join(" ")}"><p ${pins.length ? "hidden" : ""}>No pins yet. Use a star in the directory below.</p>${pins.map(id => pinnedLink(byId.get(id))).join("")}</div></section>
     <div class="deck-directory">${SECTION_GROUPS.map(([group, ids]) => `<section class="deck-group"><h2>${esc(group)}</h2><div class="s-home-grid">${ids.filter(id => byId.has(id)).map(id => card(byId.get(id))).join("")}</div></section>`).join("")}</div>`;
 }
 function render(active, reuseSearch = false) {
-  const nav = $("settingsNav"), body = $("settingsBody");
+  const body = $("settingsBody");
   const visible = visibleSections();
   const cur = visible.find(s => s.id === active) ? active : "";
   const q = $("settingsSearch").value.trim();
@@ -219,25 +287,25 @@ function render(active, reuseSearch = false) {
   if (t && t.view === "settings" && active && !cur) t.section = "";
   const byId = new Map(visible.map(s => [s.id, s]));
   const pins = settingsPins(settings.deckPins, byId.keys());
-  const groupMarkup = (group, ids, current = true) => `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${ids.filter(id => byId.has(id)).map(id => navItem(byId.get(id), current && !q ? cur : null)).join("")}</div>`;
-  nav.innerHTML = navItem({ id: "", label: "Overview", icon: "i-grid" }, q ? null : cur)
-    + (pins.length ? groupMarkup("Pinned", pins, false) : "") + SECTION_GROUPS.map(([group, ids]) => groupMarkup(group, ids)).join("");
-  const parts = PARTS();
-  const empty = `<p class="muted s-empty" id="settingsEmpty" style="display:none">No settings match your search.</p>`;
+  syncNavigation(byId, pins, q ? null : cur);
   if (q) {
-    body.innerHTML = `<header class="deck-search-head"><h1>Search settings</h1><p id="settingsResultCount" role="status"></p></header>` + visible.map(s => parts[s.id]()).join("") + empty;
-    searchIndex = { admin: isAdmin(), entries: [...body.querySelectorAll(".s-section")].map(sec => {
+    body.innerHTML = `<header class="deck-search-head"><h1>Search settings</h1><p id="settingsResultCount" role="status"></p></header><div id="settingsResults"></div><p class="muted s-empty" id="settingsEmpty" hidden>No settings match your search.</p>`;
+    const view = document.createElement("template");
+    view.innerHTML = visible.map(s => PARTS[s.id]()).join("");
+    searchIndex = { admin: isAdmin(), entries: [...view.content.querySelectorAll(".s-section")].map(sec => {
       const s = byId.get(sec.dataset.section);
       if (s) sec.insertAdjacentHTML("afterbegin", `<button type="button" class="deck-search-open" data-snav="${s.id}">Open ${esc(s.label)} ${icon("i-forward")}</button>`);
-      const rows = [...sec.querySelectorAll(".s-row,.radio-row,.studio-preset,.studio-wallpaper")].map(el => [el, `${el.textContent} ${el.dataset.label || ""}`.toLowerCase()]);
-      return { sec, rows, text: `${s?.label || ""} ${s?.desc || ""} ${sec.querySelector("h2")?.textContent || ""}`.toLowerCase() };
+      const rows = [...sec.querySelectorAll(".s-row,.radio-row,.studio-preset,.studio-wallpaper")].map(el => [
+        el, (el.classList.contains("guide-card") ? el.dataset.label : `${el.textContent} ${el.dataset.label || ""}`).toLowerCase()
+      ]);
+      return { sec, rows, hits: [], text: `${s?.label || ""} ${s?.desc || ""} ${sec.querySelector("h2")?.textContent || ""}`.toLowerCase() };
     }) };
     filter(q);
   } else if (!cur) {
     body.innerHTML = overview(byId, pins);
   } else {
     const meta = visible.find(s => s.id === cur);
-    body.innerHTML = `<div class="deck-section-bar"><nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>${pinButton(meta, pins.includes(cur))}</div>` + parts[cur]();
+    body.innerHTML = `<div class="deck-section-bar"><nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>${pinButton(meta, pins.includes(cur))}</div>` + PARTS[cur]();
   }
   hooks.updateStudioPreview?.();
   if (lastRendered !== `${cur}|${q}`) $("view-settings").scrollTop = 0;
@@ -282,19 +350,22 @@ async function loadAdmin() {
 
 function filter(q) {
   const terms = settingSearchTerms(q);
-  let count = 0;
-  for (const { sec, rows, text } of searchIndex.entries) {
-    let found = settingTextMatches(text, terms);
-    for (const [el, label] of rows) {
-      const hit = settingTextMatches(label, terms);
-      el.classList.toggle("hit", hit);
-      found ||= hit;
-    }
-    sec.hidden = !found;
-    count += Number(found);
+  const result = $("settingsResults");
+  const matches = [];
+  for (const entry of searchIndex.entries) {
+    const { sec, rows, text } = entry;
+    const hits = rows.filter(([, label]) => settingTextMatches(label, terms)).map(([el]) => el);
+    if (hits.length || settingTextMatches(text, terms)) {
+      for (const el of entry.hits) if (!hits.includes(el)) el.classList.remove("hit");
+      for (const el of hits) if (!entry.hits.includes(el)) el.classList.add("hit");
+      entry.hits = hits;
+      matches.push(sec);
+    } else if (sec.parentElement === result) sec.remove();
   }
+  matches.forEach((sec, i) => { if (result.children[i] !== sec) result.insertBefore(sec, result.children[i] || null); });
+  const count = matches.length;
   $("settingsResultCount").textContent = `${count} matching ${count === 1 ? "section" : "sections"} for “${q}”`;
-  $("settingsEmpty").style.display = count ? "none" : "";
+  $("settingsEmpty").hidden = !!count;
 }
 
 function setValue(el) {
@@ -402,7 +473,12 @@ async function act(a, el) {
       if (!await confirmDialog("Reset neural model?", "This clears all learned weights and training data. The model will start learning from scratch.", "Reset model")) return;
       try { await api("/api/neural/reset", { method: "POST", json: {} }); toast("Neural model reset"); loadNeuralStats(); } catch (e) { toast(e.message, { kind: "err" }); } return;
     }
-    case "resetShortcuts": settings.shortcuts = {}; saveSettings(); toast("Shortcuts restored"); return render(curSection());
+    case "resetShortcuts": {
+      if (!await confirmDialog("Restore all shortcut defaults?", "Custom bindings and disabled commands will return to their defaults.", "Restore defaults")) return;
+      applyShortcuts({});
+      toast("Shortcuts restored");
+      return $("settingsBody").querySelector("[data-act=resetShortcuts]")?.focus();
+    }
     case "reset": if (await confirmDialog("Reset settings?", "All settings go back to their defaults. Bookmarks, history and extensions are kept.", "Reset")) { resetSettings(); toast("Settings reset"); render(curSection()); } return;
     case "copyApi": return copyText(API);
     case "applyPlan": {
@@ -412,19 +488,120 @@ async function act(a, el) {
   }
 }
 
+function filterShortcuts(panel) {
+  const query = settingSearchTerms(panel.querySelector("[data-shortcut-filter]").value);
+  const category = panel.querySelector("[data-shortcut-category]").value;
+  let total = 0;
+  for (const group of panel.querySelectorAll("[data-shortcut-group]")) {
+    let matched = 0;
+    const allowed = !category || group.dataset.shortcutGroup === category;
+    for (const row of group.querySelectorAll("[data-shortcut-row]")) {
+      row.hidden = !allowed || !settingTextMatches(row.dataset.label, query);
+      matched += Number(!row.hidden);
+    }
+    group.hidden = !matched;
+    total += matched;
+  }
+  panel.querySelector("[data-shortcut-count]").textContent = total ? `${total} ${total === 1 ? "command" : "commands"}` : "No matching commands";
+}
+
+function applyShortcuts(overrides) {
+  const before = settings.shortcuts;
+  settings.shortcuts = overrides;
+  saveSettings({ refresh: false });
+  if (searchIndex) return render(curSection());
+  const panel = $("s-shortcuts");
+  if (!panel) return;
+  for (const id of new Set([...Object.keys(before || {}), ...Object.keys(overrides)])) {
+    if (cmd(id) && before?.[id] !== overrides[id]) panel.querySelector(`[data-shortcut-row="${id}"]`).outerHTML = shortcutRow(cmd(id));
+  }
+  filterShortcuts(panel);
+}
+
 function startRebind(btn) {
-  const id = btn.dataset.rebind;
-  qsa(".kbd-btn.recording").forEach(b => b.classList.remove("recording"));
-  btn.classList.add("recording"); btn.innerHTML = `<span class="muted">Press keys…</span>`;
-  const done = () => { setRecording(null); render(curSection()); };
-  setRecording(combo => {
-    if (combo === "Esc") return done();
-    if (combo === "Backspace" || combo === "Delete") { settings.shortcuts = { ...settings.shortcuts, [id]: [] }; saveSettings(); return done(); }
-    if (!/Mod|Alt|Ctrl|Meta/.test(combo) && !/^F\d/.test(combo)) { toast("Use a modifier (Ctrl, Alt) or a function key", { kind: "err" }); return; }
-    const clash = COMMANDS.find(c => c.id !== id && keysFor(c.id).includes(combo));
-    if (clash) { const rest = keysFor(clash.id).filter(k => k !== combo); settings.shortcuts = { ...settings.shortcuts, [clash.id]: rest }; toast(`Removed ${prettyCombo(combo)} from “${clash.label}”`); }
-    settings.shortcuts = { ...settings.shortcuts, [id]: [combo] }; saveSettings(); done();
+  const command = cmd(btn.dataset.rebind);
+  if (!command) return;
+  const { id, label } = command;
+  let draft = [...keysFor(id)], reset = false, clashState = "";
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal shortcut-editor";
+  dialog.setAttribute("aria-labelledby", "shortcutEditorTitle");
+  dialog.innerHTML = `<form class="modal-card" method="dialog"><h2 id="shortcutEditorTitle">${esc(label)}</h2>
+    <p class="muted">Record up to three alternatives. Press Escape to cancel.</p><ul class="shortcut-draft" aria-label="Current bindings"></ul>
+    <button class="btn shortcut-capture" type="button" data-capture autofocus>Press a key combination here</button>
+    <p class="shortcut-message" role="status" data-recording-note></p>
+    <label class="shortcut-move" hidden><input type="checkbox" data-move-binding><span></span></label>
+    <div class="shortcut-editor-actions"><button type="button" class="btn ghost sm" data-clear-binding>Clear all</button>
+    <button type="button" class="btn ghost sm" data-default-binding>Restore defaults</button></div>
+    <div class="modal-actions"><button type="button" class="btn ghost" data-editor-cancel>Cancel</button><button type="submit" class="btn primary" data-editor-save>Save</button></div></form>`;
+  const note = dialog.querySelector("[data-recording-note]"), capture = dialog.querySelector("[data-capture]");
+  const move = dialog.querySelector("[data-move-binding]"), save = dialog.querySelector("[data-editor-save]");
+  const refresh = () => {
+    const clash = shortcutClashes(COMMANDS, settings.shortcuts, id, draft);
+    const signature = clash.map(x => `${x.id}:${x.key}`).join("|");
+    if (signature !== clashState) move.checked = false;
+    clashState = signature;
+    move.parentElement.hidden = !clash.length;
+    move.nextElementSibling.textContent = clash.length ? `Move these bindings from ${[...new Set(clash.map(x => x.label))].join(", ")}.` : "";
+    save.disabled = !!clash.length && !move.checked;
+    dialog.querySelector(".shortcut-draft").innerHTML = draft.length ? draft.map((key, i) => `<li>${keyBadge(key)}<button type="button" class="icon-btn" data-remove-binding="${i}" aria-label="Remove ${esc(prettyCombo(key))}">${icon("i-x")}</button></li>`).join("") : `<li class="muted">No bindings</li>`;
+  };
+  capture.addEventListener("keydown", e => {
+    if (e.isComposing || e.getModifierState("AltGraph") || e.key === "Escape" || (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.repeat) return;
+    const combo = comboFromEvent(e);
+    if (!combo) return;
+    if (!assignableBinding(combo)) { note.textContent = "Use Ctrl, Command or Alt with another key, or a function key."; return; }
+    if (draft.includes(combo)) { note.textContent = `${prettyCombo(combo)} is already listed.`; return; }
+    if (draft.length >= 3) { note.textContent = "Remove a binding before adding another."; return; }
+    draft.push(combo); reset = false;
+    note.textContent = `${prettyCombo(combo)} added. Save to apply.`;
+    refresh();
   });
+  move.addEventListener("change", () => { save.disabled = !!clashState && !move.checked; });
+  dialog.addEventListener("click", e => {
+    const remove = e.target.closest("[data-remove-binding]");
+    if (remove) { draft.splice(Number(remove.dataset.removeBinding), 1); reset = false; note.textContent = "Binding removed from draft."; refresh(); capture.focus(); }
+    if (e.target.closest("[data-clear-binding]")) { draft = []; reset = false; note.textContent = "Save to disable this shortcut."; refresh(); }
+    if (e.target.closest("[data-default-binding]")) { draft = [...command.keys]; reset = true; note.textContent = "Default bindings restored in the draft."; refresh(); }
+    if (e.target.closest("[data-editor-cancel]")) dialog.close();
+  });
+  dialog.addEventListener("submit", e => {
+    e.preventDefault();
+    const next = storeShortcutKeys(COMMANDS, settings.shortcuts, id, draft, { move: move.checked, reset });
+    if (!next) { refresh(); return; }
+    applyShortcuts(next);
+    dialog.close();
+    toast(draft.length ? "Shortcut saved" : "Shortcut disabled");
+  });
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    $("settingsBody").querySelector(`[data-rebind="${id}"]`)?.focus({ preventScroll: true });
+  });
+  document.body.append(dialog);
+  refresh();
+  dialog.showModal();
+}
+
+function openGuide(id, trigger) {
+  const guide = GUIDES.find(g => g.id === id);
+  if (!guide) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "modal guide-player";
+  dialog.setAttribute("aria-labelledby", "guideTitle");
+  dialog.innerHTML = `<div class="modal-card"><header><h2 id="guideTitle">${esc(guide.title)}</h2><button type="button" class="btn ghost sm" autofocus>Close</button></header>
+    <video controls playsinline preload="none" width="960" height="540" aria-label="${esc(guide.title)}"></video>
+    <p data-guide-error role="status" hidden>Video couldn’t load. The written steps are available below.</p>
+    <p>${esc(guide.description)}</p><ol>${guide.steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol></div>`;
+  const video = dialog.querySelector("video");
+  video.addEventListener("error", () => { if (dialog.open) dialog.querySelector("[data-guide-error]").hidden = false; });
+  dialog.querySelector("button").onclick = () => dialog.close();
+  dialog.addEventListener("close", () => { video.pause(); video.removeAttribute("src"); video.load(); dialog.remove(); trigger.focus(); });
+  document.body.append(dialog);
+  dialog.showModal();
+  video.poster = `${APP_BASE}/assets/guides/${id}.jpg`;
+  video.src = `${APP_BASE}/assets/guides/${id}.mp4`;
 }
 
 async function renderVpnList() {
@@ -538,15 +715,25 @@ export function initSettings(b) {
     const pin = e.target.closest("[data-deck-pin]");
     if (!pin) return;
     const id = pin.dataset.deckPin;
-    const allowed = visibleSections().map(s => s.id);
-    const pins = settingsPins(settings.deckPins, allowed);
-    if (!allowed.includes(id)) return;
-    settings.deckPins = pins.includes(id) ? pins.filter(key => key !== id) : [...pins, id];
-    saveSettings();
-    render(curSection());
-    body.querySelector(`[data-deck-pin="${id}"]`)?.focus({ preventScroll: true });
+    const byId = new Map(visibleSections().map(s => [s.id, s]));
+    if (!byId.has(id)) return;
+    const pins = settingsPins(settings.deckPins, byId.keys());
+    const pressed = !pins.includes(id);
+    settings.deckPins = pressed ? [...pins, id] : pins.filter(key => key !== id);
+    saveSettings({ refresh: false });
+    pin.setAttribute("aria-pressed", String(pressed));
+    pin.setAttribute("aria-label", `${pressed ? "Unpin" : "Pin"} ${byId.get(id).label}`);
+    syncPinLists(byId, settings.deckPins);
+    syncCurrentNav(nav, searchIndex ? null : curSection());
   });
-  body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
+  body.addEventListener("change", e => {
+    const el = e.target.closest("[data-set]");
+    if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el);
+    if (e.target.matches("[data-shortcut-category]")) filterShortcuts(e.target.closest(".shortcuts-panel"));
+  });
+  body.addEventListener("input", e => {
+    if (e.target.matches("[data-shortcut-filter]")) filterShortcuts(e.target.closest(".shortcuts-panel"));
+  });
   body.addEventListener("change", e => {
     const profile = e.target.closest("[data-performance-mode]");
     if (profile?.checked) B.setPerformanceMode(profile.value);
@@ -555,7 +742,7 @@ export function initSettings(b) {
       const preset = streamPreset(quality.value);
       settings.streamQuality = preset;
       save("veyra-settings", settings);
-      body.querySelector("[data-stream-description]").textContent = STREAM_PRESETS[preset].description;
+      quality.closest("[data-section]").querySelector("[data-stream-description]").textContent = STREAM_PRESETS[preset].description;
     }
   });
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el?.isConnected && ["text", "password", "url"].includes(el.type)) setValue(el); }, 450));
@@ -595,14 +782,17 @@ export function initSettings(b) {
     if (e.target.closest("[data-performance-refresh]")) { render(curSection()); body.querySelector("[data-performance-refresh]")?.focus(); return; }
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
-    const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
+    const guide = e.target.closest("[data-guide]"); if (guide) { openGuide(guide.dataset.guide, guide); return; }
 
     const vc = e.target.closest("[data-vpn-connect]"); if (vc) { const pid = vc.dataset.vpnConnect; try { await B.connectVpn(pid); toast("VPN connected"); } catch(err) { toast(err.message, { kind: "err" }); } renderVpnList(); return; }
     const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const pid = vd.dataset.vpnDelete; try { await api(`/api/vpn/custom/${encodeURIComponent(pid)}`, { method: "DELETE" }); toast("VPN profile removed"); } catch(e) { toast(`Failed: ${e.message}`, { kind: "err" }); } renderVpnList(); return; }
     const vt = e.target.closest("[data-vpn-test]"); if (vt) { const pid = vt.dataset.vpnTest; try { const r = await api("/api/vpn/test", { method: "POST", json: { profileId: pid } }); toast(r.healthy ? `Healthy (${r.latencyMs}ms, IP: ${r.exitIp || "?"})` : `Failed: ${r.lastError || "unreachable"}`, { kind: r.healthy ? "ok" : "err" }); } catch(e) { toast(`Test failed: ${e.message}`, { kind: "err" }); } return; }
   });
-  $("settingsSearch").addEventListener("input", debounce(() => { if (B.activeTab()?.view === "settings") render(curSection(), true); }, 100));
+  $("settingsSearch").addEventListener("input", debounce(() => { if (B.activeTab()?.view === "settings") render(curSection(), true); }, 75));
   $("settingsSearch").addEventListener("keydown", e => { if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.target.value = ""; render(curSection()); } });
-  hooks.onSessionTickSettings = () => { const el = $("setSessLeft"); const s = B.state.session; if (el && s) el.textContent = fmtClock(Math.max(0, s.expiresAt - Date.now())) + " left"; };
-  setInterval(() => { if (!document.hidden && B.activeTab()?.view === "settings") hooks.onSessionTickSettings(); }, 1000);
+  hooks.onSessionTickSettings = clock => {
+    if (document.hidden || B.activeTab()?.view !== "settings") return;
+    const el = $("setSessLeft"), text = `${clock} left`;
+    if (el && el.textContent !== text) el.textContent = text;
+  };
 }

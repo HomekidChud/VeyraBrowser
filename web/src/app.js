@@ -2,12 +2,12 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.35.0-deck";
+} from "./core.js?v=8.36.0-workbench";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.35.0-deck";
-import { initUI } from "./ui.js?v=8.35.0-deck";
-import { initDevtools } from "./devtools.js?v=8.35.0-deck";
-import { maybeOfferRenew } from "./renew.js?v=8.35.0-deck";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
+import { initUI } from "./ui.js?v=8.36.0-workbench";
+import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
+import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
@@ -17,14 +17,14 @@ import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.35.0-deck").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.36.0-workbench").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
 
-  const url = "./admin.js?v=8.35.0-deck";
+  const url = "./admin.js?v=8.36.0-workbench";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
@@ -34,6 +34,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=2";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=1";
+import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -379,11 +380,18 @@ export function renderTabs() {
   const ordered = arrangeTabs(state.tabs, state.tabGroups);
   if (ordered.some((t, i) => t !== state.tabs[i])) state.tabs = ordered;
   let html = "";
+  const groupsById = new Map(state.tabGroups.map(g => [g.id, g]));
+  const groupMembers = new Map();
+  for (const tab of state.tabs) {
+    if (!tab.groupId || !groupsById.has(tab.groupId)) continue;
+    if (!groupMembers.has(tab.groupId)) groupMembers.set(tab.groupId, []);
+    groupMembers.get(tab.groupId).push(tab);
+  }
 
   let openGroupId = null;
   const renderedCollapsed = new Set();
   const headerFor = g => {
-    const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+    const groupTabs = groupMembers.get(g.id);
     const color = validColour(g.color) ? g.color : GROUP_COLOURS[0];
     return `<div class="tab-group ${g.collapsed ? "collapsed" : ""}" style="--group-color:${color}">
           <div class="tab-group-header" data-group="${esc(g.id)}">
@@ -394,13 +402,13 @@ export function renderTabs() {
             <button class="tab-group-close" data-group-menu="${esc(g.id)}" aria-label="Options for ${esc(g.name)}" title="Group options"><svg><use href="#i-menu"/></svg></button>
           </div>`;
   };
-  const groupFor = t => (t.groupId ? state.tabGroups.find(g => g.id === t.groupId) : null) || null;
+  const groupFor = t => groupsById.get(t.groupId) || null;
   for (const t of state.tabs) {
     const g = groupFor(t);
     const gid = g?.id || null;
     if (gid !== openGroupId && openGroupId) { html += "</div>"; openGroupId = null; }
     if (g && gid !== openGroupId && !(g.collapsed && renderedCollapsed.has(gid))) {
-      const groupTabs = state.tabs.filter(x => x.groupId === g.id);
+      const groupTabs = groupMembers.get(g.id);
       html += headerFor(g);
       if (g.collapsed) {
         renderedCollapsed.add(gid);
@@ -419,8 +427,10 @@ export function renderTabs() {
   }
   if (openGroupId) html += "</div>";
 
-  const emptyGroups = state.tabGroups.filter(g => !state.tabs.some(t => t.groupId === g.id));
-  if (emptyGroups.length) { state.tabGroups = state.tabGroups.filter(g => !emptyGroups.includes(g)); saveTabGroups(); }
+  if (state.tabGroups.some(g => !groupMembers.has(g.id))) {
+    state.tabGroups = state.tabGroups.filter(g => groupMembers.has(g.id));
+    saveTabGroups();
+  }
   persistTabState();
   if (html === renderedTabMarkup) return;
   renderedTabMarkup = html;
@@ -473,6 +483,18 @@ function moveTab(fromId, toId) {
   }
   renderTabs();
 }
+function shiftActiveTab(step) {
+  const tab = activeTab(), pos = state.tabs.indexOf(tab), adjacent = state.tabs[pos + step];
+  if (!tab || !adjacent || tab.groupId !== adjacent.groupId || !!tab.pinned !== !!adjacent.pinned) return;
+  [state.tabs[pos], state.tabs[pos + step]] = [adjacent, tab];
+  renderTabs();
+}
+function toggleTabPin(t = activeTab()) {
+  if (!t) return;
+  t.pinned = !t.pinned;
+  if (t.pinned) delete t.groupId;
+  persistTabGroups(); renderTabs();
+}
 function tabContextMenu(id, x, y) {
   const t = tabById(id); if (!t) return; const i = state.tabs.indexOf(t);
   const groupItems = state.tabGroups.length ? [
@@ -498,7 +520,7 @@ function tabContextMenu(id, x, y) {
     "-",
     { label: "Reload", kbd: "Ctrl+R", action: () => { switchTab(id); reload(); } },
     { label: "Duplicate", action: () => duplicateTab(t) },
-    { label: t.pinned ? "Unpin" : "Pin", action: () => { t.pinned = !t.pinned; if (t.pinned) delete t.groupId; persistTabGroups(); renderTabs(); } },
+    { label: t.pinned ? "Unpin" : "Pin", action: () => toggleTabPin(t) },
     ...(parkingAllowed(t) ? [{ label: "Park background tab…", action: () => parkTab(id) }] : []),
     "-",
     ...groupItems,
@@ -572,9 +594,12 @@ function performanceTabs() {
   });
 }
 function setPerformanceMode(value) {
-  settings.performanceMode = performanceMode(value);
-  save("veyra-settings", settings);
-  hooks.onSettingsChanged?.();
+  const mode = performanceMode(value);
+  if (settings.performanceMode === mode) return;
+  settings.performanceMode = mode;
+  saveSettings({ refresh: false });
+  document.body.classList.toggle("velocity-boost", mode === "boost");
+  syncBackgroundDiagnostics();
 }
 export function closeTab(id, { silent = false } = {}) {
   const idx = state.tabs.findIndex(t => t.id === id); if (idx < 0) return;
@@ -941,15 +966,17 @@ function probeFrameForEscape(t) {
     if (!f.src || !/^https?:/i.test(f.src)) return;
     let origin = ""; try { origin = new URL(f.src, location.href).origin; } catch { return; }
     if (origin !== API_ORIGIN) return;
-    const loadedAt = Date.now();
+    const loadedAt = Date.now(), pageLoad = t.pageLoad, probe = {};
+    t.escapeProbe = probe;
     try { f.contentWindow?.postMessage?.({ type: "veyra:embed-probe" }, API_ORIGIN); } catch {}
     setTimeout(() => {
       try {
-        if (!state.tabs.includes(t) || t.view !== "page" || t.localPage || frameFor(t) !== f) return;
+        if (!state.tabs.includes(t) || t.view !== "page" || t.localPage || frameFor(t) !== f ||
+            t.pageLoad !== pageLoad || t.escapeProbe !== probe) return;
         if ((t.lastRuntimeAckAt || 0) > loadedAt) return;
         t.escapeRecoveries = (t.escapeRecoveries || 0) + 1;
         if (t.escapeRecoveries > 3) {
-          if (t.escapeRecoveries === 4) toast(`${hostOf(t.url)} keeps leaving the proxy, so it can't be shown here. Open it directly outside Veyra.`, { kind: "warn", ms: 7000 });
+          if (t.escapeRecoveries === 4 && activeTab() === t) showSiteRecovery(t, "This page isn’t responding inside Veyra.");
           return;
         }
         addLog("info", `${hostOf(t.url)} navigated out of the proxy; bringing it back inside Veyra.`);
@@ -969,6 +996,7 @@ function setFrameSrc(f, src, tab = null) {
 }
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page" || t.localPage) return;
+  if (frameFor(t)?.hasAttribute("data-site-error")) return;
   probeFrameForEscape(t);
 
   try {
@@ -1364,6 +1392,7 @@ function tickSession() {
   const clock = fmtClock(left);
   const tone = "session-pill " + (left <= 10000 ? "crit" : left <= 30000 ? "warn" : "live");
   if (txt.textContent !== clock) txt.textContent = clock;
+  hooks.onSessionTickSettings?.(clock);
   if (pill.className !== tone) pill.className = tone;
   const title = `Session ends in ${clock}. Everything in it is deleted when the timer hits 0:00.`;
   if (pill.title !== title) pill.title = title;
@@ -1621,7 +1650,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const load = t.pageLoad = Symbol();
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
-  if (t.localPage) frameFor(t)?.remove();
+  if (previousUrl !== url) t.escapeRecoveries = 0;
+  if (t.localPage || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
   t.sourceDisplayAliases ||= new Map();
   const suppliedDisplayUrl = isYouTubeUrl(url) ? "" : validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
   if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
@@ -1889,11 +1919,45 @@ export function recordHistory(kind, url, title, sid = state.session?.id) {
   if (state.history.length > (settings.historyMax || 1000)) state.history.length = settings.historyMax || 1000;
   saveHistory();
 }
+let dismissSiteRecovery;
+function showSiteRecovery(t = activeTab(), reason = "") {
+  const url = t?.view === "page" ? originalSiteUrl(t.url) : "";
+  if (!url || activeTab() !== t) return;
+  if (showAccountOptions(url)) return;
+  const target = new URL(url);
+  dismissSiteRecovery?.(true);
+  dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
+    title: `Site options: ${target.host}`, ms: 0,
+    actions: [
+      { label: "Retry in Veyra", onClick: () => {
+        if (activeTab() !== t || t.view !== "page" || originalSiteUrl(t.url) !== url) return;
+        t.escapeRecoveries = 0;
+        void reload({ hard: true });
+      } },
+      { label: "Open original site", href: url, primary: true }
+    ]
+  });
+  if (!reason && dismissSiteRecovery) $("toasts")?.querySelector("section:last-child .toast-action")?.focus({ preventScroll: true });
+}
 function renderError(t, kind, error) {
   t.view = "page"; t.loading = false;
+  if (t.browserSessionId) void stopBrowserSession(t);
+  t.browserMode = "FAST_PROXY";
   const titles = { server: "Veyra couldn't reach its server", unsupported: "This page can't be opened in Veyra", invalid: "That address isn't valid" };
+  frameFor(t)?.remove();
   const f = getOrCreateFrame(t);
-  f.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;background:#f6f7f9;color:#1b1f27}main{max-width:520px;padding:32px}h1{font-size:24px;margin:0 0 8px}p{color:#5b6372}code{font-size:12px;color:#8a93a3}button{margin-top:14px;height:38px;padding:0 18px;border-radius:99px;border:0;background:#3d6fd6;color:#fff;font-weight:600;cursor:pointer}</style><main><h1>${esc(titles[kind] || "The page could not be displayed")}</h1><p>${esc(error?.message || "Unknown error")}</p>${error?.requestId ? `<code>Request ${esc(error.requestId)}</code><br>` : ""}<button onclick="parent.postMessage({type:'veyra:local-retry'},'*')">Try again</button></main>`;
+  f.setAttribute("data-site-error", "");
+  f.setAttribute("sandbox", "allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+  f.removeAttribute("allow");
+  f.srcdoc = siteLoadErrorMarkup(titles[kind] || "The page could not be displayed", error, t.url);
+  f.addEventListener("load", () => {
+    f.contentDocument?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
+      if (frameFor(t) !== f || !state.tabs.includes(t)) return;
+      t.escapeRecoveries = 0;
+      if (activeTab() !== t) switchTab(t.id);
+      void reload();
+    });
+  }, { once: true });
   if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
   addLog("error", `Open failed: ${error?.message}`, { requestId: error?.requestId });
 }
@@ -3025,7 +3089,6 @@ async function handleMessage(e) {
   }
 
   if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
-  if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   if (d.type === "veyra:console-lab:open-proxy") {
     const frame = $("consoleLabFrame");
     if (frame && e.source === frame.contentWindow && e.origin === location.origin &&
@@ -3059,7 +3122,10 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:dt-result" || d.type === "veyra:dt-event") { handleBridgeMessage(t, d); return; }
   if (d.type === "veyra:session-expired") { if (state.session && (!d.sessionId || d.sessionId === state.session.id)) endSession("server"); return; }
-  if (d.type === "veyra:shortcut") { hooks.handleForwardedShortcut?.(d); return; }
+  if (d.type === "veyra:shortcut") {
+    if (activeTab() === t && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source) hooks.handleForwardedShortcut?.(d);
+    return;
+  }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
     if (u && t.view === "page" && !isRemote(t)) {
@@ -3304,9 +3370,9 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions,
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions, showSiteRecovery,
   syncAdminAccess, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab()),
-  performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics
+  performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics, shiftActiveTab, toggleTabPin
 };
 hooks.B = B;
 

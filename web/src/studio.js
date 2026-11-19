@@ -1,4 +1,4 @@
-import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.35.0-deck";
+import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.36.0-workbench";
 import { WORKSPACE_PRESETS } from "./workspace.js?v=3";
 import {
   APPEARANCE, WALLPAPERS, SOUND_PACKS, TOOLBAR_ITEMS, MAX_SETUPS, MAX_SETUP_BYTES, MAX_IMAGE_BYTES,
