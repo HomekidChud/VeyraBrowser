@@ -1,10 +1,10 @@
-import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
-import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.0-workbench";
+import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, isMac, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
+import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.0-touch";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 import { settingsPins, settingSearchTerms, settingTextMatches } from "./settings-model.js?v=1";
-import { assignableBinding, shortcutClashes, storeShortcutKeys } from "./shortcuts-model.js?v=1";
+import { BINDING_KEY_GROUPS, assignableBinding, buildShortcutBinding, shortcutClashes, storeShortcutKeys } from "./shortcuts-model.js?v=2";
 import { GUIDES } from "./settings-guides.js?v=1";
 
 let B;
@@ -131,7 +131,7 @@ function shortcutRow(c) {
 function shortcutsSection() {
   const groups = shortcutGroups();
   return `<section class="s-section shortcuts-panel" id="s-shortcuts" data-section="shortcuts"><h2>Keyboard shortcuts</h2>
-    <p class="muted">Set up to three key combinations per command, or leave a command unbound. A hardware keyboard is required; system shortcuts and embedded players can take priority.</p>
+    <p class="muted">Set up to three key combinations per command, or leave a command unbound. You can edit by touch. To use a shortcut, connect a keyboard; system shortcuts and embedded players can take priority.</p>
     <div class="shortcut-toolbar"><input type="search" class="input" data-shortcut-filter aria-label="Find a command" placeholder="Find a command…">
     <select class="input" data-shortcut-category aria-label="Command category"><option value="">All categories</option>${groups.map(g => `<option>${esc(g)}</option>`).join("")}</select>
     <button type="button" class="btn ghost sm" data-act="resetShortcuts">Restore all defaults</button></div>
@@ -523,12 +523,21 @@ function startRebind(btn) {
   if (!command) return;
   const { id, label } = command;
   let draft = [...keysFor(id)], reset = false, clashState = "";
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const modifiers = [["Mod", isMac ? "Command" : "Ctrl"], [isMac ? "Ctrl" : "Meta", isMac ? "Ctrl" : "Meta"], ["Alt", isMac ? "Option" : "Alt"], ["Shift", "Shift"]];
+  const keyLabels = { PageUp: "Page Up", PageDown: "Page Down", Esc: "Escape" };
   const dialog = document.createElement("dialog");
   dialog.className = "modal shortcut-editor";
   dialog.setAttribute("aria-labelledby", "shortcutEditorTitle");
-  dialog.innerHTML = `<form class="modal-card" method="dialog"><h2 id="shortcutEditorTitle">${esc(label)}</h2>
-    <p class="muted">Record up to three alternatives. Press Escape to cancel.</p><ul class="shortcut-draft" aria-label="Current bindings"></ul>
-    <button class="btn shortcut-capture" type="button" data-capture autofocus>Press a key combination here</button>
+  dialog.innerHTML = `<form class="modal-card" method="dialog"><h2 id="shortcutEditorTitle" tabindex="-1" ${touch ? "autofocus" : ""}>${esc(label)}</h2>
+    <p class="muted">Add up to three combinations by touch or with a keyboard.</p><ul class="shortcut-draft" aria-label="Current bindings"></ul>
+    <fieldset class="shortcut-builder"><legend>Build a combination</legend>
+      <div class="shortcut-modifiers">${modifiers.map(([value, name]) => `<label><input type="checkbox" value="${value}" data-shortcut-modifier> ${name}</label>`).join("")}</div>
+      <div class="shortcut-builder-key"><label for="shortcutEditorKey">Key</label><select id="shortcutEditorKey" class="input">
+        <option value="">Choose a key</option>${BINDING_KEY_GROUPS.map(([group, keys]) => `<optgroup label="${group}">${keys.map(key => `<option value="${esc(key)}">${esc(keyLabels[key] || key)}</option>`).join("")}</optgroup>`).join("")}
+      </select><button class="btn" type="button" data-build-binding disabled>Add</button></div>
+    </fieldset>
+    <button class="btn shortcut-capture" type="button" data-capture ${touch ? "" : "autofocus"}>Press a key combination here</button>
     <p class="shortcut-message" role="status" data-recording-note></p>
     <label class="shortcut-move" hidden><input type="checkbox" data-move-binding><span></span></label>
     <div class="shortcut-editor-actions"><button type="button" class="btn ghost sm" data-clear-binding>Clear all</button>
@@ -536,6 +545,7 @@ function startRebind(btn) {
     <div class="modal-actions"><button type="button" class="btn ghost" data-editor-cancel>Cancel</button><button type="submit" class="btn primary" data-editor-save>Save</button></div></form>`;
   const note = dialog.querySelector("[data-recording-note]"), capture = dialog.querySelector("[data-capture]");
   const move = dialog.querySelector("[data-move-binding]"), save = dialog.querySelector("[data-editor-save]");
+  const key = dialog.querySelector("#shortcutEditorKey"), add = dialog.querySelector("[data-build-binding]");
   const refresh = () => {
     const clash = shortcutClashes(COMMANDS, settings.shortcuts, id, draft);
     const signature = clash.map(x => `${x.id}:${x.key}`).join("|");
@@ -546,23 +556,29 @@ function startRebind(btn) {
     save.disabled = !!clash.length && !move.checked;
     dialog.querySelector(".shortcut-draft").innerHTML = draft.length ? draft.map((key, i) => `<li>${keyBadge(key)}<button type="button" class="icon-btn" data-remove-binding="${i}" aria-label="Remove ${esc(prettyCombo(key))}">${icon("i-x")}</button></li>`).join("") : `<li class="muted">No bindings</li>`;
   };
-  capture.addEventListener("keydown", e => {
-    if (e.isComposing || e.getModifierState("AltGraph") || e.key === "Escape" || (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey)) return;
-    e.preventDefault(); e.stopPropagation();
-    if (e.repeat) return;
-    const combo = comboFromEvent(e);
+  const addBinding = combo => {
     if (!combo) return;
-    if (!assignableBinding(combo)) { note.textContent = "Use Ctrl, Command or Alt with another key, or a function key."; return; }
+    if (!assignableBinding(combo)) { note.textContent = "Choose Ctrl, Command, Meta or Alt with another key, or choose a function key."; return; }
     if (draft.includes(combo)) { note.textContent = `${prettyCombo(combo)} is already listed.`; return; }
     if (draft.length >= 3) { note.textContent = "Remove a binding before adding another."; return; }
     draft.push(combo); reset = false;
     note.textContent = `${prettyCombo(combo)} added. Save to apply.`;
     refresh();
+  };
+  key.addEventListener("change", () => { add.disabled = !key.value; });
+  add.addEventListener("click", () => {
+    const mods = [...dialog.querySelectorAll("[data-shortcut-modifier]:checked")].map(el => el.value);
+    addBinding(buildShortcutBinding(key.value, mods));
+  });
+  capture.addEventListener("keydown", e => {
+    if (e.isComposing || e.getModifierState("AltGraph") || e.key === "Escape" || (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!e.repeat) addBinding(comboFromEvent(e));
   });
   move.addEventListener("change", () => { save.disabled = !!clashState && !move.checked; });
   dialog.addEventListener("click", e => {
     const remove = e.target.closest("[data-remove-binding]");
-    if (remove) { draft.splice(Number(remove.dataset.removeBinding), 1); reset = false; note.textContent = "Binding removed from draft."; refresh(); capture.focus(); }
+    if (remove) { draft.splice(Number(remove.dataset.removeBinding), 1); reset = false; note.textContent = "Binding removed from draft."; refresh(); (touch ? key : capture).focus({ preventScroll: true }); }
     if (e.target.closest("[data-clear-binding]")) { draft = []; reset = false; note.textContent = "Save to disable this shortcut."; refresh(); }
     if (e.target.closest("[data-default-binding]")) { draft = [...command.keys]; reset = true; note.textContent = "Default bindings restored in the draft."; refresh(); }
     if (e.target.closest("[data-editor-cancel]")) dialog.close();

@@ -78,12 +78,24 @@
 .shortcut-draft{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1rem}
 .shortcut-draft li{display:flex;align-items:center;gap:.25rem}
 .shortcut-draft .icon-btn{height:2rem;width:2rem}
+.shortcut-builder{min-inline-size:0;margin:0 0 .75rem;padding:.65rem;border:1px solid var(--line-2);border-radius:var(--r)}
+.shortcut-builder legend,.shortcut-builder-key label{padding-inline:.25rem;color:var(--text-2);font-size:.82rem}
+.shortcut-modifiers,.shortcut-builder-key{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem}
+.shortcut-modifiers{margin-bottom:.55rem}
+.shortcut-modifiers label{display:inline-flex;align-items:center;gap:.35rem;min-height:32px;padding-inline:.5rem;border:1px solid var(--line-2);border-radius:var(--r);font-size:.84rem;cursor:pointer}
+.shortcut-modifiers input,.shortcut-move input{margin:0;accent-color:var(--accent)}
+.shortcut-builder-key select{flex:1 1 7rem;min-width:0;max-width:100%;background:var(--surface);color:var(--text)}
 .shortcut-capture{width:100%;border-style:dashed}
 .shortcut-capture:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .shortcut-message,.shortcut-move{font-size:.87rem;line-height:1.5}
 .shortcut-message:empty,.shortcut-move[hidden]{display:none}
 .shortcut-move{display:flex;align-items:baseline;gap:.55rem;margin:.75rem 0}
 .shortcut-editor-actions{margin-top:1rem}
+@media(pointer:coarse){
+  #view-settings .shortcuts-panel .btn,.shortcut-editor .btn,.shortcut-editor .icon-btn,.shortcut-builder-key .input,.shortcut-modifiers label,.shortcut-move{min-height:44px}
+  .shortcut-editor .icon-btn{min-width:44px}
+  .shortcut-move{align-items:center}
+}
 .guide-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:var(--deck-gap)}
 #view-settings .guide-card{display:block;min-width:0;padding:1rem;border:1px solid var(--set-border);border-radius:var(--r-lg);background:var(--set-panel)}
 .guide-meta{display:flex;justify-content:space-between;gap:.75rem;margin-bottom:.7rem;color:var(--set-dim);font:650 .75rem/1.25 var(--font-mono)}

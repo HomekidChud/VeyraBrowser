@@ -2,6 +2,19 @@ const bindingPattern = /^(?:Mod\+)?(?:Ctrl\+)?(?:Meta\+)?(?:Alt\+)?(?:Shift\+)?(
 export const assignableBinding = key => typeof key === "string" && bindingPattern.test(key)
   && (/^(?:Mod|Ctrl|Meta|Alt)\+/.test(key) || /^(?:Shift\+)?F\d+$/.test(key));
 
+export const BINDING_KEY_GROUPS = [
+  ["Letters", [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"]],
+  ["Numbers", [..."0123456789"]],
+  ["Punctuation", [..."=,./\\;'[]`-"]],
+  ["Navigation and editing", ["Left", "Right", "Up", "Down", "Home", "End", "PageUp", "PageDown", "Tab", "Enter", "Space", "Backspace", "Delete", "Insert", "Esc"]],
+  ["Function keys", Array.from({ length: 24 }, (_, i) => `F${i + 1}`)]
+];
+const selectableKeys = new Set(BINDING_KEY_GROUPS.flatMap(([, keys]) => keys));
+export function buildShortcutBinding(key, modifiers) {
+  if (!selectableKeys.has(key)) return "";
+  return ["Mod", "Ctrl", "Meta", "Alt", "Shift"].filter(mod => modifiers.includes(mod)).concat(key).join("+");
+}
+
 export function shortcutKeys(command, overrides) {
   if (!command) return [];
   const value = overrides?.[command.id];

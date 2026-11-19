@@ -72,6 +72,7 @@
 ## Settings Control Deck and media
 
 - In Keyboard shortcuts, filter by command and category. Record three combinations, remove one, then cancel. Move an existing binding only after checking the conflict confirmation. Save, trigger the command, reload, disable it, and restore defaults. Verify Escape closes the editor and restores button focus.
+- On a touch phone viewport, open Edit, choose modifiers and a key, and tap Add without a keyboard. Check feedback for duplicates, invalid combinations and a fourth binding. Test conflict consent, cancel, reload, clear and restore, including a narrow portrait and short landscape viewport.
 - In Video guides, expand the written steps and follow the section link. Verify no MP4 request on page entry, then play a clip from the dialog, close with Escape, and verify focus returns to Watch video. Repeat on a narrow phone.
 - Open Settings Overview, pin and unpin Appearance and Performance, then reload. Change Overview layout, Settings spacing and panel contrast from Appearance → Layout. Verify dark and light mode, narrow-phone fit, keyboard navigation and setup export.
 - Search for “wallpaper fit” and “focus rings”, edit a match, and clear with Escape. A second query must reuse matching sections and keep unrelated sections detached without making requests for off-screen sections.

@@ -5,7 +5,7 @@ import {
 } from "./core.js?v=8.36.0-workbench";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
-import { initUI } from "./ui.js?v=8.36.0-workbench";
+import { initUI } from "./ui.js?v=8.36.0-touch";
 import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
 import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
@@ -33,7 +33,7 @@ function ensureAdminModule() {
   return adminModulePromise;
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=2";
-import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=1";
+import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
 import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
 const oldBookmarks = load("veyra-bookmarks", []);
