@@ -2,15 +2,15 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.31.0-velocity";
-import { initExtensions } from "./extensions.js?v=8.31.0-velocity";
-import { initSettings } from "./settings.js?v=8.31.0-velocity";
+} from "./core.js?v=8.32.0-stream";
+import { initExtensions } from "./extensions.js?v=8.32.0-stream";
+import { initSettings } from "./settings.js?v=8.32.0-stream";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=2";
 import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=1";
-import { applyStudioVisuals, playStudioSound } from "./studio.js?v=2";
-import { openLauncher, openQuickTools } from "./velocity.js?v=1";
-import { performanceMode } from "./velocity-model.js?v=1";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=3";
+import { openLauncher, openQuickTools } from "./velocity.js?v=2";
+import { performanceMode } from "./velocity-model.js?v=2";
 
 let B;
 
@@ -327,7 +327,7 @@ hooks.onAuthChanged = onAuthChanged;
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
-  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode"]) delete s[key];
+  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality"]) delete s[key];
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
   return {
     v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
@@ -357,7 +357,7 @@ export async function pullSync() {
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
-      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode"]) delete remote[key];
+      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality"]) delete remote[key];
       for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }

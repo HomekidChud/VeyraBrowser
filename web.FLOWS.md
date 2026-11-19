@@ -70,3 +70,10 @@
 - In Boost, open a bookmark in a background tab. The frame and page request should wait until selection. Standard and Balanced should still open background tabs normally. An active Fast Proxy page remains navigable in every mode.
 - Use F2 or the New Tab “Commands” button. Use Commands, Tabs, Bookmarks and History filters, Arrow keys, Enter and Escape. Search an unknown term; no command should run. Private windows should offer only commands and their currently open tabs.
 - Open Quick Tools. Convert distances and temperatures; check a bad value, count words and characters, and format valid and invalid JSON. Closing and reopening the tools should clear pasted content. Check both dialog surfaces and the Performance view at 375px.
+
+## Interactive delivery
+
+- In Performance, choose a Chromium stream preset and reload; its selection should stay on the current device. Run the connection check with success, timeout, and Chromium disabled: it must distinguish Veyra response time from game ping and never invent an FPS reading.
+- On a Chromium-enabled fixture, open a continuously moving page and check that multiple frames appear before the first metadata poll repeats. A burst of frames should show the newest frame, without painting a previous tab after switching.
+- Try an older server without the live stream: the first screenshot should display, and completed input should request a fresh image without waiting for periodic status. Switch away, switch back, and close the streamed tab; no old stream should keep drawing.
+- Check pointer click, wheel, keyboard and navigation on the streamed surface, plus normal Fast Proxy proxy pages, Settings, and Velocity commands. Verify session expiration, background visibility and reconnect behavior.

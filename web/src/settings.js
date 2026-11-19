@@ -1,8 +1,9 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.31.0-velocity";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.31.0-velocity";
-import { studioMarkup, wireStudio } from "./studio.js?v=2";
-import { performanceMarkup } from "./velocity.js?v=1";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.32.0-stream";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.32.0-stream";
+import { studioMarkup, wireStudio } from "./studio.js?v=3";
+import { performanceMarkup } from "./velocity.js?v=2";
+import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 
 let B;
 const SECTIONS = [
@@ -15,7 +16,7 @@ const SECTIONS = [
   { id: "sessions", label: "Sessions", desc: "Session timer, warnings and auto-restart", icon: "i-timer" },
   { id: "downloads", label: "Downloads and history", desc: "Download and history limits", icon: "i-download" },
   { id: "accessibility", label: "Accessibility", desc: "Motion, focus rings and link styles", icon: "i-zoom" },
-  { id: "performance", label: "Performance", desc: "Boost, background tab parking and shell timings", icon: "i-gauge" },
+  { id: "performance", label: "Performance", desc: "Boost, stream quality, connection timing and tab parking", icon: "i-gauge" },
   { id: "shortcuts", label: "Keyboard shortcuts", desc: "View and rebind keyboard shortcuts", icon: "i-keyboard" },
   { id: "extensions", label: "Extensions", desc: "Installed and published extensions", icon: "i-puzzle" },
   { id: "vpn", label: "Veyra VPN", desc: "Exit locations and auto-connect", icon: "i-vpn" },
@@ -514,10 +515,39 @@ export function initSettings(b) {
   nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
   body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
-  body.addEventListener("change", e => { const profile = e.target.closest("[data-performance-mode]"); if (profile?.checked) B.setPerformanceMode(profile.value); });
+  body.addEventListener("change", e => {
+    const profile = e.target.closest("[data-performance-mode]");
+    if (profile?.checked) B.setPerformanceMode(profile.value);
+    const quality = e.target.closest("[data-stream-quality]");
+    if (quality) {
+      const preset = streamPreset(quality.value);
+      settings.streamQuality = preset;
+      save("veyra-settings", settings);
+      body.querySelector("[data-stream-description]").textContent = STREAM_PRESETS[preset].description;
+    }
+  });
   body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el?.isConnected && ["text", "password", "url"].includes(el.type)) setValue(el); }, 450));
   wireStudio(body, () => { if (B.activeTab()?.view === "settings") render(curSection()); });
   body.addEventListener("click", async e => {
+    const connection = e.target.closest("[data-test-connection]");
+    if (connection) {
+      const output = body.querySelector("[data-connection-result]");
+      connection.disabled = true;
+      output.textContent = "Testing Veyra connection…";
+      const ctl = new AbortController();
+      const observer = new MutationObserver(() => { if (!connection.isConnected) ctl.abort(); });
+      observer.observe(body, { childList: true, subtree: true });
+      try {
+        const result = await measureVeyraConnection(API, { request: rawFetch, signal: ctl.signal });
+        if (!connection.isConnected) return;
+        const timing = result.median === null ? `Round trip unavailable (${result.samples}/3 checks answered).`
+          : `Median ${result.median} ms · ${result.spread} ms spread across 3 checks.`;
+        const mode = result.availability === false ? "Chromium is disabled on this server; Fast Proxy is unaffected."
+          : result.availability === true ? "Chromium is enabled on this server." : "Chromium availability could not be checked.";
+        output.textContent = `${timing} ${mode}`;
+      } finally { observer.disconnect(); connection.disabled = false; }
+      return;
+    }
     const park = e.target.closest("[data-park-tab]");
     if (park) {
       const tab = B.activeTab();
