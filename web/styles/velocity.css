@@ -71,6 +71,11 @@
 .velocity-metrics dt { color:var(--text-2);font-size:.73rem }
 .velocity-metrics dd { margin:3px 0 0;font:700 .89rem/1.2 var(--font-mono) }
 .velocity-tab-badge { color:var(--text-2);letter-spacing:0;font-size:.64rem }
+.velocity-stream-choice { display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;margin:10px 0 5px }
+.velocity-stream-choice select { min-height:44px;width:min(100%,220px) }
+.velocity-block .velocity-connection-result { margin-top:8px;color:var(--text) }
+.remote-delivery { position:absolute;bottom:10px;right:10px;z-index:4;padding:3px 7px;border-radius:4px;background:#111d;color:#fff;font:650 .7rem var(--font-mono);pointer-events:none }
+.remote-delivery:empty { display:none }
 .velocity-boost #app .ntp { background:var(--bg) }
 .velocity-boost #app .ntp::before { display:none }
 .velocity-boost #app :is(.chrome,.ntp,.ntp-body,.ntp-card) { backdrop-filter:none!important }

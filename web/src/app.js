@@ -3,30 +3,31 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.31.0-velocity";
+} from "./core.js?v=8.32.0-stream";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.31.0-velocity";
-import { initUI } from "./ui.js?v=8.31.0-velocity";
-import { initDevtools } from "./devtools.js?v=8.31.0-velocity";
-import { maybeOfferRenew } from "./renew.js?v=8.31.0-velocity";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.32.0-stream";
+import { initUI } from "./ui.js?v=8.32.0-stream";
+import { initDevtools } from "./devtools.js?v=8.32.0-stream";
+import { maybeOfferRenew } from "./renew.js?v=8.32.0-stream";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=2";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=1";
+import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
+import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.31.0-velocity").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.32.0-stream").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
   // A failed module fetch can be sticky for this document. Retry at a new URL.
-  const url = "./admin.js?v=8.31.0-velocity";
+  const url = "./admin.js?v=8.32.0-stream";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
@@ -854,7 +855,7 @@ export function renderActive({ push = true, replace = false } = {}) {
   const ss = state.splitScreen;
   if (ss.active && (t.view !== "page" || isRemote(t) || (t.id !== ss.leftTabId && t.id !== ss.rightTabId))) teardownSplitScreen();
   qsa(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + t.view));
-  if (t.view === "page") showFrameForTab(t); else setLoading(false);
+  if (t.view === "page") showFrameForTab(t); else { clearRemoteSurface(); setLoading(false); }
   updateAddress(); updateNavButtons(); updateIdentity();
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
@@ -1179,11 +1180,16 @@ function detectBlankProxyPage(t) {
   }
   escalateBlankProxyPage(t, key);
 }
+let displayedRemote = "";
+let remoteFrames;
 function clearRemoteSurface() {
+  remoteFrames?.stop();
+  displayedRemote = "";
   const v = $("remoteSurface");
   if (!v) return;
   const img = $("remoteImg");
-  if (img) { img.removeAttribute("src"); img.style.visibility = "hidden"; }
+  if (img) { img.width = 1; img.height = 1; img.style.visibility = "hidden"; }
+  if ($("remoteDelivery")) $("remoteDelivery").textContent = "";
   const ld = $("remoteLoading"); if (ld) ld.style.display = "none";
   const er = $("remoteError"); if (er) er.style.display = "none";
   v.classList.remove("frame-active");
@@ -1192,9 +1198,27 @@ function ensureRemoteSurface() {
   let v = $("remoteSurface"); if (v) return v;
   v = document.createElement("div"); v.id = "remoteSurface"; v.className = "browser-surface"; v.tabIndex = 0; v.setAttribute("role", "application"); v.setAttribute("aria-describedby", "remoteA11yNotice"); v.setAttribute("aria-label", "Streamed Chromium browser surface");
   v.style.position = "relative";
-  v.innerHTML = `<p id="remoteA11yNotice" class="sr-only">This streamed Chromium page is currently a visual surface; its page structure is not available to assistive technology. Use Fast proxy where possible for an accessible document.</p><img id="remoteImg" alt="Visual stream of a remote Chromium page; page content is not exposed as an accessibility tree." style="width:100%;height:100%;object-fit:contain;display:block;user-select:none;visibility:hidden;touch-action:none" draggable="false"><div id="remoteLoading" style="position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:var(--bg);color:var(--text-2);z-index:3"><div class="spinner"></div><span class="muted">Starting Chromium…</span></div><div id="remoteError" style="position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--text-2);z-index:3;text-align:center;padding:24px"><svg width="40" height="40" style="color:var(--line-2)"><use href="#i-info"/></svg><b>Remote Chromium unavailable</b><span class="muted small" id="remoteErrorText">The browser session could not be loaded.</span><button class="btn ghost sm" id="remoteRetryBtn">Retry</button></div><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
+  v.innerHTML = `<p id="remoteA11yNotice" class="sr-only">This streamed Chromium page is currently a visual surface; its page structure is not available to assistive technology. Use Fast proxy where possible for an accessible document.</p><canvas id="remoteImg" width="1" height="1" aria-hidden="true" style="width:100%;height:100%;object-fit:contain;display:block;user-select:none;visibility:hidden;touch-action:none"></canvas><div id="remoteLoading" style="position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;background:var(--bg);color:var(--text-2);z-index:3"><div class="spinner"></div><span class="muted">Starting Chromium…</span></div><div id="remoteError" style="position:absolute;inset:0;display:none;place-content:center;justify-items:center;gap:10px;background:var(--bg);color:var(--text-2);z-index:3;text-align:center;padding:24px"><svg width="40" height="40" style="color:var(--line-2)"><use href="#i-info"/></svg><b>Remote Chromium unavailable</b><span class="muted small" id="remoteErrorText">The browser session could not be loaded.</span><button class="btn ghost sm" id="remoteRetryBtn">Retry</button></div><span id="remoteDelivery" class="remote-delivery" title="Frames Veyra displayed in the last two seconds. Not the game's own FPS."></span><div id="remoteCursor" style="position:absolute;width:18px;height:18px;pointer-events:none;z-index:10;opacity:0;transition:opacity 150ms;margin-left:-9px;margin-top:-9px;background:#fff;border:2px solid #000;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`;
   $("frameWrap").insertBefore(v, $("frameLoader"));
-  const img = v.querySelector("img");
+  const img = v.querySelector("canvas");
+  const ctx = img.getContext("2d", { alpha: false, desynchronized: true });
+  const loading = $("remoteLoading"), error = $("remoteError"), label = $("remoteDelivery");
+  remoteFrames = makeRemoteFrames({ base: API, request: rawFetch,
+    draw(picture) {
+      if (!ctx || !displayedRemote) return;
+      const w = picture.naturalWidth || picture.width, h = picture.naturalHeight || picture.height;
+      if (img.width !== w) img.width = w;
+      if (img.height !== h) img.height = h;
+      ctx.drawImage(picture, 0, 0);
+      img.style.visibility = "visible";
+      loading.style.display = "none";
+      if (!["BROWSER_ERROR", "CRASHED", "ERROR"].includes(activeTab()?.browserStatus)) error.style.display = "none";
+    },
+    onState(mode, { fps } = {}) {
+      label.textContent = mode === "live" ? (fps ? `Stream · ${fps} displayed FPS` : "Live stream")
+        : mode === "snapshot" ? "Screenshot fallback" : mode === "snapshot-unavailable" ? "Waiting for frame…" : "Connecting…";
+    }
+  });
   
   const VW = 1365, VH = 820;
   
@@ -1205,7 +1229,7 @@ function ensureRemoteSurface() {
   const pos = e => {
     const r = img.getBoundingClientRect();
     const containerAspect = r.width / r.height;
-    const imageAspect = VW / VH;
+    const imageAspect = img.width > 1 && img.height > 1 ? img.width / img.height : VW / VH;
     let imgW, imgH, offsetX, offsetY;
     if (containerAspect > imageAspect) {
       
@@ -1230,25 +1254,82 @@ function ensureRemoteSurface() {
   
   
   
-  const send = async (payload, { delay = 250 } = {}) => { const t = activeTab(); if (!t?.browserSessionId) return; try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/input`, { json: payload }); setTimeout(() => refreshRemote(t, true), delay); } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); } };
-  img.addEventListener("load", () => { img.dataset.frames = String((Number(img.dataset.frames) || 0) + 1); img.style.visibility = "visible"; const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "none"; if (er) er.style.display = "none"; });
-  img.addEventListener("error", () => { if (Number(img.dataset.frames) > 0) return; img.style.visibility = "hidden"; const ld = $("remoteLoading"); if (ld) ld.style.display = "grid"; });
-  v.addEventListener("click", e => { if (e.target.id === "remoteRetryBtn" || e.target.closest("#remoteRetryBtn")) { const ld = $("remoteLoading"), er = $("remoteError"); if (ld) ld.style.display = "grid"; if (er) er.style.display = "none"; const t = activeTab(); if (t?.browserSessionId) refreshRemote(t, true); } });
+  let inputQueue = [], sending = false;
+  const send = payload => {
+    const t = activeTab(), id = t?.browserSessionId;
+    if (!id || displayedRemote !== id) return;
+    const tail = inputQueue.at(-1);
+    if (payload.type === "wheel" && tail?.id === id && tail.payload.type === "wheel") {
+      for (const axis of ["deltaX", "deltaY"]) tail.payload[axis] = Math.max(-2400, Math.min(2400, tail.payload[axis] + payload[axis]));
+      return;
+    }
+    inputQueue = inputQueue.filter(entry => entry.id === id);
+    if (inputQueue.length >= 32) return;
+    inputQueue.push({ t, id, payload });
+    if (sending) return;
+    sending = true;
+    void (async () => {
+      try {
+        while (inputQueue.length) {
+          const next = inputQueue.shift();
+          if (activeTab() !== next.t || displayedRemote !== next.id) continue;
+          try {
+            await api(`/api/browser/session/${encodeURIComponent(next.id)}/input`, {
+              json: { ...next.payload, interactive: remoteFrames.interactive(next.id) }, timeoutMs: 5000
+            });
+            if (activeTab() === next.t && displayedRemote === next.id) remoteFrames.refresh(next.id);
+          } catch (e) { addLog("warn", `Chromium input failed: ${e.message}`); }
+        }
+      } finally { sending = false; }
+    })();
+  };
+  v.addEventListener("click", e => { if (!e.target.closest("#remoteRetryBtn")) return; const t = activeTab(); if (!isRemote(t)) return; remoteFrames.stop(); startRemoteFrames(t); refreshRemote(t, true); });
   const modifiers = e => ({ altKey: !!e.altKey, ctrlKey: !!e.ctrlKey, metaKey: !!e.metaKey, shiftKey: !!e.shiftKey });
   let activePointer = null, dragged = false;
-  img.addEventListener("pointerdown", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; activePointer = e.pointerId; dragged = false; img.setPointerCapture?.(e.pointerId); send({ type: "pointer", phase: "down", pointerType: e.pointerType, button: e.button, ...pos(e), ...modifiers(e) }); });
-  img.addEventListener("pointermove", e => { if (activePointer === e.pointerId) { dragged = true; send({ type: "pointer", phase: "move", pointerType: e.pointerType, buttons: e.buttons, ...pos(e), ...modifiers(e) }, { delay: 120 }); } });
-  img.addEventListener("pointerup", e => { if (activePointer !== e.pointerId) return; send({ type: "pointer", phase: "up", pointerType: e.pointerType, button: e.button, ...pos(e), ...modifiers(e) }); if (!dragged) send({ type: "click", ...pos(e), button: e.button === 2 ? "right" : "left", ...modifiers(e) }); activePointer = null; });
-  img.addEventListener("pointercancel", e => { if (activePointer === e.pointerId) { send({ type: "pointer", phase: "cancel", pointerType: e.pointerType, ...pos(e), ...modifiers(e) }); activePointer = null; } });
+  img.addEventListener("pointerdown", e => { v.focus(); if (hooks.dt?.pickingRemote(e, pos(e))) return; activePointer = e.pointerId; dragged = false; img.setPointerCapture?.(e.pointerId); });
+  img.addEventListener("pointermove", e => { if (activePointer === e.pointerId && (Math.abs(e.movementX) + Math.abs(e.movementY) > 3)) dragged = true; });
+  img.addEventListener("pointerup", e => { if (activePointer !== e.pointerId) return; if (!dragged) send({ type: "click", ...pos(e), button: e.button === 2 ? "right" : "left", ...modifiers(e) }); activePointer = null; });
+  img.addEventListener("pointercancel", e => { if (activePointer === e.pointerId) activePointer = null; });
   img.addEventListener("dblclick", e => send({ type: "dblclick", ...pos(e), ...modifiers(e) }));
   img.addEventListener("contextmenu", e => e.preventDefault());
-  img.addEventListener("wheel", e => { e.preventDefault(); send({ type: "wheel", ...pos(e), deltaY: e.deltaY, deltaX: e.deltaX, ...modifiers(e) }); }, { passive: false });
+  let scroll = null, wheelPaint = null;
+  img.addEventListener("wheel", e => {
+    e.preventDefault();
+    if (scroll?.id !== displayedRemote) scroll = { id: displayedRemote, x: 0, y: 0 };
+    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? img.clientHeight : 1;
+    scroll.x += e.deltaX * scale; scroll.y += e.deltaY * scale;
+    if (wheelPaint === null) wheelPaint = requestAnimationFrame(() => {
+      const next = scroll; scroll = null; wheelPaint = null;
+      if (next?.id === displayedRemote && displayedRemote) send({ type: "wheel", deltaX: next.x, deltaY: next.y });
+    });
+  }, { passive: false });
   img.addEventListener("mousemove", e => { hooks.dt?.hoverRemote(pos(e)); const c = $("remoteCursor"); if (c) { const p = pos(e); const r = img.getBoundingClientRect(); const containerAspect = r.width / r.height; const imageAspect = VW / VH; let imgW, imgH, offsetX, offsetY; if (containerAspect > imageAspect) { imgH = r.height; imgW = r.height * imageAspect; offsetX = (r.width - imgW) / 2; offsetY = 0; } else { imgW = r.width; imgH = r.width / imageAspect; offsetX = 0; offsetY = (r.height - imgH) / 2; } c.style.left = (offsetX + p.x * imgW / VW) + "px"; c.style.top = (offsetY + p.y * imgH / VH) + "px"; c.style.opacity = "0.7"; } });
   img.addEventListener("mouseleave", () => { const c = $("remoteCursor"); if (c) c.style.opacity = "0"; });
-  v.addEventListener("keydown", e => { if (e.key === "F12") return; e.preventDefault(); send({ type: "key", key: e.key, code: e.code, repeat: e.repeat, ...modifiers(e) }); });
-  v.addEventListener("paste", e => { const text = e.clipboardData?.getData("text/plain"); if (text != null) { e.preventDefault(); send({ type: "paste", text, ...modifiers(e) }); } });
-  for (const type of ["compositionstart", "compositionupdate", "compositionend"]) v.addEventListener(type, e => send({ type: "composition", phase: type.slice(11), text: e.data || "" }, { delay: 120 }));
+  v.addEventListener("keydown", e => {
+    if (e.key === "F12" || e.target !== v || e.isComposing || e.key === "Dead" || e.key === "Process") return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
+    e.preventDefault();
+    if (e.key.length === 1 && !e.code && !e.ctrlKey && !e.metaKey && !e.altKey) send({ type: "type", text: e.key });
+    else if (!["Control", "Meta", "Alt", "Shift"].includes(e.key)) {
+      const key = [e.ctrlKey && "Control", e.metaKey && "Meta", e.altKey && "Alt", e.shiftKey && "Shift",
+        /^(Key[A-Z]|Digit[0-9])$/.test(e.code) ? e.code : e.key === " " ? "Space" : e.key].filter(Boolean).join("+");
+      send({ type: "key", key });
+    }
+  });
+  v.addEventListener("paste", e => { const text = e.clipboardData?.getData("text/plain"); if (text != null) { e.preventDefault(); send({ type: "type", text }); } });
+  v.addEventListener("compositionend", e => { if (e.data) send({ type: "type", text: e.data }); });
   return v;
+}
+function startRemoteFrames(t) {
+  if (document.hidden || !isRemote(t) || t !== activeTab() || t.view !== "page") return;
+  const id = t.browserSessionId;
+  $("remoteSurface")?.classList.add("frame-active");
+  if (displayedRemote !== id) {
+    $("remoteImg").width = 1; $("remoteImg").height = 1; $("remoteImg").style.visibility = "hidden";
+    $("remoteError").style.display = "none"; $("remoteLoading").style.display = "grid";
+    displayedRemote = id;
+  }
+  remoteFrames?.start(id, t.sessionId, streamPreset(settings.streamQuality));
 }
 function showFrameForTab(t) {
   const remote = isRemote(t);
@@ -1257,7 +1338,7 @@ function showFrameForTab(t) {
   const surf = ensureRemoteSurface();
   surf.classList.toggle("frame-active", remote);
   if (!remote) clearRemoteSurface();
-  if (remote) refreshRemote(t, true);
+  if (remote) { startRemoteFrames(t); refreshRemote(t, true); }
   syncSplitFrames();
   setLoading(!!t.loading, 50, `Loading ${hostOf(t.url)}…`);
   loadRestoredTab(t);
@@ -1971,11 +2052,13 @@ async function loadLinks(t) { if (!t?.jobId) return; try { const b = await api(`
 
 
 async function refreshRemote(t, loop = false) {
-  if (!t?.browserSessionId || !state.tabs.includes(t)) return;
-  clearTimeout(t.browserPoll);
+  if (!t?.browserSessionId || activeTab() !== t || t.view !== "page" || document.hidden) return;
   const expectedId = t.browserSessionId;
+  if (t.remoteStatusInFlight === expectedId) return;
+  clearTimeout(t.browserPoll);
+  t.remoteStatusInFlight = expectedId;
   try {
-    const r = await api(`/api/browser/session/${encodeURIComponent(expectedId)}`, { timeoutMs: 8000 });
+    const r = await api(`/api/browser/session/${encodeURIComponent(expectedId)}?summary=1`, { timeoutMs: 8000 });
     if (t.browserSessionId !== expectedId) return;
     const s = r.session; const prev = t.url; t.lastBrowserUse = Date.now();
     if (!t.youtubeEmbed) t.url = s.canonicalUrl || t.url;
@@ -2004,22 +2087,12 @@ async function refreshRemote(t, loop = false) {
       }
     }
     if (activeTab() === t && t.view === "page") {
-      // Server-side screenshots take seconds to capture. Swapping src every
-      // poll cancels the in-flight load before it ever completes, leaving the
-      // stream stuck on the spinner — so only request the next frame once the
-      // current one has finished (the poll timer keeps the cadence).
-      const img = $("remoteImg"); if (img && img.complete) img.src = `${API}/api/browser/session/${encodeURIComponent(t.browserSessionId)}/screenshot?ts=${Date.now()}`;
-      // Only show "Starting Chromium…" before the first frame arrives. While
-      // a later frame loads the element keeps painting the previous one, but
-      // img.complete/naturalWidth reset mid-load — a live-frame counter is
-      // the only reliable "stream is up" signal.
-      const ld = $("remoteLoading"); if (ld && !img?.complete && !(Number(img?.dataset.frames) > 0)) ld.style.display = "grid";
       setLoading(false); updateAddress(); updateIdentity();
       if (s.status === "VERIFICATION_REQUIRED") $("statusLeft").textContent = "Site robot check detected. Complete it in the page, or use Reload to start a clean Chromium session.";
-      else if (s.status === "BROWSER_ERROR" || s.status === "CRASHED") {
+      else if (s.status === "BROWSER_ERROR" || s.status === "CRASHED" || s.status === "ERROR") {
         const er = $("remoteError"), erT = $("remoteErrorText");
         if (er) er.style.display = "grid";
-        if (erT) erT.textContent = s.lastError || "The browser session encountered an error.";
+        if (erT) erT.textContent = s.lastError || s.error || "The browser session encountered an error.";
         const ld2 = $("remoteLoading"); if (ld2) ld2.style.display = "none";
       }
     }
@@ -2030,7 +2103,7 @@ async function refreshRemote(t, loop = false) {
       t.browserSessionId = "";
       t.browserMode = "FAST_PROXY";
       t.browserStatus = "BROWSER_LOST";
-      clearRemoteSurface();
+      if (displayedRemote === expectedId) clearRemoteSurface();
       if (state.tabs.includes(t) && t.view === "page" && t.url && t.sessionId && state.session?.id === t.sessionId) {
         const f = getOrCreateFrame(t);
         f.removeAttribute("srcdoc");
@@ -2043,8 +2116,12 @@ async function refreshRemote(t, loop = false) {
       }
       return;
     }
+  } finally {
+    if (t.remoteStatusInFlight === expectedId) t.remoteStatusInFlight = null;
+    if (loop && t.browserSessionId === expectedId && activeTab() === t && t.view === "page" && !document.hidden) {
+      t.browserPoll = setTimeout(() => refreshRemote(t, true), 1500);
+    }
   }
-  if (loop && activeTab() === t && t.view === "page") t.browserPoll = setTimeout(() => refreshRemote(t, true), document.hidden ? 5000 : 1500);
 }
 function releaseInactiveBrowserSlot(exclude) {
   const candidates = state.tabs.filter(t => t !== exclude && t.view === "page" && t.browserSessionId && t.browserMode === "BROWSER_ENGINE");
@@ -2122,7 +2199,7 @@ export async function retryFullBrowser() {
   void startBrowserSession(t, t.url, { background: false }).catch(() => {});
   renderTabs();
 }
-async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); await refreshRemote(t, true); return true; } catch { return false; } }
+async function remoteHistory(t, direction) { try { await api(`/api/browser/session/${encodeURIComponent(t.browserSessionId)}/history`, { json: { direction } }); remoteFrames?.refresh(t.browserSessionId); await refreshRemote(t, true); return true; } catch { return false; } }
 
 
 export async function back() {
@@ -3341,9 +3418,12 @@ function wire() {
   ["pointerdown", "keydown", "wheel", "touchstart", "focus"].forEach(type => window.addEventListener(type, markUserActivity, { passive: true }));
   document.addEventListener("visibilitychange", () => {
     syncBackgroundDiagnostics();
-    if (!document.hidden) { markUserActivity(); tickSession(); }
+    const t = activeTab();
+    if (document.hidden) { remoteFrames?.stop(); clearTimeout(t?.browserPoll); }
+    else { markUserActivity(); tickSession(); if (isRemote(t) && t.view === "page") { startRemoteFrames(t); refreshRemote(t, true); } }
   });
   window.addEventListener("pagehide", () => {
+    remoteFrames?.stop();
     if (state.session?.ephemeral) navigator.sendBeacon?.(`${API}/api/session/${encodeURIComponent(state.session.id)}/close`, "");
   });
   window.addEventListener("pageshow", event => {

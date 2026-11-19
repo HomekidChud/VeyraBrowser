@@ -25,7 +25,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.31.0";
+export const VERSION = "8.32.0";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -90,7 +90,7 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.user
 
 
 export const DEFAULT_SETTINGS = {
-  ...APPEARANCE, splitRatio: 50, performanceMode: "balanced",
+  ...APPEARANCE, splitRatio: 50, performanceMode: "balanced", streamQuality: "adaptive",
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: false, warnBeforeClose: false,

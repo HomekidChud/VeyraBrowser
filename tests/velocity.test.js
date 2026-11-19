@@ -13,6 +13,8 @@ test("performance profiles pause only optional work, with a foreground diagnosti
   assert.equal(diagnosticsAllowed("boost", { visible: false, inspecting: true }), true);
   assert.equal(diagnosticsAllowed("boost", { hidden: true, inspecting: true }), false);
   assert.equal(diagnosticsAllowed("standard", { hidden: true, focus: true }), false);
+  assert.equal(diagnosticsAllowed("standard", { visible: true, focus: true }), false);
+  assert.equal(diagnosticsAllowed("boost", { visible: false, inspecting: true, focus: true }), true);
 });
 
 test("only a settled background Fast Proxy frame without protected state can be parked", () => {

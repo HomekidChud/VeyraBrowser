@@ -1,4 +1,5 @@
-import { rankLauncher, UNIT_GROUPS, convertUnits, countText, PERFORMANCE_MODES, performanceMode } from "./velocity-model.js?v=1";
+import { rankLauncher, UNIT_GROUPS, convertUnits, countText, PERFORMANCE_MODES, performanceMode } from "./velocity-model.js?v=2";
+import { STREAM_PRESETS, streamPreset } from "./remote-frames.js?v=1";
 
 const filters = { all: "All", command: "Commands", tab: "Tabs", bookmark: "Bookmarks", history: "History" };
 const icons = { command: "i-bolt", tab: "i-tab", bookmark: "i-star", history: "i-history" };
@@ -194,6 +195,19 @@ export function performanceMarkup(browser, settings, esc) {
       <div>${Object.entries(PERFORMANCE_MODES).map(([id, mode]) =>
         `<label><input type="radio" name="velocity-profile" data-performance-mode value="${id}" ${active === id ? "checked" : ""}><span><b>${mode.name}</b><small>${mode.description}</small></span></label>`).join("")}</div>
     </fieldset>
+    <section class="velocity-block">
+      <h3>Chromium streaming</h3>
+      <p>Choose a picture preset for streamed Chromium. It does not change Fast Proxy pages, video-player quality, or the game’s own FPS.</p>
+      <label class="velocity-stream-choice"><b>Picture preset</b><select class="input" data-stream-quality>
+        ${Object.entries(STREAM_PRESETS).map(([id, p]) => `<option value="${id}" ${streamPreset(settings.streamQuality) === id ? "selected" : ""}>${p.label}</option>`).join("")}
+      </select></label>
+      <p data-stream-description>${STREAM_PRESETS[streamPreset(settings.streamQuality)].description}</p>
+    </section>
+    <section class="velocity-block">
+      <div class="velocity-block-head"><div><h3>Veyra connection</h3><p>Measures the round trip to the Veyra server, not game-server ping.</p></div>
+        <button type="button" class="btn ghost" data-test-connection>Test connection</button></div>
+      <p class="velocity-connection-result" data-connection-result role="status">Not measured yet.</p>
+    </section>
     <section class="velocity-block velocity-tab-panel">
       <div class="velocity-block-head"><div><h3>Tab parking</h3><p>Unload a background Fast Proxy page until you select it again. It will reload and may lose unsaved work or stop playing media.</p></div><button type="button" class="btn ghost" data-performance-refresh>Refresh</button></div>
       <ul class="velocity-tabs">${stats.length ? stats.map(t =>

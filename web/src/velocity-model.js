@@ -7,7 +7,8 @@ export const PERFORMANCE_MODES = Object.freeze({
 export const performanceMode = value => Object.hasOwn(PERFORMANCE_MODES, value) ? value : "balanced";
 export function diagnosticsAllowed(mode, { hidden = false, visible = false, inspecting = false, focus = false } = {}) {
   if (inspecting && !hidden) return true;
-  if (focus || mode === "boost") return !hidden && visible;
+  if (focus) return false;
+  if (mode === "boost") return !hidden && visible;
   return mode === "standard" || !hidden;
 }
 
