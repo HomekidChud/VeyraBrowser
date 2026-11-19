@@ -176,6 +176,19 @@ html[data-typeface=mono] { --font-ui:var(--font-mono); --font-display:var(--font
 .studio-footer>span { display:flex;align-items:center;gap:6px }
 .studio-footer svg { width:14px;height:14px;flex:none }
 #view-settings:has(.studio[data-studio-search=false]) .settings-nav { overflow-anchor:none }
+[data-theme=light] #view-settings:has(.studio[data-studio-search=false]),
+[data-theme=light] #view-settings .settings:has(.studio[data-studio-search=false]) { background:var(--bg);color:var(--text) }
+[data-theme=light] .settings:has(.studio[data-studio-search=false]) .s-crumbs,
+[data-theme=light] .settings:has(.studio[data-studio-search=false]) .s-crumbs span:last-child { color:var(--text-2) }
+[data-theme=light] .settings:has(.studio[data-studio-search=false]) .s-crumbs .linkish { color:var(--info) }
+[data-theme=light] .studio { color:var(--text) }
+[data-theme=light] .studio .s-card { background:var(--surface);border-color:var(--line);box-shadow:0 4px 16px #1420320d }
+[data-theme=light] .studio .s-row { border-color:var(--line) }
+[data-theme=light] .studio .s-label b { color:var(--text) }
+[data-theme=light] .studio .s-label span { color:var(--text-2) }
+[data-theme=light] .studio .s-ctl .input { background:var(--surface-2);border-color:var(--line-2);color:var(--text) }
+[data-theme=light] .studio[data-studio-search=true] .studio-block,
+[data-theme=light] .studio[data-studio-search=true] .studio-footer { background:var(--bg);border:1px solid var(--line-2);border-radius:12px;padding:12px }
 @container (max-width:700px) {
   .studio-presets,.studio-wallpapers { grid-template-columns:repeat(3,minmax(0,1fr)) }
   .studio-preset-art,.studio-wallpaper>i { height:clamp(45px,12cqw,74px) }

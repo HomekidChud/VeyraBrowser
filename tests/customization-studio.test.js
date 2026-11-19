@@ -75,6 +75,8 @@ for (const entry of ["index.html", "browse/index.html"]) {
   const bootstrap = file(entry).match(/bootstrap\.js\?v=[\w.-]+/)?.[0];
   assert.ok(bootstrap && file("sw.js").includes(bootstrap), "Studio entry and service worker agree on the shell release");
 }
+const studioStyle = file("src/bootstrap.js").match(/styles\/studio\.css\?v=[\w.-]+/)?.[0];
+assert.ok(studioStyle && file("sw.js").includes(studioStyle), "the service worker preloads the current Studio stylesheet");
 assert.match(file("src/core.js"), /EPHEMERAL_KEYS = new Set\(\[[\s\S]*?\.\.\.STUDIO_LOCAL_KEYS/);
 assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS,[^\]]*\]\) delete s\[key\]/);
 assert.match(file("src/ui.js"), /for \(const key of \[\.\.\.DEVICE_APPEARANCE_KEYS,[^\]]*\]\) delete remote\[key\]/);
