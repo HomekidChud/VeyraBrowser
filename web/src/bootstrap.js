@@ -22,7 +22,7 @@
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.33.0-studio`; document.head.appendChild(stylesheet);
   const studioStyle = document.createElement("link");
-  studioStyle.rel = "stylesheet"; studioStyle.href = `${base}styles/studio.css?v=2`; document.head.appendChild(studioStyle);
+  studioStyle.rel = "stylesheet"; studioStyle.href = `${base}styles/studio.css?v=3`; document.head.appendChild(studioStyle);
   const velocityStyle = document.createElement("link");
   velocityStyle.rel = "stylesheet"; velocityStyle.href = `${base}styles/velocity.css?v=2`; document.head.appendChild(velocityStyle);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
