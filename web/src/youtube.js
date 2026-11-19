@@ -1,7 +1,7 @@
 function safeYouTubeUrl(raw) {
   try {
     const url = new URL(String(raw));
-    if (!/^https?:$/.test(url.protocol) || !isYouTubeUrl(url.href)) return null;
+    if (!/^https?:$/.test(url.protocol) || !isYouTubeUrl(url.href) || url.username || url.password || url.port) return null;
     if (url.hostname.toLowerCase() === "m.youtube.com") url.hostname = "www.youtube.com";
     return url.href;
   } catch {
@@ -72,24 +72,124 @@ export function youtubeSignInUrl(raw) {
   return signIn.href;
 }
 
-export function youtubeFallbackHtml(raw, origin = globalThis.location?.origin || "") {
-  const target = safeYouTubeUrl(raw);
-  const embedUrl = target && youtubeEmbedUrl(target, origin);
-  if (!target || !embedUrl) return "";
+export function youtubeDeskVideo(raw) {
+  const embed = youtubeEmbedUrl(raw);
+  if (!embed) return null;
+  const frame = new URL(embed);
+  const id = frame.pathname.split("/").pop();
+  // A playlist could load a second, unchecked video inside the same frame.
+  // The desk plays one explicitly selected and checked video at a time.
+  frame.searchParams.delete("list");
+  frame.searchParams.delete("index");
+  const watch = new URL("https://www.youtube.com/watch");
+  watch.searchParams.set("v", id);
+  if (frame.searchParams.has("start")) watch.searchParams.set("t", frame.searchParams.get("start"));
+  return { id, embed: frame.href, url: watch.href };
+}
 
+export function youtubeFallbackHtml(raw) {
+  const video = youtubeDeskVideo(raw);
+  if (!video) return "";
   return `<!doctype html>
 <html lang="en" data-veyra-youtube-fallback="true">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>YouTube video</title>
+<title>YouTube Watch Desk</title>
 <style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0d0f13;color:#f2f4f8}
-*{box-sizing:border-box}body{margin:0}main{min-height:100vh;display:grid;grid-template-rows:minmax(200px,1fr) auto}.player{display:flex;justify-content:center;background:#000;min-height:200px}.player iframe{display:block;width:100%;height:100%;min-height:200px;border:0}
-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.25rem 1rem;padding:.25rem clamp(.6rem,3vw,1.5rem);border-top:1px solid #2c3645}p{margin:0;color:#bac6d6;font-size:.8rem;line-height:1.4}a{display:inline-flex;align-items:center;min-height:44px;color:#d9e7ff;font-weight:650;font-size:.875rem;text-underline-offset:.18em}
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10141a;color:#eff3fa;--surface:#181e27;--line:#343e4d;--muted:#afbccc;--accent:#b7cefa}
+*{box-sizing:border-box}body{margin:0}main{max-width:1600px;margin:auto;padding:clamp(.65rem,2vw,1.5rem);display:grid;grid-template-columns:minmax(0,1fr) minmax(16rem,22rem);gap:clamp(.8rem,2vw,1.5rem);align-items:start}
+.watch,.queue{min-width:0}.eyebrow{display:block;color:var(--accent);font-size:.73rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:.45rem}
+h1,h2{margin:0;line-height:1.15}h1{font-size:clamp(1.4rem,3vw,2rem)}h2{font-size:1.1rem}header{margin-bottom:.8rem}
+.player{display:grid;place-items:center;width:100%;aspect-ratio:16/9;min-height:200px;background:#080a0d;border:1px solid var(--line);border-radius:.65rem;overflow:hidden}.player iframe{display:block;width:100%;height:100%;min-height:200px;border:0}
+.player p{padding:.8rem;max-width:33rem;text-align:center}.queue{border:1px solid var(--line);border-radius:.65rem;padding:.9rem;background:var(--surface)}p{margin:.55rem 0;color:var(--muted);font-size:.84rem;line-height:1.5}
+.watch-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0 1rem;padding:.3rem 0}.watch-footer p{flex:1 1 16rem}
+.queue form{display:grid;gap:.45rem;margin:.85rem 0}.queue label{font-size:.83rem;font-weight:650}input,button{font:inherit;border:1px solid var(--line);border-radius:.4rem;min-height:44px}input{min-width:0;padding:.5rem .6rem;background:#10141a;color:inherit}button{padding:.45rem .75rem;font-size:.83rem;font-weight:700;background:#242f40;color:inherit;cursor:pointer}
+form button{background:var(--accent);color:#142131;border-color:transparent;justify-self:start}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent);font-weight:650;font-size:.84rem;text-underline-offset:.18em}
+ol{margin:.6rem 0 0;padding:0;list-style:none;display:grid;gap:.35rem}li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.4rem}li button:first-child{text-align:left;overflow-wrap:anywhere}li [aria-current="true"]{border-color:var(--accent)}.notice:empty{display:none}
+@media(max-width:760px){main{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
-<body><main aria-label="Official YouTube player"><div class="player"><iframe src="${escapeHtml(embedUrl)}" title="YouTube video player" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></div><footer><p>YouTube loads directly, outside the Veyra proxy. Some videos require YouTube sign-in or do not allow embeds.</p><a href="${escapeHtml(target)}" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></footer></main>
+<body><main aria-label="YouTube Watch Desk">
+<section class="watch" aria-labelledby="watchTitle"><header><span class="eyebrow">Veyra · Media</span><h1 id="watchTitle">YouTube Watch Desk</h1></header>
+<div class="player" data-player><p role="status" data-player-status>Checking whether this video can play here…</p></div>
+<footer class="watch-footer"><p>The official player connects directly to YouTube, outside the Veyra proxy.</p><a href="${escapeHtml(video.url)}" target="_blank" rel="noopener noreferrer">Open on YouTube</a></footer></section>
+<aside class="queue" aria-labelledby="queueTitle"><span class="eyebrow">This tab only</span><h2 id="queueTitle">Watch queue</h2>
+<p>Keep a short list of video links and switch without leaving the tab.</p>
+<form data-queue-form novalidate><label for="videoLink">YouTube video link</label><input id="videoLink" type="url" maxlength="2048" placeholder="https://youtu.be/…" autocomplete="off"><button type="submit">Add to queue</button></form>
+<p class="notice" role="status" data-queue-note></p><ol data-queue></ol></aside></main>
 </body>
 </html>`;
+}
+
+export function wireYouTubeDesk(doc, raw, queue, { open, check, current }) {
+  const target = youtubeDeskVideo(raw);
+  const player = doc?.querySelector("[data-player]");
+  if (!target || !player || player.dataset.ready) return;
+  player.dataset.ready = "true";
+  const list = doc.querySelector("[data-queue]"), input = doc.querySelector("#videoLink");
+  const note = doc.querySelector("[data-queue-note]");
+  const render = () => {
+    list.replaceChildren();
+    for (const [index, item] of queue.entries()) {
+      const row = doc.createElement("li"), play = doc.createElement("button"), remove = doc.createElement("button");
+      play.type = remove.type = "button";
+      play.textContent = `Video ${item.id}`;
+      if (item.id === target.id) play.setAttribute("aria-current", "true");
+      play.addEventListener("click", () => { if (current() && item.id !== target.id) open(item.url); });
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove video ${item.id}`);
+      remove.addEventListener("click", () => { queue.splice(index, 1); render(); input.focus(); note.textContent = "Removed from this tab’s queue."; });
+      row.append(play, remove);
+      list.append(row);
+    }
+  };
+  if (!queue.some(item => item.id === target.id)) {
+    if (queue.length >= 12) queue.pop();
+    queue.unshift(target);
+  }
+  render();
+  doc.querySelector("[data-queue-form]").addEventListener("submit", event => {
+    event.preventDefault();
+    const next = youtubeDeskVideo(input.value.trim());
+    if (!next) { note.textContent = "Enter a YouTube link to a specific video."; return; }
+    if (queue.some(item => item.id === next.id)) { note.textContent = "That video is already listed."; return; }
+    if (queue.length >= 12) { note.textContent = "Remove a video before adding another. The queue holds 12."; return; }
+    queue.push(next); input.value = ""; render(); note.textContent = "Video added to this tab’s queue.";
+  });
+  const status = player.querySelector("[data-player-status]");
+  void Promise.resolve().then(() => check(target.id)).catch(() => null).then(result => {
+    if (!current()) return;
+    if (result?.state !== "ready") {
+      status.textContent = result?.state === "external" ? "This video needs to be watched on YouTube."
+        : "Veyra couldn’t verify whether this video can be embedded. You can still open it on YouTube.";
+      return;
+    }
+    let frame;
+    const syncPlayer = () => {
+      if (!current()) return;
+      if (player.clientWidth < 200) {
+        frame = null;
+        status.textContent = "Widen this pane to show the embedded player.";
+        if (!status.isConnected) player.replaceChildren(status);
+        return;
+      }
+      if (frame) return;
+      frame = doc.createElement("iframe");
+      frame.title = "Official YouTube video player";
+      frame.referrerPolicy = "strict-origin-when-cross-origin";
+      frame.allow = "encrypted-media; fullscreen; picture-in-picture";
+      frame.allowFullscreen = true;
+      frame.src = target.embed;
+      player.replaceChildren(frame);
+    };
+    const view = doc.defaultView;
+    if (view?.ResizeObserver) {
+      const observer = new view.ResizeObserver(syncPlayer);
+      observer.observe(player);
+      view.addEventListener("pagehide", () => observer.disconnect(), { once: true });
+    }
+    syncPlayer();
+  });
 }

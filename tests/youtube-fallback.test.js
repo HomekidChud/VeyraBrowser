@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeSignInUrl } from "../web/src/youtube.js";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeDeskVideo, youtubeEmbedUrl, youtubeFallbackHtml, youtubeSignInUrl } from "../web/src/youtube.js";
 
 const origin = "https://homekidchud.github.io";
 const videoUrl = "https://www.youtube.com/watch?v=42TV0hS59OA&t=45";
@@ -28,16 +28,24 @@ assert.equal(new URL(youtubeEmbedUrl("https://youtu.be/42TV0hS59OA?t=1h2m3s", or
 assert.equal(new URL(youtubeEmbedUrl("https://www.youtube.com/shorts/42TV0hS59OA#t=14s", origin)).searchParams.get("start"), "14");
 assert.equal(new URL(youtubeEmbedUrl("https://www.youtube.com/live/42TV0hS59OA?list=PLExample&index=3", origin)).searchParams.get("index"), "3");
 
-const watchHtml = youtubeFallbackHtml(videoUrl, origin);
-assert.match(watchHtml, /youtube-nocookie\.com\/embed\/42TV0hS59OA/);
-assert.match(watchHtml, /referrerpolicy="strict-origin-when-cross-origin"/);
-assert.match(watchHtml, /Official YouTube player/);
+const watchHtml = youtubeFallbackHtml(videoUrl);
+assert.doesNotMatch(watchHtml, /<iframe|youtube-nocookie\.com/, "no embed before eligibility verification");
+assert.match(watchHtml, /YouTube Watch Desk/);
+assert.match(watchHtml, /Watch queue/);
 assert.match(watchHtml, /Open on YouTube/);
-assert.match(watchHtml, /Some videos require YouTube sign-in or do not allow embeds/);
+assert.match(watchHtml, /Checking whether this video can play here/);
 assert.match(watchHtml, /<html lang="en" data-veyra-youtube-fallback="true">/);
 assert.doesNotMatch(watchHtml, /<script\b/i, "the local player needs no injected script");
 assert.match(watchHtml, /target="_blank" rel="noopener noreferrer"/);
-assert.match(watchHtml, /minmax\(200px,1fr\)/, "the player takes the active tab area");
+assert.match(watchHtml, /min-height:200px/, "the player reserves room for YouTube's minimum player height");
+assert.match(watchHtml, /@media\(max-width:760px\)/, "the queue stacks below the player in narrow panes");
+const desk = youtubeDeskVideo(videoUrl + "&list=PLExample&index=3&unused=private");
+assert.equal(desk.id, "42TV0hS59OA");
+assert.equal(desk.url, videoUrl);
+assert.equal(new URL(desk.embed).searchParams.has("list"), false, "unchecked playlist entries cannot autoplay from this embed");
+assert.equal(new URL(desk.embed).searchParams.get("start"), "45");
+assert.equal(youtubeDeskVideo("https://user:pass@www.youtube.com/watch?v=42TV0hS59OA"), null);
+assert.equal(youtubeDeskVideo("https://www.youtube.com:444/watch?v=42TV0hS59OA"), null);
 
 assert.equal(youtubeFallbackHtml("https://www.youtube.com/", origin), "", "the YouTube home page must not be replaced by an external-link fallback");
 assert.equal(youtubeFallbackHtml("https://m.youtube.com/", origin), "", "the mobile homepage must be redirected and loaded normally");
