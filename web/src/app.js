@@ -3,29 +3,29 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.29.1-session-privacy";
+} from "./core.js?v=8.30.0-studio";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.29.1-session-privacy";
-import { initUI } from "./ui.js?v=8.29.2-console-lab";
-import { initDevtools } from "./devtools.js?v=8.29.1-session-privacy";
-import { maybeOfferRenew } from "./renew.js?v=8.29.1-session-privacy";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.30.0-studio";
+import { initUI } from "./ui.js?v=8.30.0-studio";
+import { initDevtools } from "./devtools.js?v=8.30.0-studio";
+import { maybeOfferRenew } from "./renew.js?v=8.30.0-studio";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
-import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=1";
+import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=2";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 // Lazy modules: Device Cast and the admin console are rare destinations, so
 // their code is only fetched when first used instead of joining the critical
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.29.1-session-privacy").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.30.0-studio").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
   // A failed module fetch can be sticky for this document. Retry at a new URL.
-  const url = "./admin.js?v=8.29.1-session-privacy";
+  const url = "./admin.js?v=8.30.0-studio";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
@@ -533,6 +533,7 @@ function tabContextMenu(id, x, y) {
 }
 export function switchTab(id) {
   const t = tabById(id); if (!t) return;
+  if (state.activeId !== id) hooks.playStudioSound?.("switch");
   // Split view only makes sense while one of its panes is active; switching
   // to any other tab leaves the split overlay hiding that tab, so exit split.
   const ss = state.splitScreen;
@@ -540,6 +541,7 @@ export function switchTab(id) {
   state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
 }
 export function newTab({ url = "", view = "", index = -1, background = false, section = "", displayUrl = "" } = {}) {
+  if (!background) hooks.playStudioSound?.("open");
   const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
   if (!background) state.activeId = t.id;
   renderTabs();
@@ -563,6 +565,7 @@ export function closeTab(id, { silent = false } = {}) {
   const idx = state.tabs.findIndex(t => t.id === id); if (idx < 0) return;
   const t = state.tabs[idx];
   if (!silent && settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab is still being indexed. Close it anyway?")) return;
+  if (!silent) hooks.playStudioSound?.("close");
   if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
   else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section });
   teardownTab(t); hooks.dt?.onTabClosed(t);
@@ -1419,6 +1422,7 @@ export function classify(input) {
   const internal = v.match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
   if (internal) {
     const name = internal[1].toLowerCase(), view = name === "console-labs" ? "console-lab" : name;
+    if (["customize", "customise", "customization-studio"].includes(view)) return { kind: "internal", view: "settings", section: "appearance" };
     return Object.hasOwn(INTERNAL, view) ? { kind: "internal", view, section: view === "console-lab" ? "" : internal[2] || "" } : { kind: "search", query: v };
   }
   if (/^(?:javascript|data|blob|file|chrome|about):/i.test(v)) return { kind: "unsupported", value: v };

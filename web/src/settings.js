@@ -1,13 +1,12 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.29.1-session-privacy";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.29.2-console-lab";
-import { WORKSPACE_PRESETS } from "./workspace.js?v=1";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.30.0-studio";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.30.0-studio";
+import { studioMarkup, wireStudio } from "./studio.js?v=1";
 
 let B;
-const ACCENTS = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
 const SECTIONS = [
   { id: "account", label: "You and Veyra", desc: "Sign-in, sync and account security", icon: "i-user" },
-  { id: "appearance", label: "Appearance", desc: "Theme, accent colour, font size and layout", icon: "i-moon" },
+  { id: "appearance", label: "Appearance", desc: "Customization Studio: themes, wallpaper, layout and sound", icon: "i-sliders" },
   { id: "search", label: "Search engine", desc: "Default search engine and web results", icon: "i-search" },
   { id: "startup", label: "On startup", desc: "What opens when Veyra starts", icon: "i-home" },
   { id: "newtab", label: "New tab page", desc: "Shortcuts, recent sites and clock", icon: "i-tab" },
@@ -58,27 +57,7 @@ function accountSection() {
     ${button("Sign out everywhere", "Revokes every token issued for this account.", "signOutAll", "Sign out everywhere")}
     ${button("Delete account", "Permanently removes your account and synced data.", "deleteAccount", "Delete account", "btn danger")}`);
 }
-function appearanceSection() {
-  const theme = settings.theme;
-  const card = (v, l, bg) => `<button class="theme-card ${theme === v ? "on" : ""}" data-theme-pick="${v}" aria-pressed="${theme === v}"><i style="background:${bg}"></i><span>${l}</span></button>`;
-  return section("appearance", "Customize workspace", "Make Veyra feel like your browser. Changes apply as you make them.", `
-    <div class="workspace-presets" aria-label="Workspace presets">${Object.entries(WORKSPACE_PRESETS).map(([id, p]) =>
-      `<button type="button" class="workspace-preset" data-workspace-preset="${id}" aria-pressed="${settings.workspacePreset === id}" style="--preset-tint:${p.palette};--preset-accent:${p.accent}"><i></i><span>${p.name}</span></button>`).join("")}</div>
-    <div class="theme-cards" data-label="Theme dark light system">${card("dark", "Dark", "linear-gradient(135deg,#0d0f13 60%,#1b1f27)")}${card("light", "Light", "linear-gradient(135deg,#f6f7f9 60%,#e2e5ea)")}${card("system", "Device", "linear-gradient(135deg,#0d0f13 50%,#f6f7f9 50%)")}</div>
-    ${row("Accent colour", "Used for buttons, focus and highlights.", `<div class="swatches">${ACCENTS.map(c => `<button class="swatch ${settings.accent === c ? "on" : ""}" data-accent="${c}" style="background:${c}" aria-label="Accent ${c}"></button>`).join("")}<input type="color" data-set="accent" value="${esc(settings.accent)}" aria-label="Custom accent" style="width:30px;height:28px;border:0;background:none;padding:0"></div>`)}
-    ${select("fontScale", "Font size", "Scales the Veyra interface.", [[0.9, "Small"], [1, "Medium (recommended)"], [1.1, "Large"], [1.2, "Very large"]])}
-    ${select("zoomDefault", "Default page zoom", "Applied to new page tabs.", [[0.8, "80%"], [0.9, "90%"], [1, "100%"], [1.1, "110%"], [1.25, "125%"], [1.5, "150%"]])}
-    ${select("tabLayout", "Tab position", "Put tabs in the top strip or a side rail.", [["top", "Top"], ["left", "Left side"], ["right", "Right side"]])}
-    ${number("tabRailWidth", "Side rail width", "160–320 pixels, when tab titles are shown.", 160, 320, 8)}
-    ${toggle("tabRailCompact", "Icon-only side rail", "Keep the side rail narrow and show titles on hover.")}
-    ${select("chromeShape", "Tab shape", "", [["soft", "Soft corners"], ["sharp", "Square"], ["round", "Rounded"]])}
-    ${select("newTabBackdrop", "New tab backdrop", "", [["glow", "Accent glow"], ["grid", "Grid"], ["plain", "Plain"]])}
-    ${select("splitLayout", "Default split layout", "Small screens stack the panes automatically.", [["columns", "Side by side"], ["stack", "Stacked"]])}
-    ${toggle("gameFocus", "Game Focus", "Reduces interface effects and pauses background Veyra diagnostics. Does not change game FPS or network limits.")}
-    ${toggle("compact", "Compact mode", "Tighter tabs and toolbar.")}
-    ${toggle("showHomeButton", "Show home button", "")}
-    ${toggle("showBookmarksBar", "Show bookmarks bar", "Ctrl+Shift+B toggles it.")}`);
-}
+const appearanceSection = () => studioMarkup({ row, toggle, select, number }, !!$("settingsSearch").value.trim());
 function searchSection() {
   return section("search", "Search engine", "Used when you type something that isn't a URL in the address bar.", `
     ${radios("searchEngine", Object.entries(SEARCH_ENGINES).map(([k, e]) => [k, e.name, k === "veyra" ? "Built-in results through the Veyra crawler" : k === "custom" ? "Use your own URL with %s for the query" : ""]))}
@@ -182,7 +161,7 @@ function neuralSection() {
     ${toggle("neuralCrawlerBlockTrackers", "Block trackers in Chromium", "Block ads, analytics and tracking scripts in Chromium pages for faster loads.")}
     ${toggle("neuralCrawlerPrewarm", "Pre-warm Chromium contexts", "Create browser contexts ahead of time for faster first navigation.")}
     ${toggle("neuralCrawlerProgressiveRender", "Progressive rendering", "Take an early screenshot after DOMContentLoaded instead of waiting for full load.")}
-    <div class="s-row" style="display:block"><div class="s-label"><b>Neural model stats</b><span>Live training statistics from the server.</span></div><div id="neuralStats" style="margin-top:8px"><span class="muted">Loading…</span></div></div>
+    <div class="s-row" style="display:block"><div class="s-label"><b>Neural model stats</b><span>Live training statistics from the server.</span></div><div id="neuralStats" class="muted" style="margin-top:8px" role="status">Select Refresh to load stats.</div></div>
     ${button("Refresh stats", "Fetch the latest neural model statistics from the server.", "refreshNeuralStats", "Refresh")}
     ${button("Reset neural model", "Clear all learned weights and start fresh.", "resetNeuralModel", "Reset model", "btn danger")}`);
 }
@@ -243,12 +222,24 @@ function render(active) {
     const meta = visible.find(s => s.id === cur);
     body.innerHTML = `<nav class="s-crumbs" aria-label="Breadcrumb"><button class="linkish" data-snav="">Settings</button><span aria-hidden="true">›</span><span>${esc(meta.label)}</span></nav>` + parts[cur]() + empty;
   }
+  hooks.updateStudioPreview?.();
   if (lastRendered !== `${cur}|${q}`) $("view-settings").scrollTop = 0;
   lastRendered = `${cur}|${q}`;
   if (q || !cur || cur === "about") loadAbout();
-  if (q || cur === "neural") loadNeuralStats();
+  if (!q && cur === "neural") void loadNeuralStats();
   if (q || cur === "vpn") renderVpnList();
   if (isAdmin() && (q || cur === "admin")) loadAdmin();
+}
+
+async function loadNeuralStats() {
+  const el = $("neuralStats");
+  if (!el) return;
+  el.textContent = "Loading…";
+  const { model, trainer } = (await getNeuralStats()) || {};
+  if (!el.isConnected) return;
+  const metrics = [["Training examples", model?.trainingExamples], ["Feedback signals", model?.feedbackCount], ["Queued", trainer?.queueSize]];
+  const counts = metrics.filter(([, value]) => Number.isFinite(value)).map(([label, value]) => `${label}: ${value.toLocaleString()}`);
+  el.textContent = counts.length ? counts.join(" · ") : "Stats are currently unavailable.";
 }
 
 async function loadAbout() {
@@ -275,7 +266,7 @@ async function loadAdmin() {
 function filter(q) {
   q = q.toLowerCase(); let any = false;
   qsa("#settingsBody .s-section").forEach(sec => {
-    let hit = false; const inTitle = sec.querySelector("h2").textContent.toLowerCase().includes(q);
+    let hit = false; const inTitle = (sec.querySelector("h2").textContent + " " + (sec.classList.contains("studio") ? sec.querySelector(".studio-panel[data-studio-content=look]").textContent : "")).toLowerCase().includes(q);
     sec.querySelectorAll(".s-row, .radio-row, .theme-cards").forEach(r => {
       const m = !!q && (r.textContent + " " + (r.dataset.label || "")).toLowerCase().includes(q);
       r.classList.toggle("hit", m && r.classList.contains("s-row")); if (m) hit = true;
@@ -521,17 +512,10 @@ export function initSettings(b) {
   nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
   body.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) { e.preventDefault(); goSection(s.dataset.snav); } }, true);
   body.addEventListener("change", e => { const el = e.target.closest("[data-set]"); if (el && el.type !== "text" && el.type !== "password" && el.type !== "url") setValue(el); });
-  body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el && ["text", "password", "url", "color"].includes(el.type)) { setValue(el); if (el.dataset.set === "accent") qsa(".swatch").forEach(s => s.classList.remove("on")); } }, 450));
+  body.addEventListener("input", debounce(e => { const el = e.target.closest("[data-set]"); if (el?.isConnected && ["text", "password", "url"].includes(el.type)) setValue(el); }, 450));
+  wireStudio(body, () => { if (B.activeTab()?.view === "settings") render(curSection()); });
   body.addEventListener("click", async e => {
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
-    const preset = e.target.closest("[data-workspace-preset]");
-    if (preset && Object.hasOwn(WORKSPACE_PRESETS, preset.dataset.workspacePreset)) {
-      settings.workspacePreset = preset.dataset.workspacePreset; settings.accent = WORKSPACE_PRESETS[settings.workspacePreset].accent;
-      settings.theme = "dark"; saveSettings();
-      render(curSection()); body.querySelector(`[data-workspace-preset="${settings.workspacePreset}"]`)?.focus(); return;
-    }
-    const th = e.target.closest("[data-theme-pick]"); if (th) { settings.theme = th.dataset.themePick; saveSettings(); qsa(".theme-card").forEach(c => { c.classList.toggle("on", c === th); c.setAttribute("aria-pressed", c === th); }); return; }
-    const sw = e.target.closest("[data-accent]"); if (sw) { settings.accent = sw.dataset.accent; saveSettings(); qsa(".swatch").forEach(s => s.classList.toggle("on", s === sw)); const ci = document.querySelector('#settingsBody input[type=color]'); if (ci) ci.value = sw.dataset.accent; return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
     const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
     
