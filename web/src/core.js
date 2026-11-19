@@ -1,5 +1,5 @@
 import { toast, clearNotifications } from "./notifications.js?v=2";
-import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=1";
+import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=2";
 export { toast, clearNotifications };
 
 export function bootParam(name) {
@@ -25,7 +25,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.32.0";
+export const VERSION = "8.33.0";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this

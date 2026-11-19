@@ -4,7 +4,13 @@ export const WORKSPACE_PRESETS = Object.freeze({
   circuit: { name: "Circuit", accent: "#69e0b4", palette: "#10201d", wallpaper: "signal", mode: "dark" },
   ember: { name: "Ember", accent: "#ffb374", palette: "#231a16", wallpaper: "dunes", mode: "dark" },
   midnight: { name: "Midnight", accent: "#a7a6ff", palette: "#131425", wallpaper: "ridge", mode: "dark" },
-  daybreak: { name: "Daybreak", accent: "#365f9d", palette: "#e1eafa", wallpaper: "ridge", mode: "light" }
+  daybreak: { name: "Daybreak", accent: "#365f9d", palette: "#e1eafa", wallpaper: "ridge", mode: "light" },
+  aurora: { name: "Aurora", accent: "#83e9ca", palette: "#122324", wallpaper: "aurora", mode: "dark" },
+  infrared: { name: "Infrared", accent: "#ff8c84", palette: "#291616", wallpaper: "orbit", mode: "dark" },
+  graphite: { name: "Graphite", accent: "#d0d6df", palette: "#1c1e22", wallpaper: "none", mode: "dark" },
+  tide: { name: "Tide", accent: "#8acfff", palette: "#102335", wallpaper: "tide", mode: "dark" },
+  parchment: { name: "Parchment", accent: "#865628", palette: "#f4e6d1", wallpaper: "dunes", mode: "light" },
+  sakura: { name: "Sakura", accent: "#963b69", palette: "#f8e5ee", wallpaper: "bloom", mode: "light" }
 });
 
 export const GROUP_COLOURS = ["#8fb0f0", "#ff769c", "#69e0b4", "#ffb374", "#c49bf0", "#c4db79"];

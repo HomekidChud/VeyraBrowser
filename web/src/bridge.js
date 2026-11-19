@@ -1,6 +1,6 @@
 
 
-import { api, API_ORIGIN, uid } from "./core.js?v=8.32.0-stream";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.33.0-studio";
 
 const pending = new Map();
 const listeners = new Set();

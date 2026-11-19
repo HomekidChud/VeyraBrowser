@@ -3,15 +3,25 @@ import { readFileSync } from "node:fs";
 import { WORKSPACE_PRESETS } from "../web/src/workspace.js";
 import {
   APPEARANCE, appearanceValues, readSetup, resolvedWallpaper, setupForExport, setupName,
-  validWallpaper, DEVICE_APPEARANCE_KEYS, STUDIO_LOCAL_KEYS, MAX_SETUP_BYTES
+  validWallpaper, DEVICE_APPEARANCE_KEYS, STUDIO_LOCAL_KEYS, MAX_SETUP_BYTES, WALLPAPERS, moveToolbarItem, toolbarOrder
 } from "../web/src/studio-model.js";
 
 const file = path => readFileSync(new URL(`../web/${path}`, import.meta.url), "utf8");
-assert.equal(Object.keys(WORKSPACE_PRESETS).length, 6);
+assert.equal(Object.keys(WORKSPACE_PRESETS).length, 12);
+assert.ok(Object.values(WORKSPACE_PRESETS).every(preset => Object.hasOwn(WALLPAPERS, preset.wallpaper)));
+assert.deepEqual(toolbarOrder(["downloads", "downloads", "menu"]), ["downloads", "vpn", "extensions"]);
+assert.deepEqual(moveToolbarItem(["downloads", "vpn", "extensions"], "downloads", -1), ["downloads", "vpn", "extensions"]);
+assert.deepEqual(moveToolbarItem([], "extensions", -1), ["extensions", "vpn", "downloads"]);
+assert.deepEqual(moveToolbarItem([], "unknown", 1), APPEARANCE.toolbarOrder);
+assert.deepEqual(moveToolbarItem([], "vpn", 12), APPEARANCE.toolbarOrder);
 assert.deepEqual(appearanceValues({}), APPEARANCE);
 assert.deepEqual(appearanceValues(null), APPEARANCE);
 assert.deepEqual(appearanceValues({ toolbarHidden: ["vpn", "menu", "vpn", "extensions"], wallpaperStrength: 400 }).toolbarHidden, ["vpn", "extensions"]);
 assert.equal(appearanceValues({ accent: "url(https://example.com)" }).accent, APPEARANCE.accent);
+assert.equal(appearanceValues({ chromeTint: "url(https://example.com)" }).chromeTint, "");
+assert.equal(appearanceValues({ chromeTint: "#AA8866" }).chromeTint, "#aa8866");
+assert.equal(appearanceValues({ wallpaperX: -5, wallpaperShade: 950 }).wallpaperX, 0);
+assert.equal(appearanceValues({ tabWidth: 999 }).tabWidth, 260);
 assert.equal(appearanceValues({ studioSound: "other", studioVolume: 120 }).studioVolume, 100);
 assert.equal(appearanceValues({ studioMotion: "true" }).studioMotion, false);
 assert.equal(setupName(" Test\u202E name "), "Test name");
@@ -28,12 +38,20 @@ assert.equal(resolvedWallpaper({ ...APPEARANCE, studioWallpaper: "custom" }, "")
 assert.equal(resolvedWallpaper({ ...APPEARANCE, studioWallpaper: "orbit", gameFocus: true }, ""), "none");
 
 const config = setupForExport("Late night", {
-  ...APPEARANCE, accent: "#88AAFF", studioWallpaper: "custom", studioSound: "synth", theme: "light",
+  ...APPEARANCE, accent: "#88AAFF", chromeTint: "#F8E5EE", studioWallpaper: "custom", wallpaperFit: "contain",
+  wallpaperY: 10, wallpaperShade: 33, studioSound: "synth", theme: "light", toolbarOrder: ["downloads", "vpn", "extensions"],
+  ntpBrand: false, ntpSearch: false, ntpAlign: "start", tabIndicator: "outline", tabWidth: 250,
   history: [{ url: "https://private.example" }], ntpTiles: [{}], adminToken: "test", image, __proto__: { homepage: "test" }
 });
 assert.equal(config.appearance.studioWallpaper, "none");
 assert.equal(config.appearance.studioSound, "synth");
 assert.equal(config.appearance.accent, "#88aaff");
+assert.equal(config.appearance.chromeTint, "#f8e5ee");
+assert.equal(config.appearance.wallpaperFit, "contain");
+assert.equal(config.appearance.ntpSearch, false);
+assert.equal(config.appearance.tabIndicator, "outline");
+assert.equal(config.appearance.tabWidth, 250);
+assert.deepEqual(config.appearance.toolbarOrder, ["downloads", "vpn", "extensions"]);
 assert.deepEqual(Object.keys(config.appearance), Object.keys(APPEARANCE));
 assert.deepEqual(readSetup(JSON.stringify(config)), config);
 assert.deepEqual(readSetup('{"format":"veyra-appearance","version":1,"appearance":{"theme":"light","__proto__":{"polluted":true},"adminToken":"ignored"}}').appearance, { ...APPEARANCE, theme: "light" });
@@ -43,6 +61,10 @@ for (const invalid of [
   JSON.stringify({ ...config, version: 2 }),
   JSON.stringify({ ...config, appearance: { adminToken: "test" } }),
   JSON.stringify({ ...config, appearance: { theme: "light", toolbarHidden: ["menu"] } }),
+  JSON.stringify({ ...config, appearance: { toolbarOrder: ["vpn", "vpn", "downloads"] } }),
+  JSON.stringify({ ...config, appearance: { wallpaperFit: "tile" } }),
+  JSON.stringify({ ...config, appearance: { wallpaperX: 101 } }),
+  JSON.stringify({ ...config, appearance: { chromeTint: "var(--anything)" } }),
   JSON.stringify({ ...config, appearance: { accent: "red" } }),
   JSON.stringify({ ...config, appearance: { studioVolume: -1 } })
 ]) assert.throws(() => readSetup(invalid));

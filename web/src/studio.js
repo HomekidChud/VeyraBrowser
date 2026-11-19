@@ -1,12 +1,16 @@
-import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.32.0-stream";
-import { WORKSPACE_PRESETS } from "./workspace.js?v=2";
+import { $, esc, settings, load, save, remove, saveSettings, promptDialog, confirmDialog, toast, uid, INCOGNITO } from "./core.js?v=8.33.0-studio";
+import { WORKSPACE_PRESETS } from "./workspace.js?v=3";
 import {
   APPEARANCE, WALLPAPERS, SOUND_PACKS, TOOLBAR_ITEMS, MAX_SETUPS, MAX_SETUP_BYTES, MAX_IMAGE_BYTES,
-  STUDIO_LOCAL_KEYS, appearanceValues, readSetup, setupForExport, setupName, resolvedWallpaper, validWallpaper
-} from "./studio-model.js?v=1";
+  STUDIO_LOCAL_KEYS, appearanceValues, moveToolbarItem, readSetup, setupForExport, setupName, resolvedWallpaper, validWallpaper
+} from "./studio-model.js?v=2";
 
 const [IMAGE_KEY, SETUP_KEY] = STUDIO_LOCAL_KEYS;
-const descriptions = { glacier: "Cool & clean", pulse: "Neon dusk", circuit: "Terminal green", ember: "Warm copper", midnight: "Ultraviolet", daybreak: "Soft daylight" };
+const descriptions = {
+  glacier: "Cool & clean", pulse: "Neon dusk", circuit: "Terminal green", ember: "Warm copper", midnight: "Ultraviolet", daybreak: "Soft daylight",
+  aurora: "Polar green", infrared: "Deep red", graphite: "Cool grey", tide: "Sea blue", parchment: "Warm paper", sakura: "Soft pink"
+};
+const toolIds = { vpn: "vpnBtn", extensions: "extBtn", downloads: "downloadBtn" };
 const icons = { look: "i-moon", newtab: "i-tab", layout: "i-dock-right", sound: "i-sound", setups: "i-layers" };
 const panels = { look: "Themes", newtab: "New tab", layout: "Layout", sound: "Sound", setups: "My setups" };
 const accents = ["#8fb0f0", "#6fd3b8", "#f0b86f", "#f08f9e", "#c49bf0", "#9fd46a", "#e8e8e8"];
@@ -17,11 +21,25 @@ let activePanel = "look";
 let soundContext;
 let imageValue = load(IMAGE_KEY, "");
 let savedSetups = load(SETUP_KEY, []);
+let undo, redo, adjustment;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const setups = () => Array.isArray(savedSetups) ? savedSetups.filter(p => p && /^[\w-]{1,60}$/.test(p.id || "") && setupName(p.name)).slice(0, MAX_SETUPS) : [];
 const persist = (key, value) => {
   save(key, value);
   return INCOGNITO || JSON.stringify(load(key, null)) === JSON.stringify(value);
 };
+
+export function changeStudioAppearance(patch, control = null) {
+  const before = appearanceValues(settings);
+  const after = appearanceValues({ ...before, ...patch });
+  if (same(before, after)) return false;
+  if (!control || control !== adjustment) undo = before;
+  adjustment = control;
+  redo = null;
+  Object.assign(settings, after);
+  saveSettings();
+  return true;
+}
 
 export function playStudioSound(event = "open") {
   const { studioSound, studioVolume, gameFocus } = appearanceValues(settings);
@@ -51,13 +69,27 @@ export function applyStudioVisuals(app, root) {
   const wallpaper = resolvedWallpaper(p, imageValue);
   app.dataset.wallpaper = wallpaper;
   app.dataset.dial = p.speedDialLayout;
-  app.dataset.wallpaperMotion = String(p.studioMotion && !p.reduceMotion && !p.gameFocus);
+  app.dataset.ntpAlign = p.ntpAlign;
+  app.dataset.ntpBrand = String(p.ntpBrand);
+  app.dataset.ntpSearch = String(p.ntpSearch);
+  app.dataset.tabIndicator = p.tabIndicator;
+  app.dataset.chromeTint = String(!!p.chromeTint || (p.workspacePreset !== "glacier" && WORKSPACE_PRESETS[p.workspacePreset].mode === root.dataset.theme));
+  app.dataset.wallpaperMotion = String(p.studioMotion && p.wallpaperFit === "cover" && !p.reduceMotion && !p.gameFocus);
   app.style.setProperty("--wallpaper-strength", p.wallpaperStrength / 100);
+  app.style.setProperty("--wallpaper-size", p.wallpaperFit === "stretch" ? "100% 100%" : p.wallpaperFit);
+  app.style.setProperty("--wallpaper-x", `${p.wallpaperX}%`);
+  app.style.setProperty("--wallpaper-y", `${p.wallpaperY}%`);
+  app.style.setProperty("--wallpaper-shade", `${p.wallpaperShade}%`);
+  app.style.setProperty("--studio-tab-width", `${p.tabWidth}px`);
   if (validWallpaper(imageValue)) app.style.setProperty("--studio-custom-wall", `url("${imageValue}")`);
   else app.style.removeProperty("--studio-custom-wall");
   root.dataset.typeface = p.uiTypeface;
-  for (const [key, id] of [["vpn", "vpnBtn"], ["extensions", "extBtn"], ["downloads", "downloadBtn"]]) {
-    $(id).classList.toggle("studio-hidden-tool", p.toolbarHidden.includes(key));
+  let previous = $("sessionPill");
+  for (const key of p.toolbarOrder) {
+    const node = $(toolIds[key]);
+    if (previous.nextElementSibling !== node) previous.after(node);
+    node.classList.toggle("studio-hidden-tool", p.toolbarHidden.includes(key));
+    previous = node;
   }
   const preview = $("studioPreview");
   if (!preview) return;
@@ -66,10 +98,21 @@ export function applyStudioVisuals(app, root) {
   preview.dataset.previewRecent = String(p.ntpRecent);
   preview.dataset.previewRail = p.tabLayout;
   preview.dataset.previewIconRail = String(p.tabRailCompact);
+  preview.dataset.previewTools = p.toolbarOrder.filter(key => !p.toolbarHidden.includes(key)).join(",");
+  const tools = preview.querySelector(".studio-preview-tools");
+  if (tools.dataset.order !== preview.dataset.previewTools) {
+    tools.dataset.order = preview.dataset.previewTools;
+    tools.innerHTML = tools.dataset.order.split(",").filter(Boolean).map(key =>
+      icon({ vpn: "i-vpn", extensions: "i-puzzle", downloads: "i-download" }[key])).join("");
+  }
   const state = $("studioPreviewState");
   if (state) state.textContent = `${WORKSPACE_PRESETS[p.workspacePreset].name} / ${p.gameFocus ? "Game Focus" : WALLPAPERS[wallpaper]}`;
   const sound = $("studioSoundTest");
   if (sound) sound.disabled = p.studioSound === "off" || p.gameFocus || !p.studioVolume;
+  for (const [id, snapshot] of [["undo", undo], ["redo", redo], ["clear-tint", p.chromeTint]]) {
+    const button = document.querySelector(`[data-studio-act="${id}"]`);
+    if (button) button.disabled = !snapshot;
+  }
 }
 
 const cardHead = (title, desc) => `<header class="studio-card-head"><h3>${title}</h3><p>${desc}</p></header>`;
@@ -78,32 +121,46 @@ const range = (row, key, label, desc, min, max) => row(label, desc, `<div class=
 
 export function studioMarkup({ row, toggle, select, number }, searching) {
   const p = appearanceValues(settings), custom = validWallpaper(imageValue);
-  const looks = block("Theme collection", "Start with a preset, then adjust any part of the look.", `<div class="studio-presets" aria-label="Theme presets">${
+  const looks = block("Theme collection", "Start with a palette. Your wallpaper and layout stay independent.", `<div class="studio-presets" aria-label="Theme presets">${
     options(WORKSPACE_PRESETS).map(([id, preset]) => `<button class="studio-preset" data-studio-theme="${id}" aria-pressed="${p.workspacePreset === id}" style="--preset-tint:${preset.palette};--preset-accent:${preset.accent}" type="button"><span class="studio-preset-art" data-preset-art="${id}"><i></i><i></i><i></i>${icon("i-check")}</span><span class="studio-preset-name">${preset.name}</span><small>${descriptions[id]}</small></button>`).join("")
   }</div>`)
     + block("Color and type", "Set the mood, contrast, and typography of Veyra’s interface.",
       select("theme", "Color mode", "Follow your device or choose a mode manually.", [["dark", "Dark"], ["light", "Light"], ["system", "Device"]])
       + row("Accent colour", "Highlights, selection, and focus.", `<div class="swatches">${accents.map(c => `<button type="button" class="swatch ${p.accent === c ? "on" : ""}" data-studio-accent="${c}" style="background:${c}" aria-pressed="${p.accent === c}" aria-label="Accent ${c}"></button>`).join("")}<input type="color" value="${p.accent}" id="studioAccent" aria-label="Custom accent"></div>`)
+      + row("Chrome tint", "Colour the tab strip and toolbar separately from the accent.", `<div class="studio-color">${action("clear-tint", "Use theme tint", null, p.chromeTint ? "" : "disabled")}<input type="color" value="${p.chromeTint || WORKSPACE_PRESETS[p.workspacePreset].palette}" id="studioTint" aria-label="Custom chrome tint"></div>`)
       + select("uiTypeface", "Interface font", "Changes browser controls, not website fonts.", [["default", "Veyra default"], ["system", "System sans"], ["mono", "Monospace"]])
       + select("fontScale", "Font size", "Scales the Veyra interface.", [[.9, "Small"], [1, "Medium"], [1.1, "Large"], [1.2, "Very large"]]));
   const newtab = block("Wallpaper gallery", "Mix any wallpaper with any theme. Your own image stays in this browser.",
     `<div class="studio-wallpapers">${options(WALLPAPERS).filter(([key]) => key !== "custom" || custom).map(([id, title]) => `<button class="studio-wallpaper" type="button" data-studio-wall="${id}" aria-pressed="${p.studioWallpaper === id}"><i data-wall-art="${id}">${icon("i-check")}</i><span>${title}</span></button>`).join("")}</div>`
     + row("Custom wallpaper", "JPEG, PNG or WebP up to 8 MB. Converted to a static image on this device.", `${action("image", custom ? "Replace image" : "Upload image", "i-plus")}${custom ? action("clear-image", "Remove", "i-trash") : ""}<input class="hidden" type="file" id="studioImageFile" accept="image/png,image/jpeg,image/webp">`)
+    + select("wallpaperFit", "Wallpaper fit", "Fill the screen, show the whole image, or stretch it.", [["cover", "Fill"], ["contain", "Fit"], ["stretch", "Stretch"]])
+    + range(row, "wallpaperX", "Horizontal position", "Move the image crop left or right when it extends beyond the frame.", 0, 100)
+    + range(row, "wallpaperY", "Vertical position", "Move the image crop up or down when it extends beyond the frame.", 0, 100)
     + range(row, "wallpaperStrength", "Wallpaper intensity", "Adjust how strongly the wallpaper shows behind your shortcuts.", 20, 90)
+    + range(row, "wallpaperShade", "Wallpaper shading", "Blend the artwork into the page background to keep text readable.", 0, 100)
     + select("newTabBackdrop", "Base backdrop", "Used without a wallpaper and beneath translucent ones.", [["glow", "Accent glow"], ["grid", "Grid"], ["plain", "Plain"]])
-    + toggle("studioMotion", "Wallpaper drift", "Subtle movement on the New tab page. Respects reduced motion."))
+    + toggle("studioMotion", "Wallpaper drift", "Animates the Fill layout only. Respects reduced motion."))
     + block("Speed Dial", "Decide what you see on every New tab.",
       select("speedDialLayout", "Shortcut layout", "Choose a layout for your pinned sites.", [["classic", "Classic"], ["compact", "Compact grid"], ["wide", "Wide cards"], ["minimal", "Minimal list"]])
+      + select("ntpAlign", "Dashboard alignment", "Align the New tab content within the page.", [["center", "Centered"], ["start", "Left aligned"]])
+      + toggle("ntpBrand", "Veyra logo", "Show the brand mark on New tab.")
+      + toggle("ntpSearch", "Dashboard search box", "The main address bar stays available.")
       + toggle("ntpShortcuts", "Shortcut tiles", "Show pinned sites.") + toggle("ntpClock", "Clock and greeting", "") + toggle("ntpRecent", "Recent sites", ""));
   const layout = block("Tabs and toolbar", "Pick where your tabs live and keep just the shortcuts you use.",
     select("tabLayout", "Tab position", "Use the top strip or a side rail.", [["top", "Top"], ["left", "Left side"], ["right", "Right side"]])
     + number("tabRailWidth", "Side rail width", "160–320 pixels when tab titles are shown.", 160, 320, 1)
     + toggle("tabRailCompact", "Icon-only side rail", "")
+    + number("tabWidth", "Top tab width", "120–260 pixels before tabs need to shrink or scroll.", 120, 260, 1)
     + select("chromeShape", "Tab shape", "", [["soft", "Soft corners"], ["sharp", "Square"], ["round", "Rounded"]])
+    + select("tabIndicator", "Active tab marker", "Highlight the selected tab with the accent colour.", [["classic", "Standard"], ["underline", "Underline"], ["outline", "Outline"]])
     + toggle("compact", "Compact mode", "Tighter tabs and toolbar.")
     + toggle("showHomeButton", "Show home button", "")
-    + toggle("showBookmarksBar", "Show bookmarks bar", "Ctrl+Shift+B toggles the bookmarks bar.")
-    + options(TOOLBAR_ITEMS).map(([id, name]) => row(`${name} shortcut`, "Still available from the browser menu.", `<input type="checkbox" class="switch" aria-label="${name} shortcut" data-studio-tool="${id}" ${p.toolbarHidden.includes(id) ? "" : "checked"}>`)).join(""))
+    + toggle("showBookmarksBar", "Show bookmarks bar", "Ctrl+Shift+B toggles the bookmarks bar."))
+    + block("Toolbar shortcuts", "Hide optional buttons or move them earlier or later. They’re still in the browser menu.",
+      p.toolbarOrder.map((id, index) => {
+        const name = TOOLBAR_ITEMS[id];
+        return row(`${index + 1}. ${name}`, "", `<div class="studio-tool"><input type="checkbox" class="switch" aria-label="${name} shortcut" data-studio-tool="${id}" ${p.toolbarHidden.includes(id) ? "" : "checked"}>${action("move-tool", "Earlier", "i-back", `data-setup="${id}" data-step="-1" aria-label="Move ${name} earlier" ${index === 0 ? "disabled" : ""}`)}${action("move-tool", "Later", "i-forward", `data-setup="${id}" data-step="1" aria-label="Move ${name} later" ${index === p.toolbarOrder.length - 1 ? "disabled" : ""}`)}</div>`);
+      }).join(""))
     + block("Browsing comfort", "Set defaults for reading, multitasking, and a quieter interface.",
       select("zoomDefault", "Default page zoom", "Applied to new page tabs.", [[.8, "80%"], [.9, "90%"], [1, "100%"], [1.1, "110%"], [1.25, "125%"], [1.5, "150%"]])
       + select("splitLayout", "Default split layout", "Small screens stack panes automatically.", [["columns", "Side by side"], ["stack", "Stacked"]])
@@ -115,18 +172,21 @@ export function studioMarkup({ row, toggle, select, number }, searching) {
     + row("Sound preview", "Play a short sample at the current volume.", action("sound", "Play sample", "i-play", `id="studioSoundTest" ${p.studioSound === "off" || p.gameFocus || !p.studioVolume ? "disabled" : ""}`)));
   const entries = setups();
   const library = block("Saved setups", `Save up to ${MAX_SETUPS} looks and switch between them whenever you want.`,
-    `<div class="studio-setups">${entries.length ? entries.map(item => `<div class="studio-setup"><span class="studio-setup-mark" style="--setup-color:${appearanceValues(item.appearance).accent}">${icon("i-layers")}</span><div><b>${esc(setupName(item.name))}</b><small>${WORKSPACE_PRESETS[appearanceValues(item.appearance).workspacePreset].name}</small></div><div class="studio-actions">${action("apply", "Apply", null, `data-setup="${esc(item.id)}"`)}${action("export", "Export", null, `data-setup="${esc(item.id)}"`)}${action("delete", "Remove", null, `data-setup="${esc(item.id)}"`)}</div></div>`).join("") :
+    `<div class="studio-setups">${entries.length ? entries.map(item => {
+      const look = appearanceValues(item.appearance), target = `data-setup="${esc(item.id)}"`;
+      return `<div class="studio-setup"><span class="studio-setup-mark" style="--setup-color:${look.accent}">${icon("i-layers")}</span><div><b>${esc(setupName(item.name))}</b><small>${WORKSPACE_PRESETS[look.workspacePreset].name}</small></div><div class="studio-actions">${action("apply", "Apply", null, target)}${action("rename", "Rename", null, target)}${action("update", "Update", null, target)}${action("export", "Export", null, target)}${action("delete", "Remove", null, target)}</div></div>`;
+    }).join("") :
       `<div class="studio-empty">${icon("i-layers")}<div><b>No saved setups yet</b><p>Save your current look to return to it later.</p></div></div>`}</div>`
     + `<div class="studio-actions studio-library-actions">${action("save", "Save current look", "i-plus")}${action("export", "Export current", "i-download")}${action("import", "Import setup", "i-file")}<input class="hidden" type="file" id="studioSetupFile" accept=".json,application/json"></div>`
     + `<p class="studio-library-note">JSON contains appearance settings only. Personal wallpaper images, site shortcuts, and browsing data aren’t included.</p>`);
   const content = { look: looks, newtab, layout, sound, setups: library };
   return `<section class="s-section studio" id="s-appearance" data-section="appearance" data-studio-search="${searching}">
     <div class="studio-hero">
-      <div class="studio-intro"><span class="studio-kicker">${icon("i-sliders")} WORKSPACE DESIGN</span><h2>Customization <span>Studio</span></h2><p>Make Veyra yours. Mix themes, layouts, and sounds, then save the looks you want to keep.</p><span class="studio-status"><i></i>${INCOGNITO ? "Private window · changes are temporary" : "Changes apply instantly"}</span></div>
+      <div class="studio-intro"><span class="studio-kicker">${icon("i-sliders")} WORKSPACE DESIGN</span><h2>Customization <span>Studio</span></h2><p>Mix palettes, design your New tab, and arrange browser controls. Save a setup to switch looks later.</p><span class="studio-status"><i></i>${INCOGNITO ? "Private window · changes are temporary" : "Changes apply instantly"}</span><div class="studio-actions studio-edit-actions">${action("undo", "Undo", null, undo ? "" : "disabled")}${action("redo", "Redo", null, redo ? "" : "disabled")}</div></div>
       <div class="studio-live"><div class="studio-live-head"><span>LIVE PREVIEW</span><span id="studioPreviewState"></span></div>
       <div class="studio-preview" id="studioPreview" aria-hidden="true">
         <div class="studio-preview-tabs"><span>${icon("logo")} New tab</span><span></span><b>+</b></div>
-        <div class="studio-preview-bar"><i></i><i></i><i></i><div></div></div>
+        <div class="studio-preview-bar"><i></i><i></i><i></i><div></div><span class="studio-preview-tools"></span></div>
         <div class="studio-preview-page"><div class="studio-preview-art"></div><div class="studio-preview-content"><small class="studio-preview-clock">09:41</small><strong>${icon("logo")} Veyra</strong><div class="studio-preview-search">${icon("i-search")} Search or type a URL</div><div class="studio-preview-links"><i>W</i><i>G</i><i>M</i><i>+</i></div><div class="studio-preview-recent">Recently visited</div></div></div>
       </div></div>
     </div>
@@ -168,25 +228,42 @@ export function wireStudio(body, refresh) {
     const attr = attrs.find(name => el.hasAttribute(name));
     const value = attr && el.getAttribute(attr);
     const setup = el.dataset.setup;
+    const step = el.dataset.step;
     refresh();
-    if (attr && !el.isConnected) [...body.querySelectorAll(`[${attr}]`)].find(node => node.getAttribute(attr) === value && node.dataset.setup === setup)?.focus({ preventScroll: true });
+    if (!attr || el.isConnected) return;
+    const matching = [...body.querySelectorAll(`[${attr}]:not(:disabled)`)].filter(node => node.getAttribute(attr) === value && node.dataset.setup === setup);
+    const target = matching.find(node => node.dataset.step === step) ?? matching[0] ??
+      body.querySelector(`[data-studio-act="${value === "undo" ? "redo" : value === "redo" ? "undo" : "reset"}"]:not(:disabled)`);
+    target?.focus({ preventScroll: true });
   }
+  const storeSetups = (next, el, message) => {
+    savedSetups = next;
+    const stored = persist(SETUP_KEY, savedSetups);
+    repaint(el);
+    toast(stored ? message : `${message} for this window only`);
+  };
+  const askName = (title, initial = "") => promptDialog({
+    title, ok: "Save setup", fields: [{ name: "name", label: "Setup name", placeholder: "e.g. Late night", value: initial, required: true }]
+  });
   body.addEventListener("input", e => {
     const el = e.target;
     if (el.dataset.studioRange) {
-      settings[el.dataset.studioRange] = Number(el.value);
+      changeStudioAppearance({ [el.dataset.studioRange]: Number(el.value) }, el);
       el.nextElementSibling.textContent = `${el.value}%`;
-      saveSettings();
     } else if (el.id === "studioAccent") {
-      settings.accent = el.value; saveSettings(); markAccents(body);
+      changeStudioAppearance({ accent: el.value }, el);
+      markAccents(body);
+    } else if (el.id === "studioTint") {
+      changeStudioAppearance({ chromeTint: el.value }, el);
     }
   });
   body.addEventListener("change", async e => {
     const el = e.target;
+    if (adjustment === el) adjustment = null;
     if (Object.hasOwn(TOOLBAR_ITEMS, el.dataset.studioTool)) {
       const hidden = new Set(appearanceValues(settings).toolbarHidden);
       if (el.checked) hidden.delete(el.dataset.studioTool); else hidden.add(el.dataset.studioTool);
-      settings.toolbarHidden = [...hidden]; saveSettings();
+      changeStudioAppearance({ toolbarHidden: [...hidden] });
     }
     if (!["studioImageFile", "studioSetupFile"].includes(el.id) || !el.files?.[0]) return;
     const file = el.files[0]; el.value = "";
@@ -195,13 +272,13 @@ export function wireStudio(body, refresh) {
         const image = await convertWallpaper(file);
         imageValue = image;
         const stored = persist(IMAGE_KEY, image);
-        settings.studioWallpaper = "custom"; saveSettings();
+        if (!changeStudioAppearance({ studioWallpaper: "custom" })) saveSettings();
         toast(stored ? "Wallpaper applied" : "Wallpaper applied for this window only");
       } else {
         if (file.size > MAX_SETUP_BYTES) throw Error("Choose a Veyra setup JSON file under 16 KB.");
         const setup = readSetup(await file.text());
         if (!await confirmDialog("Import appearance setup?", `Apply “${setup.name}” to the current look? Existing saved setups won’t change.`, "Apply setup")) return;
-        Object.assign(settings, setup.appearance); saveSettings(); toast(`Applied ${setup.name}`);
+        changeStudioAppearance(setup.appearance); toast(`Applied ${setup.name}`);
       }
       refresh();
       body.querySelector(`[data-studio-act="${el.id === "studioImageFile" ? "image" : "import"}"]`)?.focus({ preventScroll: true });
@@ -218,19 +295,39 @@ export function wireStudio(body, refresh) {
     const theme = e.target.closest("[data-studio-theme]");
     if (theme && Object.hasOwn(WORKSPACE_PRESETS, theme.dataset.studioTheme)) {
       const preset = WORKSPACE_PRESETS[theme.dataset.studioTheme];
-      Object.assign(settings, { workspacePreset: theme.dataset.studioTheme, theme: preset.mode, accent: preset.accent }); saveSettings(); repaint(theme); return;
+      changeStudioAppearance({ workspacePreset: theme.dataset.studioTheme, theme: preset.mode, accent: preset.accent }); repaint(theme); return;
     }
     const accent = e.target.closest("[data-studio-accent]");
-    if (accent) { settings.accent = accent.dataset.studioAccent; $("studioAccent").value = settings.accent; saveSettings(); markAccents(body); return; }
+    if (accent) { changeStudioAppearance({ accent: accent.dataset.studioAccent }); $("studioAccent").value = settings.accent; markAccents(body); return; }
     const wall = e.target.closest("[data-studio-wall]");
     if (wall && Object.hasOwn(WALLPAPERS, wall.dataset.studioWall)) {
-      settings.studioWallpaper = wall.dataset.studioWall; saveSettings();
+      changeStudioAppearance({ studioWallpaper: wall.dataset.studioWall });
       body.querySelectorAll("[data-studio-wall]").forEach(btn => btn.setAttribute("aria-pressed", btn === wall)); return;
     }
     const el = e.target.closest("[data-studio-act]");
     if (!el) return;
     const profile = setups().find(p => p.id === el.dataset.setup);
     switch (el.dataset.studioAct) {
+      case "undo":
+      case "redo": {
+        const goingBack = el.dataset.studioAct === "undo";
+        const snapshot = goingBack ? undo : redo;
+        if (!snapshot) return;
+        if (goingBack) { redo = appearanceValues(settings); undo = null; }
+        else { undo = appearanceValues(settings); redo = null; }
+        adjustment = null;
+        Object.assign(settings, snapshot);
+        saveSettings();
+        repaint(el);
+        toast(goingBack ? "Appearance change undone" : "Appearance change redone", { ms: 1500 });
+        return;
+      }
+      case "clear-tint": changeStudioAppearance({ chromeTint: "" }); repaint(el); return;
+      case "move-tool": {
+        const order = moveToolbarItem(settings.toolbarOrder, el.dataset.setup, Number(el.dataset.step));
+        if (changeStudioAppearance({ toolbarOrder: order })) repaint(el);
+        return;
+      }
       case "sound": playStudioSound("preview"); return;
       case "image": $("studioImageFile").click(); return;
       case "import": $("studioSetupFile").click(); return;
@@ -240,21 +337,32 @@ export function wireStudio(body, refresh) {
         saveSettings(); refresh(); body.querySelector('[data-studio-act="image"]')?.focus(); return;
       case "reset":
         if (!await confirmDialog("Reset appearance?", "This restores the default look. Your saved setups, wallpaper image, and browsing data stay.", "Reset appearance")) return;
-        const restored = appearanceValues(APPEARANCE);
-        Object.assign(settings, restored); saveSettings(); repaint(el); toast("Default look restored"); return;
+        changeStudioAppearance(APPEARANCE); repaint(el); toast("Default look restored"); return;
       case "save": {
         if (setups().length >= MAX_SETUPS) { toast("Remove a setup before saving another.", { kind: "err" }); return; }
-        const result = await promptDialog({ title: "Save current look", ok: "Save setup", fields: [{ name: "name", label: "Setup name", placeholder: "e.g. Late night" }] });
+        const result = await askName("Save current look");
         if (!result) return;
         const name = setupName(result.name);
         if (!name) { toast("Enter a setup name.", { kind: "err" }); return; }
-        savedSetups = [...setups(), { id: uid(), name, appearance: appearanceValues(settings) }];
-        const stored = persist(SETUP_KEY, savedSetups); repaint(el);
-        toast(stored ? `Saved ${name}` : `Saved ${name} for this window only`); return;
+        storeSetups([...setups(), { id: uid(), name, appearance: appearanceValues(settings) }], el, `Saved ${name}`);
+        return;
       }
       case "apply":
         if (!profile) return;
-        Object.assign(settings, appearanceValues(profile.appearance)); saveSettings(); repaint(el); toast(`Applied ${setupName(profile.name)}`); return;
+        changeStudioAppearance(appearanceValues(profile.appearance)); repaint(el); toast(`Applied ${setupName(profile.name)}`); return;
+      case "rename": {
+        if (!profile) return;
+        const result = await askName("Rename setup", setupName(profile.name));
+        if (!result) return;
+        const name = setupName(result.name);
+        if (!name) { toast("Enter a setup name.", { kind: "err" }); return; }
+        storeSetups(setups().map(item => item.id === profile.id ? { ...item, name } : item), el, `Renamed to ${name}`);
+        return;
+      }
+      case "update":
+        if (!profile || !await confirmDialog("Update saved setup?", `Replace the look in “${setupName(profile.name)}” with the current appearance?`, "Update setup")) return;
+        storeSetups(setups().map(item => item.id === profile.id ? { ...item, appearance: appearanceValues(settings) } : item), el, `Updated ${setupName(profile.name)}`);
+        return;
       case "delete":
         if (!profile || !await confirmDialog("Remove saved setup?", `“${setupName(profile.name)}” will be removed. Your current look won’t change.`, "Remove setup")) return;
         savedSetups = setups().filter(item => item.id !== profile.id);

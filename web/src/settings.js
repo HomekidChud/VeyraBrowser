@@ -1,7 +1,7 @@
 
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.32.0-stream";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.32.0-stream";
-import { studioMarkup, wireStudio } from "./studio.js?v=3";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.33.0-studio";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.33.0-studio";
+import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=4";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 
@@ -288,6 +288,10 @@ function setValue(el) {
   else v = el.value;
   if (["fontScale", "zoomDefault"].includes(key)) v = Number(v);
   if (key === "customSearch" && v && !/%s/.test(v)) { toast("Custom search URL needs %s", { kind: "err" }); return; }
+  if (el.closest(".studio")) {
+    if (changeStudioAppearance({ [key]: v })) toast("Appearance updated", { ms: 1200 });
+    return;
+  }
   settings[key] = v; saveSettings();
   if (key === "blockTrackers" || key === "doNotTrack") {
     hooks.applyExtensionsToTab?.(B.activeTab());

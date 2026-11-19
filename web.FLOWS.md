@@ -62,6 +62,10 @@
 - Switch tab sides and hide/restore optional toolbar shortcuts without losing their menu actions. Toggle Game Focus and reduced motion, and preview or mute the opt-in tab sounds.
 - Save, switch, export, import and remove a named setup. Reject invalid imports without applying anything. Verify reload persistence and that resetting the look leaves unrelated settings intact.
 - At desktop and 375px, check the Studio, New tab, search, History, account UI and the signed-out Console Lab guard.
+- Switch between a light and a dark theme from the expanded gallery. Pick a custom chrome tint, clear it, and check that changing the accent separately does not change the tint.
+- Choose a wallpaper. Test fit, horizontal and vertical position, dimming and intensity against the preview and New tab. Hide and restore the logo and dashboard search independently. The address bar must always be reachable.
+- Change the active-tab indicator and top tab width. Move Downloads to the first optional toolbar slot and verify its visual and keyboard order. Hide an optional tool without losing its menu action.
+- Undo and redo a look change (including a slider drag), and verify that changing a non-appearance setting is not reverted. Rename and update a saved setup, switch away and reapply it, then export it. Verify an older setup file still imports and that an invalid toolbar order or wallpaper setting is rejected.
 
 ## Velocity controls and quick tools
 

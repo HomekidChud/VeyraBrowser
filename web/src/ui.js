@@ -2,13 +2,13 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.32.0-stream";
-import { initExtensions } from "./extensions.js?v=8.32.0-stream";
-import { initSettings } from "./settings.js?v=8.32.0-stream";
+} from "./core.js?v=8.33.0-studio";
+import { initExtensions } from "./extensions.js?v=8.33.0-studio";
+import { initSettings } from "./settings.js?v=8.33.0-studio";
 import { accountDestination } from "./account-navigation.js?v=2";
-import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=2";
-import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=1";
-import { applyStudioVisuals, playStudioSound } from "./studio.js?v=3";
+import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
+import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=2";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=4";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
 
@@ -44,7 +44,10 @@ export function applyTheme() {
   const root = document.documentElement; root.dataset.theme = t;
   const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
   root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
-  root.style.setProperty("--workspace-tint", t === "light" ? "#f4f6fa" : preset.mode === "light" ? "#10151c" : preset.palette);
+  const neutral = t === "light" ? "#f4f6fa" : "#10151c";
+  const tint = validColour(settings.chromeTint) ? `color-mix(in srgb, ${neutral}, ${settings.chromeTint} ${t === "light" ? 22 : 20}%)` :
+    preset.mode === t ? preset.palette : neutral;
+  root.style.setProperty("--workspace-tint", tint);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
   document.body.classList.toggle("compact", !!settings.compact || !!load("veyra-extensions", {}).compact);
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);

@@ -3,15 +3,15 @@ import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
   engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
-} from "./core.js?v=8.32.0-stream";
+} from "./core.js?v=8.33.0-studio";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
-import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.32.0-stream";
-import { initUI } from "./ui.js?v=8.32.0-stream";
-import { initDevtools } from "./devtools.js?v=8.32.0-stream";
-import { maybeOfferRenew } from "./renew.js?v=8.32.0-stream";
+import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.33.0-studio";
+import { initUI } from "./ui.js?v=8.33.0-studio";
+import { initDevtools } from "./devtools.js?v=8.33.0-studio";
+import { maybeOfferRenew } from "./renew.js?v=8.33.0-studio";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
-import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=2";
+import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -20,14 +20,14 @@ import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 // boot path. Each module registers its render hooks as soon as it loads.
 let castModulePromise = null;
 function ensureCastModule() {
-  castModulePromise ||= import("./device-cast.js?v=8.32.0-stream").then(m => { m.initCast(B); return m; });
+  castModulePromise ||= import("./device-cast.js?v=8.33.0-studio").then(m => { m.initCast(B); return m; });
   return castModulePromise;
 }
 let adminModulePromise = null;
 let adminModuleRetries = 0;
 function ensureAdminModule() {
   // A failed module fetch can be sticky for this document. Retry at a new URL.
-  const url = "./admin.js?v=8.32.0-stream";
+  const url = "./admin.js?v=8.33.0-studio";
   adminModulePromise ||= import(adminModuleRetries ? `${url}&retry=${adminModuleRetries}` : url).catch(error => {
     adminModulePromise = null;
     adminModuleRetries++;
