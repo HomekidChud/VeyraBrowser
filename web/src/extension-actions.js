@@ -15,10 +15,12 @@ export function pinExtension(value, id) {
 
 export function sameChromePackage(existing, incoming) {
   if (existing?.kind !== "chrome" || incoming?.kind !== "chrome") return false;
-  const key = item => typeof item.manifest?.key === "string" ? item.manifest.key.trim() : "";
-  const previousKey = key(existing), nextKey = key(incoming);
-  if (previousKey || nextKey) return previousKey === nextKey;
-  return existing.name === incoming.name && existing.manifest?.name === incoming.manifest?.name;
+  if (existing.name !== incoming.name || existing.version !== incoming.version) return false;
+  if (JSON.stringify(existing.manifest) !== JSON.stringify(incoming.manifest)) return false;
+  const previousFiles = existing.files || {}, nextFiles = incoming.files || {};
+  const paths = Object.keys(previousFiles);
+  return paths.length === Object.keys(nextFiles).length &&
+    paths.every(path => Object.hasOwn(nextFiles, path) && previousFiles[path] === nextFiles[path]);
 }
 
 export function actionAvailability(extension, workerStatus) {

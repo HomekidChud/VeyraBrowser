@@ -292,20 +292,13 @@ async function loadUnpackedFolder(fileList) {
   for (const f of files.slice(0, FOLDER_LIMITS.maxFiles + 50)) entries.push(await readPickedFile(f));
   const { manifest, files: bundle, rootPath } = readExtensionFolder(entries);
   const v = normalizeBrowserManifest(manifest, bundle, "unpacked-folder");
-  installChrome(v);
+  if (!installChrome(v)) return toast(`${v.name} is already installed`);
   toast(`${v.name} loaded${rootPath ? ` from ${rootPath.replace(/\/$/, "")}/` : " unpacked"}${v.warnings?.length ? ` (${v.warnings.length} warning${v.warnings.length === 1 ? "" : "s"})` : ""}`);
 }
 function installChrome(extension) {
   const list = devExts();
-  const index = list.findIndex(item => sameChromePackage(item, extension));
-  if (index >= 0) {
-    const old = list[index];
-    extension.id = old.id;
-    extension.enabled = old.enabled;
-    chromeCache.delete(`${old.id}:${old.installedAt || 0}`);
-    stopBackground(extension.id);
-    list[index] = extension;
-  } else list.unshift(extension);
+  if (list.some(item => sameChromePackage(item, extension))) return false;
+  list.unshift(extension);
   const installed = list.slice(0, 50);
   for (const id of bgWorkers.keys()) if (!installed.some(item => item.id === id)) stopBackground(id);
   save("veyra-dev-extensions", installed);
@@ -314,6 +307,7 @@ function installChrome(extension) {
   applyAll();
   if (extension.enabled) startBackground(extension);
   renderExtensions();
+  return true;
 }
 async function fetchStore(force = false) {
   if (!force && storeCache.data && Date.now() - storeCache.at < 300000) return storeCache.data;
@@ -614,7 +608,7 @@ async function loadManifestFile(file) {
     const raw = JSON.parse(text); const list = Array.isArray(raw) ? raw : [raw];
     if (raw.manifest?.manifest_version || raw.manifest_version === 2 || raw.manifest_version === 3) {
       const v = normalizeBrowserManifest(raw.manifest || raw, raw.files || {});
-      installChrome(v);
+      if (!installChrome(v)) return toast(`${v.name} is already installed`);
       return toast(`${v.name} imported${v.warnings?.length ? ` (${v.warnings.length} warning${v.warnings.length === 1 ? "" : "s"})` : ""}`);
     }
     const checked = [];

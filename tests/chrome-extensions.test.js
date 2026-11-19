@@ -100,10 +100,12 @@ const mv3Files = {
   assert.equal(actionBadge("A\u202EB\u0000CDE"), "ABCD");
   assert.equal(actionBadge(""), "");
   assert.throws(() => actionBadge(1), /string/);
-  const local = { kind: "chrome", name: "Test", manifest: { name: "Test" } };
-  assert.equal(sameChromePackage(local, { ...local, version: "2" }), true);
+  const local = { kind: "chrome", name: "Test", version: "1", manifest: { name: "Test", key: "pub" }, files: { "worker.js": ";", "other.js": "0" } };
+  assert.equal(sameChromePackage(local, { ...local, id: "different", enabled: false, files: { "other.js": "0", "worker.js": ";" } }), true);
+  assert.equal(sameChromePackage(local, { ...local, version: "2" }), false);
+  assert.equal(sameChromePackage(local, { ...local, files: { ...local.files, "worker.js": "1" } }), false);
   assert.equal(sameChromePackage(local, { ...local, manifest: { name: "Another" } }), false);
-  assert.equal(sameChromePackage(local, { ...local, manifest: { ...local.manifest, key: "pub" } }), false);
+  assert.equal(sameChromePackage(local, { ...local, manifest: { ...local.manifest, key: "different" } }), false);
 }
 
 {
