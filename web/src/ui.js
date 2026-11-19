@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.36.0-workbench";
+import { initSettings } from "./settings.js?v=8.36.0-touch";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
@@ -11,7 +11,7 @@ import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=3";
 import { applyStudioVisuals, playStudioSound } from "./studio.js?v=5";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
-import { assignableBinding, shortcutKeys, shortcutMap } from "./shortcuts-model.js?v=1";
+import { assignableBinding, shortcutKeys, shortcutMap } from "./shortcuts-model.js?v=2";
 
 let B;
 

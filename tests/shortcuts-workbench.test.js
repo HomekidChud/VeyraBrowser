@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assignableBinding, shortcutKeys, shortcutMap, shortcutClashes, storeShortcutKeys } from "../web/src/shortcuts-model.js";
+import { BINDING_KEY_GROUPS, assignableBinding, buildShortcutBinding, shortcutKeys, shortcutMap, shortcutClashes, storeShortcutKeys } from "../web/src/shortcuts-model.js";
 
 const commands = [
   { id: "new", label: "New tab", keys: ["Mod+T", "Alt+T"] },
@@ -24,6 +24,16 @@ test("overrides deduplicate, cap at three and preserve disabled commands", () =>
   assert.deepEqual(shortcutKeys(commands[1], { find: ["Esc"] }), []);
   assert.deepEqual(shortcutKeys(commands[1], { find: "invalid" }), ["Mod+F"]);
   assert.equal(shortcutMap(commands, { new: [] }).has("Mod+T"), false);
+});
+
+test("touch picker produces the same canonical bindings as hardware capture", () => {
+  const keys = BINDING_KEY_GROUPS.flatMap(([, group]) => group);
+  assert.equal(new Set(keys).size, keys.length);
+  for (const key of keys) assert.equal(assignableBinding(buildShortcutBinding(key, ["Shift", "Alt", "Mod"])), true, key);
+  assert.equal(buildShortcutBinding("Y", ["Shift", "Alt", "Shift"]), "Alt+Shift+Y");
+  assert.equal(buildShortcutBinding("F8", []), "F8");
+  assert.equal(assignableBinding(buildShortcutBinding("A", ["Shift"])), false);
+  assert.equal(buildShortcutBinding("Alt+Y", ["Mod"]), "");
 });
 
 test("conflicts require confirmation and ownership moves without deleting other bindings", () => {
