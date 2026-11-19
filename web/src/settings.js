@@ -1,7 +1,6 @@
-
-import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.32.0-stream";
-import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.32.0-stream";
-import { studioMarkup, wireStudio } from "./studio.js?v=3";
+import { $, qsa, esc, api, rawFetch, API, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.33.0-studio";
+import { openAuth, signOut, pushSync, COMMANDS, keysFor, prettyCombo, setRecording } from "./ui.js?v=8.33.0-studio";
+import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=4";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 
@@ -34,7 +33,6 @@ const SECTION_GROUPS = [
   ["Advanced", ["developer", "admin", "reset", "about"]]
 ];
 
-
 const row = (label, desc, ctl, extra = "") => `<div class="s-row" ${extra}><div class="s-label"><b>${esc(label)}</b>${desc ? `<span>${esc(desc)}</span>` : ""}</div><div class="s-ctl">${ctl}</div></div>`;
 const toggle = (key, label, desc) => row(label, desc, `<input type="checkbox" class="switch" data-set="${key}" ${settings[key] ? "checked" : ""} aria-label="${esc(label)}">`);
 const select = (key, label, desc, opts) => row(label, desc, `<select class="input" data-set="${key}" aria-label="${esc(label)}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(settings[key]) === String(v) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`);
@@ -43,7 +41,6 @@ const text = (key, label, desc, ph = "", type = "text") => row(label, desc, `<in
 const button = (label, desc, act, btnLabel, cls = "btn") => row(label, desc, `<button class="${cls}" data-act="${act}">${esc(btnLabel)}</button>`);
 const radios = (key, opts) => `<div class="radio-list">${opts.map(([v, l, s]) => `<label class="radio-row"><input type="radio" name="r-${key}" data-set="${key}" value="${esc(v)}" ${String(settings[key]) === String(v) ? "checked" : ""}><span>${esc(l)}${s ? `<small>${esc(s)}</small>` : ""}</span></label>`).join("")}</div>`;
 const section = (id, title, desc, body) => `<section class="s-section" id="s-${id}" data-section="${id}"><h2>${esc(title)}</h2>${desc ? `<p class="muted">${esc(desc)}</p>` : ""}<div class="s-card">${body}</div></section>`;
-
 
 function accountSection() {
   if (!auth.user) return section("account", "You and Veyra", "Sign in to sync settings, bookmarks, extensions and notes across devices.",
@@ -194,10 +191,6 @@ function aboutSection() {
   </div></section>`;
 }
 
-
-
-
-
 const PARTS = () => ({ account: accountSection, appearance: appearanceSection, search: searchSection, startup: startupSection, newtab: newtabSection, privacy: privacySection, sessions: sessionsSection, downloads: downloadsSection, accessibility: a11ySection, performance: () => performanceMarkup(B, settings, esc), shortcuts: shortcutsSection, extensions: extensionsSection, vpn: vpnSection, system: systemSection, neural: neuralSection, developer: developerSection, admin: adminSection, reset: resetSection, about: aboutSection });
 export function visibleSections() { return SECTIONS.filter(s => !s.admin || isAdmin()); }
 export function sectionExists(id) { return visibleSections().some(s => s.id === id); }
@@ -209,7 +202,7 @@ function render(active) {
   const cur = visible.find(s => s.id === active) ? active : "";
   const q = $("settingsSearch").value.trim();
   const t = B?.activeTab?.();
-  if (t && t.view === "settings" && active && !cur) t.section = ""; 
+  if (t && t.view === "settings" && active && !cur) t.section = "";
   const byId = new Map(visible.map(s => [s.id, s]));
   nav.innerHTML = `<button class="snav ${!cur ? "on" : ""}" data-snav=""><svg><use href="#i-grid"/></svg><span>Overview</span></button>` +
     SECTION_GROUPS.map(([group, ids]) => { const items = ids.map(id => byId.get(id)).filter(Boolean); return items.length ? `<div class="snav-group"><span class="snav-group-label">${esc(group)}</span>${items.map(s => `<button class="snav ${s.id === cur ? "on" : ""}" data-snav="${s.id}" ${s.id === cur ? 'aria-current="page"' : ""}><svg><use href="#${s.icon}"/></svg><span>${esc(s.label)}</span></button>`).join("")}</div>` : ""; }).join("");
@@ -279,7 +272,6 @@ function filter(q) {
   $("settingsEmpty").style.display = any ? "none" : "";
 }
 
-
 function setValue(el) {
   const key = el.dataset.set; let v;
   if (el.type === "checkbox") v = el.checked;
@@ -288,6 +280,10 @@ function setValue(el) {
   else v = el.value;
   if (["fontScale", "zoomDefault"].includes(key)) v = Number(v);
   if (key === "customSearch" && v && !/%s/.test(v)) { toast("Custom search URL needs %s", { kind: "err" }); return; }
+  if (el.closest(".studio")) {
+    if (changeStudioAppearance({ [key]: v })) toast("Appearance updated", { ms: 1200 });
+    return;
+  }
   settings[key] = v; saveSettings();
   if (key === "blockTrackers" || key === "doNotTrack") {
     hooks.applyExtensionsToTab?.(B.activeTab());
@@ -406,7 +402,6 @@ function startRebind(btn) {
   });
 }
 
-
 async function renderVpnList() {
   const el = $("customVpnList");
   if (!el) return;
@@ -509,7 +504,7 @@ export function initSettings(b) {
   const goSection = id => {
     const t = B.activeTab(); if (!t || t.view !== "settings") return;
     $("settingsSearch").value = "";
-    
+
     B.openInternal("settings", { tab: t, section: id });
   };
   nav.addEventListener("click", e => { const s = e.target.closest("[data-snav]"); if (s) goSection(s.dataset.snav); });
@@ -564,7 +559,7 @@ export function initSettings(b) {
     const a = e.target.closest("[data-act]"); if (a) { e.preventDefault(); act(a.dataset.act, a); return; }
     const rb = e.target.closest("[data-rebind]"); if (rb) { startRebind(rb); return; }
     const ub = e.target.closest("[data-unbind]"); if (ub) { const s = { ...settings.shortcuts }; delete s[ub.dataset.unbind]; settings.shortcuts = s; saveSettings(); render(curSection()); }
-    
+
     const vc = e.target.closest("[data-vpn-connect]"); if (vc) { const pid = vc.dataset.vpnConnect; try { await B.connectVpn(pid); toast("VPN connected"); } catch(err) { toast(err.message, { kind: "err" }); } renderVpnList(); return; }
     const vd = e.target.closest("[data-vpn-delete]"); if (vd) { const pid = vd.dataset.vpnDelete; try { await api(`/api/vpn/custom/${encodeURIComponent(pid)}`, { method: "DELETE" }); toast("VPN profile removed"); } catch(e) { toast(`Failed: ${e.message}`, { kind: "err" }); } renderVpnList(); return; }
     const vt = e.target.closest("[data-vpn-test]"); if (vt) { const pid = vt.dataset.vpnTest; try { const r = await api("/api/vpn/test", { method: "POST", json: { profileId: pid } }); toast(r.healthy ? `Healthy (${r.latencyMs}ms, IP: ${r.exitIp || "?"})` : `Failed: ${r.lastError || "unreachable"}`, { kind: r.healthy ? "ok" : "err" }); } catch(e) { toast(`Test failed: ${e.message}`, { kind: "err" }); } return; }

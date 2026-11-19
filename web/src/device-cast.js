@@ -13,7 +13,7 @@
  *   - Network quality indicator
  */
 
-import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.32.0-stream";
+import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.33.0-studio";
 import { qrSvg } from "./qr.js";
 
 let B;
@@ -26,13 +26,6 @@ let renderLoop = null;
 let inputLoop = false;
 let lastFrameTime = 0;
 let fpsCounter = { count: 0, lastReset: 0, fps: 0 };
-
-
-
-
-
-
-
 
 let castPollTimer = null;
 let castSessionId = null;
@@ -67,17 +60,14 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
       try {
         const msgs = await api(`/api/cast/poll/${encodeURIComponent(castSession.id)}`, { timeoutMs: 5000 });
         if (generation === castConnectionGeneration && msgs.ok && msgs.messages) {
-          // Handle each message independently so one malformed entry cannot
-          // discard the rest of the batch.
+
           for (const msg of msgs.messages) {
             try { handleMessage(msg); } catch {}
           }
         }
       } catch (e) {
         if (generation === castConnectionGeneration && (e?.status === 404 || e?.code === "CAST_SESSION_NOT_FOUND")) {
-          // The server no longer knows this session (reaped or closed) — stop
-          // polling the dead session and return to the start view instead of
-          // spinning silently forever.
+
           castPollInFlight = false;
           stopPollingFallback();
           castFallbackStarted = false;
@@ -92,9 +82,7 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
   }).catch(e => {
     if (generation !== castConnectionGeneration) return;
     castFallbackStarted = false;
-    // The session never came up, so drop the stale cast state and re-render so
-    // the view returns to the "Generate QR Code" start screen instead of a
-    // connected-looking waiting view with no transport behind it.
+
     castSession = null;
     castSessionId = null;
     renderCastView();
@@ -127,7 +115,7 @@ function connectCastServer(sessionId = "") {
       const msg = JSON.parse(event.data);
       handleMessage(msg);
     } catch (e) {
-      
+
       addLog("debug", "CAST", `Frame received (${event.data?.length || 0} bytes)`);
     }
   };
@@ -144,11 +132,7 @@ function connectCastServer(sessionId = "") {
     if (event.code !== 1000 && event.code !== 1001) {
       startPollingFallback(sessionId, generation);
     } else if (!castFallbackStarted) {
-      // Clean close and the polling fallback has not already taken over
-      // this generation — only then tear the session transport down.
-      // (If onerror already started the fallback, this socket close is just
-      // the old WS finishing its shutdown; killing the fallback here would
-      // strand the session with no transport at all.)
+
       if (castSession?.status === "streaming") stopStreaming();
       castWs = null;
       stopPollingFallback();
@@ -195,8 +179,7 @@ function handleMessage(msg) {
       if (castSession) {
         castSession.frameCount++;
         castSession.lastFrame = Date.now();
-        
-        
+
         frameBuffer = [msg.data];
         fpsCounter.count++;
         const now = Date.now();
@@ -236,7 +219,7 @@ function handleMessage(msg) {
       break;
 
     case "pong":
-      
+
       if (castSession) {
         castSession.latency = Date.now() - (msg.timestamp || Date.now());
       }
@@ -268,18 +251,14 @@ function cleanupCastResources() {
   if (castSession || castSessionId || castWs) disconnectCastSession("view_left");
 }
 
-
 let lastDrawnFrame = null;
 
 function renderFrame() {
   if (!castCanvas) return;
   const ctx = castCtx;
   const frame = frameBuffer[frameBuffer.length - 1];
-  // Skip re-decoding a frame that is already on the canvas — the render loop
-  // ticks at animation-frame rate, so without this guard the same data URL
-  // would be decoded into a fresh Image object ~60 times per second.
-  if (!frame || frame === lastDrawnFrame) return;
 
+  if (!frame || frame === lastDrawnFrame) return;
 
   if (typeof frame === "string" && frame.startsWith("data:")) {
     const img = new Image();
@@ -337,12 +316,9 @@ function stopRenderLoop() {
   renderLoop = null;
 }
 
-
 function startStreaming() {
   if (!castSession || castSession.status !== "paired") return toast("No device paired", { kind: "err" });
-  // Include quality/fps in the message itself: over the WebSocket the server
-  // rewrites the command, but over the HTTP /api/cast/send fallback the message
-  // is relayed verbatim — without fps here the device would fall back to 15.
+
   const started = sendCastMessage({ type: "start_streaming", quality: castSession.quality || "auto", fps: castSession.fps || 30 });
   if (!started) return toast("Not connected to cast server", { kind: "err" });
   castSession.status = "streaming";
@@ -363,13 +339,10 @@ function setQuality(q, fps) {
   toast(`Quality set to ${q} (${fps} FPS)`, { ms: 2000 });
 }
 
-
 function renderCastView() {
   const view = $("view-cast");
   if (!view) return;
-  
-  
-  
+
   const joinParams = new URLSearchParams(location.search);
   const joinSession = joinParams.get("session"), joinCode = joinParams.get("code");
   if (joinSession && joinCode) { renderDeviceJoinView(view, joinSession, joinCode); return; }
@@ -382,7 +355,7 @@ function renderCastView() {
   } else if (castSession.status === "paired" || castSession.status === "streaming") {
     view.innerHTML = castStreamingView();
     wireCastStreaming();
-    
+
     if (castSession.status === "paired" && !castSession._autoStarted) {
       castSession._autoStarted = true;
       setTimeout(() => { if (castSession?.status === "paired") startStreaming(); }, 800);
@@ -436,10 +409,6 @@ function castConnName(type) {
   return { wifi: "Wi-Fi", lan: "LAN", cellular: "Cellular", custom: "Custom", bridge: "Bridge", mesh: "Mesh", unknown: "Unknown" }[type] || type || "Unknown";
 }
 
-// Live update of the connection-type/signal displays. This was previously
-// invoked by the network_update and device_info message handlers but never
-// defined, so those messages threw a silent ReferenceError and any messages
-// queued behind them in the same poll batch were dropped.
 function renderCastStatus() {
   const s = castSession;
   if (!s) return;
@@ -497,7 +466,6 @@ function castDisconnectedView() {
   </div></div>`;
 }
 
-
 let deviceWs = null;
 let deviceStream = null;
 let deviceCanvas = null;
@@ -530,7 +498,7 @@ function renderDeviceJoinView(view, sessionId, code) {
 }
 
 function deviceConnectionType() {
-  // effectiveType is "slow-2g" | "2g" | "3g" | "4g" (or absent).
+
   const t = String(navigator.connection?.effectiveType || "");
   return t.includes("2") || t.includes("3") || t.includes("4") ? "cellular" : "wifi";
 }
@@ -540,7 +508,7 @@ function connectDevice(sessionId, code, body) {
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((isMobile ? "Phone" : "Device"))}&type=phone&connection=${encodeURIComponent(deviceConnectionType())}`;
   try { deviceWs = new WebSocket(wsUrl); } catch (e) {
-    
+
     deviceWs = null;
     body.innerHTML = `<p class="muted">WebSocket unavailable. Trying HTTP fallback…</p>`;
     startDevicePolling(sessionId, code, body);
@@ -588,10 +556,10 @@ function connectDevice(sessionId, code, body) {
 function renderDevicePaired(body) {
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
-  
+
   let shareButtons = '';
   if (isMobile && !hasDisplayMedia) {
-    
+
     shareButtons = `<div style="display:grid;gap:10px;justify-items:center">
       <p class="muted small" style="max-width:320px;text-align:center">Screen capture is not available on mobile browsers. You can mirror your camera instead.</p>
       <button class="btn primary lg" id="djShareBack">Share back camera</button>
@@ -613,23 +581,22 @@ function renderDevicePaired(body) {
   if (frontBtn) frontBtn.onclick = () => startDeviceStream(15, true, "user");
 }
 
-
 let devicePollTimer = null;
 let devicePollInFlight = false;
 function startDevicePolling(sessionId, code, body) {
   if (devicePollTimer) clearInterval(devicePollTimer);
-  deviceSessionId = sessionId; 
-  
+  deviceSessionId = sessionId;
+
   api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone", connection: deviceConnectionType() }, timeoutMs: 10000 }).then(result => {
     if (!result.ok) { body.innerHTML = `<p class="muted">Could not join: ${esc(result.error || "unknown error")}</p>`; return; }
-    devicePollId = result.deviceId; 
+    devicePollId = result.deviceId;
     deviceJoined = true;
     const t = $("djTitle"), s = $("djSub");
     if (t) t.textContent = "Paired with Veyra";
     if (s) s.textContent = "Your screen can now be mirrored into the Veyra browser.";
     renderDevicePaired(body);
     addLog("info", "CAST", "Device joined cast session via HTTP polling");
-    
+
     devicePollTimer = setInterval(async () => {
       if (devicePollInFlight) return;
       devicePollInFlight = true;
@@ -654,14 +621,10 @@ function stopDevicePolling() {
   if (devicePollTimer) { clearInterval(devicePollTimer); devicePollTimer = null; }
 }
 
-// Mirror side: relayed input from the Veyra browser (taps/swipes on the cast
-// canvas). A web page cannot inject touches into the OS, so surface the event
-// on the device page so the relay is observable end to end.
 function showDeviceInput(msg) {
   const st = $("djStatus");
   if (st) st.textContent = `Input from Veyra: ${msg.action || "tap"} @ ${Math.round((Number(msg.x) || 0) * 100)}%,${Math.round((Number(msg.y) || 0) * 100)}%`;
 }
-
 
 let deviceSessionId = null;
 let devicePollId = null;
@@ -670,8 +633,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
   if (deviceStream) { if (manual) { const st = $("djStatus"); if (st) st.textContent = "Already sharing."; } return; }
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
-  
-  
+
   if (facingMode) {
     try {
       deviceStream = await navigator.mediaDevices.getUserMedia({
@@ -684,7 +646,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
       return;
     }
   } else if (hasDisplayMedia && !isMobile) {
-    
+
     try {
       deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
     } catch (e) {
@@ -694,7 +656,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
       return;
     }
   } else {
-    
+
     try {
       deviceStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
@@ -749,7 +711,6 @@ function stopDeviceStream() {
   const st = $("djStatus"); if (st) st.textContent = "";
   if (deviceCanvas) deviceCanvas.style.display = "none";
 }
-
 
 function renderInternetView() {
   const view = $("view-internet");
@@ -823,7 +784,6 @@ function showInternetConfig(profileId) {
   });
 }
 
-
 function wireCastWaiting() {
   const start = $("castStartBtn");
   if (start) start.onclick = () => { connectCastServer(""); };
@@ -836,10 +796,6 @@ function wireCastWaiting() {
 let inputPointerStart = null;
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
-// Touch/input relay: taps and swipes on the mirror canvas are sent back to the
-// phone as normalized {type:"input"} messages (the server relays them to the
-// device via session.relayInput). Coordinates are 0..1 relative to the canvas,
-// so the phone can map them onto its own screen regardless of resolution.
 function wireCastInput() {
   if (!castCanvas) return;
   castCanvas.addEventListener("pointerdown", e => {
@@ -869,8 +825,7 @@ function wireCastInput() {
 function wireCastStreaming() {
   castCanvas = $("castCanvas");
   castCtx = castCanvas?.getContext("2d");
-  // A fresh canvas element replaced the old one — reset the drawn-frame guard
-  // so the next frame actually paints instead of being skipped as "unchanged".
+
   lastDrawnFrame = null;
   wireCastInput();
   const startStream = $("castStartStreamBtn");
@@ -885,14 +840,12 @@ function wireCastStreaming() {
 function wireCastDisconnected() {
   const btn = $("castReconnectBtn");
   if (btn) btn.onclick = () => {
-    // Fully tear down the dead session first (idempotent), then start a fresh
-    // WebSocket connection with a new session/QR code.
+
     disconnectCastSession("reconnect");
     renderCastView();
     connectCastServer("");
   };
 }
-
 
 export function initCast(b) {
   B = b;

@@ -41,7 +41,6 @@ const mv3Files = {
   "icons/16.png": "x", "icons/48.png": "x"
 };
 
-// --- 1. MV3 manifest with content scripts + background + permissions -------
 {
   const rec = parseChromeManifest(mv3Manifest, mv3Files);
   assert.equal(rec.manifestVersion, 3);
@@ -59,7 +58,7 @@ const mv3Files = {
   assert.equal(rec.background.serviceWorker, "sw.js");
   assert.equal(rec.background.type, "module");
   assert.equal(rec.background.scripts[0], mv3Files["sw.js"]);
-  // permissions: safe ones granted, dangerous ones denied with warnings
+
   assert.deepEqual(rec.permissions.granted, ["storage"]);
   assert.deepEqual(rec.permissions.unsupported, ["tabs", "clipboardRead"]);
   assert.deepEqual(rec.permissions.denied.sort(), ["cookies", "debugger", "management", "nativeMessaging", "webRequest"]);
@@ -67,18 +66,17 @@ const mv3Files = {
   assert.ok(rec.warnings.some(w => w.includes('"cookies" is disabled')));
   assert.ok(rec.warnings.some(w => w.includes('"webRequest" is disabled')));
   assert.ok(rec.warnings.some(w => w.includes('"tabs" has no Veyra implementation')));
-  // metadata
+
   assert.equal(rec.action.defaultTitle, "Enhance");
   assert.equal(rec.action.defaultPopup, "popup.html");
   assert.deepEqual(rec.webAccessibleResources[0].resources, ["images/logo.png"]);
   assert.equal(rec.minimumChromeVersion, "126");
   assert.ok(rec.warnings.some(w => w.includes("all_frames")));
   assert.ok(rec.warnings.some(w => w.includes("Action popups")));
-  // the warning badge data never blocks install
+
   assert.equal(rec.enabled, true);
 }
 
-// --- 2. MV2 fallback --------------------------------------------------------
 {
   const rec = parseChromeManifest({
     manifest_version: 2,
@@ -92,15 +90,14 @@ const mv3Files = {
   }, { "bg1.js": "a();", "bg2.js": "b();", "cs.js": "c();" });
   assert.equal(rec.manifestVersion, 2);
   assert.equal(rec.background.kind, "scripts");
-  assert.equal(rec.background.scripts.join(""), "a();b();"); // MV2 order preserved
-  assert.deepEqual(rec.hostPermissions, ["https://*.legacy.org/*"]); // host patterns lifted out of permissions
+  assert.equal(rec.background.scripts.join(""), "a();b();");
+  assert.deepEqual(rec.hostPermissions, ["https://*.legacy.org/*"]);
   assert.deepEqual(rec.permissions.granted, ["storage"]);
   assert.equal(rec.action.defaultTitle, "Legacy");
   assert.ok(rec.warnings.some(w => w.includes("event pages")));
   assert.equal(rec.backgroundKind ?? rec.background.kind, "scripts");
 }
 
-// --- 3. Deny-list permissions produce warnings, not failures ---------------
 {
   const dangerous = ["nativeMessaging", "cookies", "webRequest", "debugger", "management"];
   const classified = classifyPermissions(dangerous);
@@ -112,15 +109,14 @@ const mv3Files = {
   );
   assert.equal(rec.permissions.denied.length, 5);
   assert.ok(rec.warnings.length >= 5);
-  assert.equal(rec.enabled, true); // installs anyway
+  assert.equal(rec.enabled, true);
   assert.doesNotThrow(() => classifyPermissions(dangerous));
-  // safe + unknown permissions still install cleanly
+
   const ok = classifyPermissions(["storage", "unlimitedStorage", "alarms", "tabs"]);
   assert.deepEqual(ok.granted.sort(), ["storage", "unlimitedStorage"]);
   assert.deepEqual(ok.unsupported.sort(), ["alarms", "tabs"]);
 }
 
-// --- 4. Missing content script files still error ---------------------------
 {
   assert.throws(() => parseChromeManifest(
     { manifest_version: 3, name: "Broken", content_scripts: [{ matches: ["*://x/*"], js: ["missing.js"] }] }, {}
@@ -136,16 +132,15 @@ const mv3Files = {
   assert.throws(() => parseChromeManifest({ manifest_version: 3, name: "Nothing" }, {}), /no supported content scripts, styles, or background code/);
 }
 
-// --- 5. chrome.* content-script shim (executed in this node realm) ---------
 {
   const rec = parseChromeManifest(mv3Manifest, mv3Files);
   const chrome = new Function(buildContentScriptShim(rec) + "\n;return chrome;")();
-  // identity + manifest
+
   assert.equal(chrome.runtime.id, rec.id);
   assert.equal(chrome.runtime.getManifest().name, "Example Enhancer");
   assert.equal(chrome.runtime.getManifest().manifest_version, 3);
   assert.ok(chrome.runtime.getURL("img/x.png").startsWith(`chrome-extension://${rec.id}/`));
-  // storage.local / storage.sync with Chrome's key semantics
+
   await new Promise(r => chrome.storage.local.set({ a: 1, b: "two" }, r));
   assert.deepEqual(await new Promise(r => chrome.storage.local.get(null, r)), { a: 1, b: "two" });
   assert.deepEqual(await new Promise(r => chrome.storage.local.get(["a"], r)), { a: 1 });
@@ -156,7 +151,7 @@ const mv3Files = {
   assert.deepEqual(await new Promise(r => chrome.storage.local.get(null, r)), { b: "two" });
   await new Promise(r => chrome.storage.local.clear(r));
   assert.deepEqual(await new Promise(r => chrome.storage.local.get(null, r)), {});
-  // messaging: no listener -> Chrome-style lastError; listener -> delivery
+
   let seen = null;
   chrome.runtime.sendMessage({ hi: 1 }, function () { seen = chrome.runtime.lastError; });
   assert.match(seen?.message, /Could not establish connection\. Receiving end does not exist\./);
@@ -167,34 +162,30 @@ const mv3Files = {
   assert.deepEqual(deliver, { hi: 2 });
   assert.equal(reply, "pong");
   chrome.runtime.onMessage.removeListener(() => {});
-  // unsupported APIs throw helpful errors instead of existing-but-broken
+
   assert.throws(() => chrome.webRequest.onBeforeSendHeaders.addListener(() => {}), /chrome\.webRequest\.onBeforeSendHeaders\.addListener is not available in Veyra Browser/);
   assert.throws(() => chrome.tabs.query({ active: true }, () => {}), /chrome\.tabs\.query is not available in Veyra Browser/);
   assert.throws(() => chrome.cookies.getAll({}, () => {}), /chrome\.cookies\.getAll is not available in Veyra Browser/);
   assert.throws(() => chrome.management.getAll(() => {}), /chrome\.management\.getAll is not available in Veyra Browser/);
 }
 
-// --- 6. Built content-script source ----------------------------------------
 {
   const rec = parseChromeManifest(mv3Manifest, mv3Files);
   const src = buildContentScriptSource(rec);
-  assert.ok(src.includes("chrome.runtime.sendMessage")); // shim + code present
+  assert.ok(src.includes("chrome.runtime.sendMessage"));
   assert.ok(src.includes('GM_addStyle('), "CSS rides along through GM_addStyle");
   assert.ok(src.includes('"document_start"') && src.includes('"document_end"'), "run_at gating per entry");
   assert.ok(src.includes("document.addEventListener(\"DOMContentLoaded\""), "document_end waits for DOMContentLoaded");
   assert.ok(src.includes("chrome.storage"), "shim storage is defined");
   assert.ok(!/await /.test(src.replace(/\(async function[\s\S]*$/, "")), "top level stays synchronous");
-  // run_at gating for document_idle falls back to load + timeout
+
   assert.ok(src.includes("setTimeout(finish, 400)"));
-  // an extension with only a background (no content scripts) yields no page code
+
   const bgOnly = parseChromeManifest(
     { manifest_version: 3, name: "BgOnly", background: { service_worker: "sw.js" } }, { "sw.js": "x" });
   assert.equal(buildContentScriptSource(bgOnly).includes("cs1.js"), false);
   assert.ok(buildContentScriptSource(bgOnly).includes("var chrome"));
-  // REGRESSION: the built source must actually COMPILE. The error handler
-  // used to embed JSON.stringify(ext.id) — double quotes included — inside
-  // a double-quoted string literal, so every content script with an id
-  // produced a SyntaxError at new Function time and never ran.
+
   assert.doesNotThrow(() => new Function(src), "the full built content-script source must be valid JavaScript");
   const i18nRec = parseChromeManifest({
     manifest_version: 3, name: "Compile", version: "1.0", default_locale: "en",
@@ -209,7 +200,6 @@ const mv3Files = {
   assert.doesNotThrow(() => new Function(buildContentScriptSource(i18nRec)), "the i18n/resources content-script source must compile");
 }
 
-// --- 7. Background worker source -------------------------------------------
 {
   const rec = parseChromeManifest(mv3Manifest, mv3Files);
   const src = buildBackgroundWorkerSource(rec);
@@ -218,7 +208,7 @@ const mv3Files = {
   assert.ok(src.includes("onInstalled"), "onInstalled shim present");
   assert.ok(src.includes("__veyraRpc"), "host RPC protocol present");
   assert.ok(src.includes('rpc("storage." + area + ".get")'), "storage RPC present");
-  // MV2 scripts concatenate in manifest order
+
   const mv2 = parseChromeManifest(
     { manifest_version: 2, name: "L", background: { scripts: ["a.js", "b.js"] } },
     { "a.js": "first();", "b.js": "second();" });
@@ -226,7 +216,6 @@ const mv3Files = {
   assert.ok(mv2Src.indexOf("first();") < mv2Src.indexOf("second();"));
 }
 
-// --- 8. Match patterns and excludes ----------------------------------------
 {
   assert.equal(patternMatchesUrl("*://a.example.com/*", "https://a.example.com/page?x=1"), true);
   assert.equal(patternMatchesUrl("*://*.example.com/*", "https://sub.example.com/x"), true);
@@ -236,10 +225,9 @@ const mv3Files = {
   const ext = { matches: ["*://a.example.com/*"], excludeMatches: ["*://a.example.com/private/*"] };
   assert.equal(matchesUrl(ext.matches, "https://a.example.com/private/x", ext.excludeMatches), false);
   assert.equal(matchesUrl(ext.matches, "https://a.example.com/public/x", ext.excludeMatches), true);
-  assert.equal(matchesUrl([], "https://any.site/", []), true); // no matches = all sites
+  assert.equal(matchesUrl([], "https://any.site/", []), true);
 }
 
-// --- 9. Unpacked-folder reading -------------------------------------------
 {
   const entries = [
     { path: "my-ext/manifest.json", text: JSON.stringify({ manifest_version: 3, name: "Folder Ext", version: "1.0.0", content_scripts: [{ matches: ["*://f/*"], js: ["cs.js"] }] }) },
@@ -255,14 +243,14 @@ const mv3Files = {
   assert.equal(manifest.name, "Folder Ext");
   assert.deepEqual(Object.keys(files).sort(), ["cs.js", "icons/icon48.png", "manifest.json", "style.css"]);
   assert.equal(files["cs.js"], "console.log('cs');");
-  // manifest at root: no stripping
+
   const root = readExtensionFolder([
     { path: "manifest.json", text: JSON.stringify({ manifest_version: 2, name: "Root", background: { scripts: ["bg.js"] } }) },
     { path: "bg.js", text: "x();" }
   ]);
   assert.equal(root.rootPath, "");
   assert.ok("bg.js" in root.files);
-  // errors: no manifest, ambiguous manifests, bad JSON, oversize
+
   assert.throws(() => readExtensionFolder([{ path: "a.txt", text: "x" }]), /No manifest\.json found/);
   assert.throws(() => readExtensionFolder([
     { path: "one/manifest.json", text: "{}" },
@@ -280,7 +268,6 @@ const mv3Files = {
   assert.equal(isBinaryPath("cs.js"), false);
 }
 
-// --- 10. i18n (_locales), icon data URLs, web-accessible resources ---------
 {
   const folderManifest = {
     manifest_version: 3,
@@ -307,16 +294,15 @@ const mv3Files = {
   assert.equal(rec.iconData[48], "data:image/png;base64,AAA", "binary icon passes through as data URL");
   assert.ok(rec.iconData[128].startsWith("data:image/svg+xml,"), "SVG icon encoded to a data URL");
   assert.deepEqual(rec.resources, { "images/logo.png": "data:image/png;base64,BBB" }, "WAR files embedded for getURL");
-  // missing WAR warns, never blocks
+
   const missing = parseChromeManifest({ ...folderManifest, web_accessible_resources: ["gone.png"] }, files);
   assert.ok(missing.warnings.some(w => w.includes('Web-accessible resource "gone.png" is missing')));
-  // no default_locale -> no substitution machinery
+
   const plain = parseChromeManifest({ manifest_version: 3, name: "__MSG_x__", content_scripts: [{ matches: ["*://e/*"], js: ["cs.js"] }] }, files);
   assert.equal(plain.name, "__MSG_x__");
   assert.deepEqual(plain.i18n.messages, {});
 }
 
-// --- 11. Working getURL + chrome.i18n in the content shim ------------------
 {
   const folderManifest = {
     manifest_version: 3, name: "GetURL", version: "1.0", default_locale: "en",
@@ -340,7 +326,6 @@ const mv3Files = {
   assert.match(chrome.i18n.getUILanguage(), /^[a-z]{2}(_[A-Z]{2})?$/);
 }
 
-// --- 12. Background shim: tabs, scripting, action clicks -------------------
 {
   const rec = parseChromeManifest({
     manifest_version: 3, name: "Tabby", version: "1.0",
@@ -356,10 +341,7 @@ const mv3Files = {
   assert.ok(src.includes("__veyraActionClick"), "host action-click delivery");
   assert.ok(src.includes("getURL: function (path)"), "getURL in the worker shim");
   assert.ok(src.includes("var MESSAGES ="), "i18n messages embedded in the worker shim");
-  // Execute the worker shim headlessly against a fake self. tabs.query
-  // posts the RPC synchronously (string-checked above); calling it here
-  // would arm a 15 s reply timer, so only the action-click path — which
-  // needs no host round-trip — is executed.
+
   const posted = [];
   const fakeSelf = {
     postMessage: m => posted.push(m),

@@ -7,7 +7,6 @@ const app = readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 const core = readFileSync(new URL("../web/src/core.js", import.meta.url), "utf8");
 const ui = readFileSync(new URL("../web/src/ui.js", import.meta.url), "utf8");
 
-// --- Token generation: 32 random characters --------------------------------
 const rotIdx = app.indexOf("function rotateIncognitoAddressToken()");
 assert.ok(rotIdx >= 0, "rotateIncognitoAddressToken must exist");
 const rotBody = app.slice(rotIdx, app.indexOf("function startIncognitoAddressRotation"));
@@ -16,9 +15,6 @@ assert.ok(!/new Uint8Array\(48\)/.test(rotBody), "the old 48-char token must be 
 assert.match(rotBody, /INCOGNITO_TOKEN_ALPHABET/, "token chars must come from the fixed alphabet");
 assert.match(rotBody, /veyra:\/\/private\//, "token keeps the veyra://private/ scheme");
 
-// --- Rotation interval: under Chrome's replaceState throttle ----------------
-// Chrome silently drops history.replaceState past ~100 calls / 30s. A 1ms
-// interval burned the budget instantly and froze the address on one token.
 const startIdx = app.indexOf("function startIncognitoAddressRotation()");
 assert.ok(startIdx >= 0, "startIncognitoAddressRotation must exist");
 const startBody = app.slice(startIdx, startIdx + 900);
@@ -29,15 +25,11 @@ assert.ok(intervalMs >= 400 && intervalMs <= 900, `rotation interval ${intervalM
 assert.ok(intervalMs !== 1, "the old 1ms interval (instantly throttled) must be gone");
 assert.match(startBody, /if \(!INCOGNITO \|\| window\.__veyraIncognitoAddressRotation\) return;/, "rotation must be idempotent and incognito-only");
 
-// --- Incognito records no history at all -----------------------------------
 const recIdx = app.indexOf("export function recordHistory");
 assert.ok(recIdx >= 0, "recordHistory must exist");
 const recBody = app.slice(recIdx, recIdx + 700);
 assert.match(recBody, /if \(INCOGNITO\) return;/, "recordHistory must be a no-op in incognito");
 
-// --- Incognito storage stays in RAM ----------------------------------------
-// EPHEMERAL_KEYS covers history/downloads/last-tabs/auth/settings/bookmarks etc.
-// and the load/save wrappers divert those keys to memoryStore in incognito.
 assert.match(core, /const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS\.has\(key\)/, "ephemeral keys must be memory-only in incognito");
 for (const key of ["veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-settings", "veyra-bookmarks"]) {
   assert.ok(core.includes(`"${key}"`), `ephemeral key set must include ${key}`);

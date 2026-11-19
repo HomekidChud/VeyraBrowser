@@ -1,5 +1,5 @@
 import { toast, clearNotifications } from "./notifications.js?v=2";
-import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=1";
+import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=2";
 export { toast, clearNotifications };
 
 export function bootParam(name) {
@@ -10,7 +10,6 @@ export function bootParam(name) {
     return new URLSearchParams(r.slice(r.indexOf("?") + 1).split("#")[0]).get(name);
   } catch { return null; }
 }
-
 
 const DEFAULT_API = "https://veyraserver-xscy.onrender.com";
 function deploymentApi() {
@@ -25,11 +24,8 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.32.0";
-// TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
-// tries Chromium (the "Retry full browser" status button, the security-check
-// handoff, and the Chromium runtime option in Settings) is hidden. Flip this
-// back to false once Chromium fully works to restore all of them at once.
+export const VERSION = "8.33.0";
+
 export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
@@ -42,12 +38,9 @@ export const APP_BASE = (() => {
   return withSlash.replace(/\/$/, "");
 })();
 
-
 export const hooks = {};
 
 export function safeJsonParse(raw, fallback) { try { const v = JSON.parse(raw); return v == null ? fallback : v; } catch { return fallback; } }
-
-
 
 export const INCOGNITO = (() => {
   const q = bootParam("incognito");
@@ -88,7 +81,6 @@ export function letterIcon(url, label = "") {
 export function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-
 export const DEFAULT_SETTINGS = {
   ...APPEARANCE, splitRatio: 50, performanceMode: "balanced", streamQuality: "adaptive",
   searchEngine: "veyra", customSearch: "", suggestions: true,
@@ -103,11 +95,11 @@ export const DEFAULT_SETTINGS = {
   extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null,
   challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true,
   signinMode: "ask",
-  
+
   neuralCrawlerEnabled: true, neuralCrawlerPrewarm: true, neuralCrawlerQueryExpansion: true,
   neuralCrawlerParallelSearch: true, neuralCrawlerBlockTrackers: true, neuralCrawlerProgressiveRender: true,
   neuralCrawlerRetrainOnFeedback: true, neuralCrawlerModelPath: "",
-  
+
   internetProfile: "auto", wifiSsid: "", wifiFreq: "auto",
   cellApn: "", cellCarrier: "", cellType: "4g",
   customProxy: "", customDns: "", customGateway: "",
@@ -147,9 +139,7 @@ export function migrateSettings(obj) {
     obj.settingsVersion = 5;
   }
   if (Number(obj.settingsVersion) < 6) {
-    
-    
-    
+
     if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = false;
     delete obj.clearOnSessionEnd;
     delete obj.wifiPass;
@@ -167,8 +157,7 @@ export const SEARCH_ENGINES = {
   duckduckgo: { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=%s" },
   bing: { name: "Bing", url: "https://www.bing.com/search?q=%s" },
   brave: { name: "Brave Search", url: "https://search.brave.com/search?q=%s" },
-  
-  
+
   google: { name: "Google", url: "https://www.google.com/search?q=%s", engine: "browser" },
   wikipedia: { name: "Wikipedia", url: "https://en.wikipedia.org/w/index.php?search=%s" },
   custom: { name: "Custom", url: "" }
@@ -178,7 +167,6 @@ export function engineUrl(q) {
   if (settings.searchEngine === "custom" && /%s/.test(settings.customSearch)) return settings.customSearch.replace("%s", encodeURIComponent(q));
   const e = SEARCH_ENGINES[settings.searchEngine]; return e?.url ? e.url.replace("%s", encodeURIComponent(q)) : "";
 }
-
 
 const readSessionAuth = () => load("veyra-auth", null);
 export const auth = { token: readSessionAuth()?.token || "", user: readSessionAuth()?.user || null, admin: false, config: null };
@@ -190,12 +178,9 @@ export function setAuth(token, user) {
 }
 export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin"); }
 
-
 export class ApiError extends Error { constructor(message, status = 0, code = "API_ERROR", requestId = "", body = null) { super(message); this.status = status; this.code = code; this.requestId = requestId; this.body = body; } }
 export const netLog = [];
-// Timestamp of the last successful API round-trip. Any recent success proves
-// the Render instance is awake, so navigations can skip the /api/health
-// warm-up probe instead of adding a serial round-trip to the critical path.
+
 let apiLastSuccessAt = 0;
 export async function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
@@ -256,26 +241,15 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
   const base = API + (mode === "resource" ? "/api/resource?url=" : mode === "download" ? "/api/download?url=" : "/api/view?url=") + encodeURIComponent(url);
   const params = [];
   if (sid) params.push(`sid=${encodeURIComponent(sid)}`);
-  
-  
-  
+
   if (mode === "view" && from && /^https?:\/\//i.test(from)) params.push(`from=${encodeURIComponent(from)}`);
   return params.length ? `${base}&${params.join("&")}` : base;
 }
 
-
-// Render's free tier spins the API server down after ~15 minutes without
-// traffic. While it spins back up, the platform's own loading page carries a
-// framing policy, so a Veyra iframe that loads during a cold start renders
-// Chrome's "refused to connect (ERR_BLOCKED_BY_RESPONSE)" screen instead of
-// the page. Warm the API before any iframe navigation: ping /api/health
-// until it answers quickly, and share the warm promise with every tab.
 let apiAwakePromise = null;
 let apiAwakeAt = 0;
 export function ensureApiAwake(onStatus = null) {
-  // A successful API call within the last two minutes is proof the server is
-  // awake — skip the health probe entirely (e.g. the session POST that just
-  // ran before this navigation). Cold boots still probe as before.
+
   if (Date.now() - apiLastSuccessAt < 120000) return Promise.resolve(true);
   if (apiAwakePromise && Date.now() - apiAwakeAt < 180000) return apiAwakePromise;
   const probe = (async () => {
@@ -297,7 +271,6 @@ export function ensureApiAwake(onStatus = null) {
   return apiAwakePromise;
 }
 
-
 export async function sendNeuralFeedback(url, positive, weight = 1.0) {
   if (INCOGNITO || !auth.user || hooks.isEphemeralSession?.() || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
   try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}
@@ -306,14 +279,11 @@ export async function getNeuralStats() {
   try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
-
-
 export const logs = [];
 export function addLog(level, message, meta = {}) {
   logs.push({ time: Date.now(), level, message: String(message), meta }); if (logs.length > 3000) logs.splice(0, logs.length - 3000);
   hooks.onLog?.();
 }
-
 
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {
   const dlg = $("promptDialog"); $("promptTitle").textContent = title; $("promptOk").textContent = ok;
@@ -343,7 +313,6 @@ export async function copyText(text) {
     return false;
   }
 }
-
 
 let openLayer = null;
 export function openFloating(el, anchor, { align = "right", offset = 6 } = {}) {

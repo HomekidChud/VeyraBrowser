@@ -1,14 +1,13 @@
-
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.32.0-stream";
-import { initExtensions } from "./extensions.js?v=8.32.0-stream";
-import { initSettings } from "./settings.js?v=8.32.0-stream";
+} from "./core.js?v=8.33.0-studio";
+import { initExtensions } from "./extensions.js?v=8.33.0-studio";
+import { initSettings } from "./settings.js?v=8.33.0-studio";
 import { accountDestination } from "./account-navigation.js?v=2";
-import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=2";
-import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=1";
-import { applyStudioVisuals, playStudioSound } from "./studio.js?v=3";
+import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
+import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=2";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=4";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
 
@@ -38,13 +37,15 @@ function initPrivacyCover() {
   if (document.hidden) lock();
 }
 
-
 export function applyTheme() {
   let t = settings.theme || "dark"; if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   const root = document.documentElement; root.dataset.theme = t;
   const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
   root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
-  root.style.setProperty("--workspace-tint", t === "light" ? "#f4f6fa" : preset.mode === "light" ? "#10151c" : preset.palette);
+  const neutral = t === "light" ? "#f4f6fa" : "#10151c";
+  const tint = validColour(settings.chromeTint) ? `color-mix(in srgb, ${neutral}, ${settings.chromeTint} ${t === "light" ? 22 : 20}%)` :
+    preset.mode === t ? preset.palette : neutral;
+  root.style.setProperty("--workspace-tint", tint);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
   document.body.classList.toggle("compact", !!settings.compact || !!load("veyra-extensions", {}).compact);
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);
@@ -70,8 +71,6 @@ export function applyTheme() {
 hooks.updateStudioPreview = () => applyStudioVisuals($("app"), document.documentElement);
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => settings.theme === "system" && applyTheme());
 
-
-
 export function openIncognitoWindow() {
   const w = window.open(`${APP_BASE}/browse?incognito=1`, "_blank", "noopener");
   if (!w) toast("Your browser blocked the incognito window. Allow pop-ups for Veyra, or open /incognito", { kind: "warn", ms: 6000 });
@@ -80,7 +79,7 @@ export function exitIncognito() {
   try { sessionStorage.removeItem("veyra-incognito"); } catch {}
   B.endSession?.("manual").catch?.(() => {});
   window.close();
-  
+
   setTimeout(() => location.replace(`${APP_BASE}/browse?incognito=0`), 150);
 }
 hooks.openIncognitoWindow = () => openIncognitoWindow();
@@ -204,7 +203,6 @@ hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo
 hooks.forwardableCombos = () => COMMANDS.flatMap(c => keysFor(c.id));
 function focusAddress() { const a = $("address"); if (B.activeTab()?.view === "newtab" && document.activeElement !== a) { $("ntpInput")?.focus(); return; } a.focus(); a.select(); }
 
-
 const EXPLORE = [
   { url: "https://en.wikipedia.org/wiki/Cardiff", title: "Wikipedia", sub: "The free encyclopedia, fully rewritten through the proxy.", cat: "Reference" },
   { url: "https://news.ycombinator.com", title: "Hacker News", sub: "Tech news and discussion, with working logins and votes.", cat: "News" },
@@ -239,7 +237,6 @@ function renderLandActions() {
     : `<button class="btn ghost" data-auth="login">Sign in</button><button class="btn primary" data-auth="signup">Create account</button>`;
 }
 const initials = () => { const n = auth.user?.name || auth.user?.email || ""; return (n.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join("") || "?").toUpperCase(); };
-
 
 let authMode = "login";
 let authPending = false;
@@ -322,8 +319,6 @@ function onAuthChanged() {
 }
 hooks.onAuthChanged = onAuthChanged;
 
-
-
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
@@ -386,7 +381,6 @@ async function verifyAuth() {
     return false;
   }
 }
-
 
 const DEFAULT_TILES = [
   { url: "https://en.wikipedia.org", title: "Wikipedia" }, { url: "https://news.ycombinator.com", title: "Hacker News" },
@@ -457,7 +451,6 @@ async function editTile(i, anchor) {
   if (i >= 0) toast("Shortcut saved", { action: async () => { const L = [...tiles()]; L.splice(i, 1); settings.ntpTiles = L; saveSettings(); renderNewTab(); }, actionLabel: "Remove it" });
 }
 
-
 let omniItems = [], omniSel = -1, omniSeq = 0;
 function hideOmni() { $("omniPop").classList.add("hidden"); omniItems = []; omniSel = -1; }
 async function updateOmni(q) {
@@ -494,7 +487,6 @@ function wireOmnibox() {
   $("ntpForm").onsubmit = e => { e.preventDefault(); const v = $("ntpInput").value.trim(); if (v) { $("ntpInput").value = ""; B.go(v); } };
   $("heroForm").onsubmit = e => { e.preventDefault(); const v = $("heroInput").value.trim(); B.goRoute(v ? `/browse?q=${encodeURIComponent(v)}` : "/browse"); };
 }
-
 
 function openBookmark(bookmark, newTab = false, background = false) {
   if (!bookmark) return;
@@ -539,7 +531,6 @@ function renderBookmarksBar() {
       { label: "Delete", action: () => { B.state.bookmarks.splice(i, 1); B.saveBookmarks(); renderBookmarksBar(); B.updateIdentity(); } }]); };
 }
 hooks.renderBookmarksBar = renderBookmarksBar;
-
 
 function menuItem(icon, label, id, action, { kbd = "", badge = "", disabled = false } = {}) { return { icon, label, id, action, kbd: kbd || (id ? kbdFor(id) : ""), badge, disabled }; }
 function openMainMenu() {
@@ -599,11 +590,8 @@ function menuKeys(e) {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); btns[(i + (e.key === "ArrowDown" ? 1 : -1) + btns.length) % btns.length]?.focus(); }
 }
 
-
 function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; openFloating(p, anchor, { align: anchor.getBoundingClientRect().left < innerWidth / 2 ? "left" : "right" }); wire?.(p); }
-// (Removed) handoffBookmarklet and the "Sign in on the real site" cookie
-// handoff: sign-in now happens inside the fast proxy, in the session's own
-// cookie jar. No bookmarklet, no cookie paste, no cross-session cookies.
+
 async function openSiteInfo() {
   const t = B.activeTab(); const anchor = $("siteChip");
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
@@ -666,7 +654,6 @@ function openProfilePop() {
 }
 hooks.openVpnPopover = openVpnPop; hooks.openSessionPopover = openSessionPop;
 
-
 export async function openClearData() {
   const dlg = $("promptDialog"); $("promptTitle").textContent = "Clear browsing data"; $("promptOk").textContent = "Clear data";
   $("promptFields").innerHTML = `<label class="field"><span>Time range</span><select class="input" name="range"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="0" selected>All time</option></select></label>
@@ -679,7 +666,6 @@ export async function openClearData() {
     B.clearBrowsingData({ history: f("history").checked, downloads: f("downloads").checked, cookies: f("cookies").checked, cache: f("cache").checked, since: Number(f("range").value) }); toast("Browsing data cleared"); });
 }
 hooks.openClearData = openClearData;
-
 
 export function initUI(b) {
   B = b;

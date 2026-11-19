@@ -1,6 +1,5 @@
-
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.32.0-stream";
-import { dtCall, isRemote } from "./bridge.js?v=8.32.0-stream";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.33.0-studio";
+import { dtCall, isRemote } from "./bridge.js?v=8.33.0-studio";
 import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.28.38-extension-folders";
 
 let B;
@@ -16,8 +15,7 @@ function safeCss(css) {
   if (!v.trim()) throw new Error("css is required.");
   if (v.length > 120000) throw new Error("CSS is too large (120 KB max).");
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v)) throw new Error("CSS contains unsupported control characters.");
-  
-  
+
   let code = "", depth = 0, quote = "", comment = false;
   const unescape = (input, i) => {
     if (input[i] !== "\\") return [input[i], i + 1];
@@ -69,11 +67,7 @@ function normalizeUserscript(raw, source = "local") {
   if (grants.some(x => !allowedGrants.has(x))) throw new Error("This userscript requests an unsupported privilege.");
   return { id: `userscript-${slug}`, name, version: get("version") || "1.0.0", description: "Developer-mode userscript", css: "", script: text, matches: matchesList, grants, runAt: get("run-at") || "document-idle", enabled: true, installedAt: Date.now(), source, verified: false, publisher: "Local userscript", author: get("author") };
 }
-// Import a real Chrome (MV2/MV3) manifest. Parsing lives in the pure
-// extension-manifest.js module so the node test suite can cover it; this
-// wrapper keeps the Developer-mode gate and stores the original manifest +
-// file map as the source of truth (derived code is rebuilt on demand and
-// cached, so nothing is duplicated in localStorage).
+
 function normalizeBrowserManifest(manifest, files = {}, source = "browser-manifest") {
   if (!settings.extensionDeveloperMode) throw new Error("Enable Developer mode before importing Chrome or Edge extensions.");
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) throw new Error("The extension manifest must be a JSON object.");
@@ -94,8 +88,7 @@ function normalizeBrowserManifest(manifest, files = {}, source = "browser-manife
     manifest, files: filesMap
   };
 }
-// Re-derive the full parsed record (content scripts + background code) for a
-// stored Chrome extension, cached per install generation.
+
 const chromeCache = new Map();
 function chromeRecord(d) {
   if (d?.kind !== "chrome" || !d.manifest) return d;
@@ -107,11 +100,6 @@ function chromeRecord(d) {
   return chromeCache.get(key);
 }
 
-// --- Chrome extension backgrounds: inline Web Worker + chrome.* shim ------
-// The worker talks to this host over postMessage RPC. Storage is persisted
-// under a per-extension namespace (never Veyra's own storage keys), and
-// runtime.sendMessage is delivered to registered host listeners (Chrome
-// answers with a "receiving end does not exist" error when nobody listens).
 const bgWorkers = new Map();
 const EXT_STORAGE_KEY = "veyra-ext-storage";
 const extMessageListeners = new Set();
@@ -168,16 +156,13 @@ function stopBackground(id) {
   try { URL.revokeObjectURL(e.url); } catch {}
   bgWorkers.delete(id);
 }
-// Fire chrome.action.onClicked listeners in the extension's background
-// worker — Veyra's equivalent of clicking the toolbar icon (puzzle popover).
+
 function fireActionClick(d) {
   const e = bgWorkers.get(d.id);
   if (!e || e.status !== "running") return false;
   try { e.worker.postMessage({ __veyraActionClick: Date.now() }); return true; } catch { return false; }
 }
-// --- chrome.tabs / chrome.scripting host implementations --------------------
-// Background workers reach these over the postMessage RPC; they map onto
-// Veyra's own tab model (tabId === the Veyra tab id).
+
 function tabInfo(t, i) {
   const active = t.id === B.state.activeId;
   return {
@@ -228,10 +213,7 @@ async function veyraTabSendMessage(d, payload) {
   const t = B.state.tabs.find(x => x.id === p.tabId && x.view === "page");
   if (!t) return { response: undefined, lastError: { message: `Could not establish connection. Receiving end does not exist.` } };
   const rec = chromeRecord(d);
-  // Deliver to the content-script bus inside the proxied page (the shim
-  // registers listeners on window.__veyraChromeExtBus[extId]). Fire-and-
-  // forget: the DevTools bridge has no synchronous return channel, so the
-  // callback resolves with undefined like a one-way message.
+
   const nonce = `msg${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const script = `(function(){try{var bus=window.__veyraChromeExtBus;var set=bus&&bus.get(${JSON.stringify(d.id)});if(set){var respond=function(){};set.forEach(function(fn){try{fn(${JSON.stringify(p.message ?? null)},{id:${JSON.stringify(d.id)},tab:null},respond)}catch(e){}})}}catch(e){}})();/*${nonce}*/`;
   await dtCall(t, "ext.script", { key: `${d.id}:${nonce}`, script }, 4000);
@@ -257,7 +239,7 @@ async function veyraExecuteScript(d, details) {
   await Promise.all(tabs.map(t => dtCall(t, "ext.script", { key: `${d.id}:${nonce}`, script: sources.join("\n;\n") }, 4000).catch(() => {})));
   return [];
 }
-// --- unpacked folder import ("Load unpacked…", Chrome-style) ----------------
+
 function readPickedFile(file) {
   return new Promise((resolve, reject) => {
     if (file.size > FOLDER_LIMITS.maxFileKb * 1024) return reject(new Error(`File "${file.name}" is larger than ${FOLDER_LIMITS.maxFileKb} KB.`));
@@ -305,8 +287,6 @@ function clearLegacyBuiltins() {
   const s = state(); let changed = false; for (const id of LEGACY_BUILTIN_IDS) if (id in s) { delete s[id]; changed = true; } if (changed) setState(s);
 }
 
-
-
 function matches(ext, rawUrl) {
   return matchesUrl(ext.matches, rawUrl, ext.excludeMatches);
 }
@@ -323,7 +303,6 @@ export function validateManifest(m) {
   return { id, name, version: String(m.version || "1.0.0").slice(0, 20), description: String(m.description || "").slice(0, 300), css, matches: matchesList, enabled: m.enabled !== false, installedAt: Date.now() };
 }
 
-
 export async function applyToTab(t) {
   if (!t || t.view !== "page" || !t.url) return;
   const s = state();
@@ -332,9 +311,7 @@ export async function applyToTab(t) {
   for (const d of devExts()) {
     const active = d.enabled && matches(d, t.url);
     if (d.kind === "chrome") {
-      // Chrome extension: the shim + run_at-gated content scripts (plus CSS
-      // through GM_addStyle, since Chrome CSS isn't sandbox-safe) is rebuilt
-      // from the stored manifest and pushed through the script channel.
+
       const rec = chromeRecord(d);
       const script = active ? buildContentScriptSource(rec) : "";
       calls.push(["ext.script", { key: d.id, script }]);
@@ -357,7 +334,6 @@ async function toggle(id, on) {
   if (e?.id === "notes" && !on) closeNotes();
   applyAll(); renderExtensions(); B.renderActive({ push: false });
 }
-
 
 export async function readerMode(t = B.activeTab()) {
   if (!(t?.view === "page" && t.url)) return toast("Open an article first");
@@ -389,7 +365,6 @@ async function pageStats(anchor) {
   } catch (e) { toast(`Couldn't read page stats: ${e.message}`, { kind: "err" }); }
 }
 
-
 function notesKey(t) { return hostOf(t?.url) || "_"; }
 export function openNotes() { const t = B.activeTab(); if (!(t?.view === "page" && t.url)) return toast("Open a website to take notes about it"); t.notesOpen = true; renderSidePanel(t); }
 function closeNotes() { B.state.tabs.forEach(t => t.notesOpen = false); $("sidePanel").classList.add("hidden"); }
@@ -418,10 +393,6 @@ function renderSidePanel(t) {
 }
 hooks.renderSidePanel = renderSidePanel;
 
-
-// Chrome-extension extras for the dev card: version/MV line, permission chips,
-// background-worker status, and a visible warning badge when dangerous
-// permissions were disabled at install.
 function chromeCardMeta(e) {
   const perm = e.permissions || {};
   const denied = perm.denied || [];
@@ -473,7 +444,7 @@ export async function renderExtensions() {
             <div class="ext-grid" id="extGridList">${list.map(e => `<article class="ext-card ${installed.has(e.id) ? "installed" : ""}" data-cat="${esc(e.category || "other")}"><div class="ext-top"><span class="ext-ico"><svg><use href="#i-puzzle"/></svg></span><div><h3>${esc(e.name)}</h3><p>${esc(e.description || "")}</p></div></div><div class="ext-meta"><span class="ext-rating">${stars(e.rating || 5)}</span><span class="muted small">${(e.installs || 0).toLocaleString()} installs · ${esc(e.version || "1.0.0")}</span></div><div class="ext-tags">${(e.tags || []).slice(0, 4).map(t => `<span class="ext-tag">${esc(t)}</span>`).join("")}</div><div class="ext-foot"><span class="muted small">${esc((e.matches || []).join(", ") || "all sites")}</span><span class="spacer"></span><button class="btn ${installed.has(e.id) ? "ghost" : ""} sm" data-install-store="${esc(e.id)}">${installed.has(e.id) ? "Reinstall" : "Install"}</button></div></article>`).join("")}</div>
           </div>
         </div>`;
-      const search = $("extSearch"); 
+      const search = $("extSearch");
       if (search) search.oninput = () => { const q = search.value.toLowerCase(); $("extGridList").querySelectorAll(".ext-card").forEach(c => { c.style.display = c.textContent.toLowerCase().includes(q) ? "" : "none"; }); };
       grid.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => {
         grid.querySelectorAll("[data-cat]").forEach(x => x.classList.remove("active"));
@@ -556,9 +527,7 @@ export function initExtensions(b) {
   $("extDevMode").onchange = e => { settings.extensionDeveloperMode = e.target.checked; saveSettings(); renderExtensions(); };
   $("loadExtensionBtn").onclick = () => $("extensionFile").click();
   $("extensionFile").onchange = e => { const f = e.target.files?.[0]; if (f) loadManifestFile(f); e.target.value = ""; };
-  // "Load unpacked…": pick an extension folder (Chrome-style). Reads every
-  // file (text or data URL), finds manifest.json (root or single subfolder),
-  // and runs the full MV2/MV3 pipeline on the bundle.
+
   const folderBtn = $("loadFolderBtn");
   if (folderBtn) {
     folderBtn.onclick = () => {
@@ -575,7 +544,7 @@ export function initExtensions(b) {
   };
   $("exportExtensionsBtn").onclick = () => { const packages = devExts().map(({ installedAt, source, verified, publisher, author, ...x }) => x.script ? x.script : x.kind === "chrome" ? { manifest: x.manifest, files: x.files } : ({ schema: "veyra-extension/v1", id: x.id, name: x.name, version: x.version, description: x.description, author, publisher, permissions: ["styles"], matches: x.matches, files: { "style.css": x.css }, published: false })); const blob = new Blob([JSON.stringify(packages.length === 1 ? packages[0] : packages, null, 2)], { type: "application/json" }); const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "veyra-extension-packages.json" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
   renderExtensions();
-  // Start background workers for every enabled Chrome extension on boot.
+
   devExts().forEach(d => d.kind === "chrome" && d.enabled && startBackground(d));
 }
 export { BUILTIN };

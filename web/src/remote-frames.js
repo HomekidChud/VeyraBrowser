@@ -58,8 +58,6 @@ export function frameReader(onFrame) {
   };
 }
 
-// One undecoded frame and one decoded frame can wait for the next repaint.
-// Decode the newest available image and never build a playback backlog.
 export function latestFramePump({ decode, draw, requestPaint, cancelPaint, failed = () => {} }) {
   let waiting = null, ready = null, busy = false, paint = null, done = false;
   const process = async () => {

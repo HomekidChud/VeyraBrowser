@@ -42,7 +42,6 @@
     runFullButton.disabled = !proxied || state.serverRuns >= MAX_SERVER_RUNS;
   }
 
-  // Controlled fixtures exercise Veyra's regular Console/Network diagnostics.
   function runLocalDiagnostics() {
     const tag = marker("console", "local console-level, object, grouping and duplicate checks");
     console.groupCollapsed(tag);
@@ -133,7 +132,6 @@
   }
   updateCount();
 
-  // Existing Veyra administrator credentials are read locally and never rendered or logged.
   function adminHeaders() {
     const headers = new Headers();
     try {
@@ -244,7 +242,6 @@
     if (state.sessions) { const chart = $("pulseChart"); if (chart) { chart.replaceChildren(); const max = Math.max(1, ...state.snapshots.map(x => x.active)); state.snapshots.forEach(point => { const el = document.createElement("i"); el.style.height = `${Math.max(6, point.active / max * 100)}%`; el.title = `${point.active} active sessions`; chart.appendChild(el); }); } }
   }
 
-  // Browser-local agent profiles configure the server's existing neural crawler. No hidden schedule is created.
   function readAgents() { try { const parsed = JSON.parse(localStorage.getItem(AGENT_STORE) || "[]"); return Array.isArray(parsed) ? parsed.filter(a => a && typeof a.id === "string") : []; } catch { return []; } }
   function saveAgents(items) { localStorage.setItem(AGENT_STORE, JSON.stringify(items.slice(0, 30))); }
   function readRuns() { try { const parsed = JSON.parse(localStorage.getItem(RUN_STORE) || "[]"); return Array.isArray(parsed) ? parsed.slice(0, 50) : []; } catch { return []; } }

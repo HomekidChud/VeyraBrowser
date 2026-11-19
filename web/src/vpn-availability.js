@@ -1,4 +1,3 @@
-// Profile discovery and the connection for this tab are independent.
 export async function readVpnAvailability(api, { sessionId, previous, onProfiles }) {
   const options = { timeoutMs: 8000 };
   const connection = sessionId

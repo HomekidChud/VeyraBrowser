@@ -1,6 +1,6 @@
 "use strict";
 /** Session renewal ads: automatic, labeled, time-bounded sponsor gate. */
-import { $, esc, api, proxyUrl, toast, addLog, fmtClock, hooks } from "./core.js?v=8.32.0-stream";
+import { $, esc, api, proxyUrl, toast, addLog, fmtClock, hooks } from "./core.js?v=8.33.0-studio";
 
 let active = false;
 let lastSessionId = "";
@@ -9,7 +9,7 @@ let adCursor = 0;
 
 export function maybeOfferRenew(session, remainingMs) {
   if (!session || session.id !== lastSessionId) { lastSessionId = session?.id || ""; gateStarted = false; adCursor = 0; }
-  
+
   if (active || gateStarted || !session || remainingMs > 60000) return;
   gateStarted = true;
   void loadAds().then(ads => {
@@ -93,7 +93,7 @@ function overlay() {
   const el = document.createElement("div"); el.id = "renewOverlay"; el.className = "overlay"; el.style.zIndex = 9500;
   el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true");
   el.innerHTML = `<div class="overlay-card ad-gate-card"></div>`;
-  
+
   document.body.appendChild(el); return el.querySelector(".overlay-card");
 }
 function closeOverlay() { $("renewOverlay")?.remove(); }

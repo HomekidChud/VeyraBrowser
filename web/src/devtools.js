@@ -1,7 +1,5 @@
-
-
-import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.32.0-stream";
-import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.32.0-stream";
+import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.33.0-studio";
+import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.33.0-studio";
 
 let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
@@ -10,7 +8,6 @@ const onPage = t => t?.view === "page" && !!t.url;
 const dtState = t => t._dt || (t._dt = { nodes: new Map(), open: new Set(), sel: null, rootIds: [], docLoaded: false, conHistory: [], conHistIdx: -1, conExpanded: new Set(), netSel: null, netFilter: "all", resEntries: [], srcOpen: [], srcActive: null, appSel: "local", netEnabled: false, stylesTab: "styles", forced: new Set() });
 const call = (method, params, ms) => dtCall(tab(), method, params, ms);
 const debounceRaf = fn => { let r = 0; return (...a) => { if (r) return; r = requestAnimationFrame(() => { r = 0; fn(...a); }); }; };
-
 
 function build() {
   root = $("devtools");
@@ -90,7 +87,6 @@ function dtMenu(x, y, items) {
   m.onclick = e => { const b = e.target.closest("[data-i]"); if (b) { m.remove(); items[Number(b.dataset.i)].action(); } };
   setTimeout(() => addEventListener("pointerdown", function h(e) { if (!m.contains(e.target)) { m.remove(); removeEventListener("pointerdown", h, true); } }, true), 0);
 }
-
 
 function buildElements() {
   $("dt-elements").innerHTML = `<div class="dt-split">
@@ -313,7 +309,6 @@ function wireStyles(id, r) {
 }
 function renderElements() { const t = tab(); if (!onPage(t)) { $("elTree").innerHTML = emptyMsg(); $("stBody").innerHTML = ""; $("elCrumbs").innerHTML = ""; return; } const s = dtState(t); if (!s.docLoaded) loadDocument(); else { renderTree(); renderSide(); } }
 
-
 let picking = false;
 async function setPicking(on) {
   picking = on; $("dtPick")?.classList.toggle("on", on); $("dtPick")?.setAttribute("aria-pressed", on);
@@ -324,7 +319,6 @@ async function setPicking(on) {
 function togglePick() { if (!onPage(tab())) return toast("Open a website to inspect it"); setPicking(!picking); }
 export function inspect() { if (!onPage(tab())) return toast("Open a website to inspect it"); open("elements"); setPicking(true); }
 async function onPicked(t, data) { if (t !== tab()) return; picking = false; $("dtPick")?.classList.remove("on"); if (!openState) open("elements"); else show("elements"); await revealPath(data.path); }
-
 
 const LEVEL_ICON = { error: "✕", warn: "!", info: "i", debug: "·", log: "", cmd: "›", res: "‹" };
 function buildConsole() {
@@ -494,7 +488,6 @@ function renderConsole() {
   if (atBottom) list.scrollTop = list.scrollHeight;
 }
 
-
 function buildSources() {
   $("dt-sources").innerHTML = `<div class="src-tree" id="srcTree"></div><div class="dt-col"><div class="src-tabsbar" id="srcTabs"></div><div class="dt-sub"><input class="dt-input" id="srcFind" placeholder="Find in file" style="max-width:220px"><span class="muted" id="srcFindCount"></span><span style="flex:1"></span><button class="dt-chip" id="srcPretty" title="Pretty print">{ }</button><button class="dt-chip" id="srcCopy">Copy</button><button class="dt-chip" id="srcOpen">Open in tab</button><button class="icon-btn" id="srcReload" title="Refresh list"><svg><use href="#i-reload"/></svg></button></div><pre class="dt-code" id="srcCode"></pre><div class="net-foot" id="srcFoot"></div></div>`;
   $("srcTree").onclick = e => { const b = e.target.closest("[data-key]"); if (b) openFile(b.dataset.key); };
@@ -552,7 +545,6 @@ function drawFile() {
   if (s.srcLine) { const el = $("srcCode").children[s.srcLine - 1]; if (el) { el.classList.add("hl"); el.scrollIntoView({ block: "center" }); } s.srcLine = 0; }
   else if (q) $("srcCode").querySelector(".hl")?.scrollIntoView({ block: "center" });
 }
-
 
 const NET_TYPES = [["all", "All"], ["xhr", "Fetch/XHR"], ["doc", "Doc"], ["css", "CSS"], ["js", "JS"], ["img", "Img"], ["media", "Media"], ["font", "Font"], ["ws", "WS"], ["other", "Other"]];
 function netType(e) {
@@ -660,7 +652,6 @@ function exportHar() {
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(har, null, 2)], { type: "application/json" })), download: `${hostOf(t.url) || "veyra"}.har` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-
 let remoteTimer = 0;
 async function pollRemote() {
   clearTimeout(remoteTimer); const t = tab(); if (!openState || !isRemote(t)) return;
@@ -680,7 +671,6 @@ async function pollRemote() {
   } catch {}
   remoteTimer = setTimeout(pollRemote, 1500);
 }
-
 
 function buildApplication() {
   $("dt-application").innerHTML = `<nav class="app-nav" id="appNav"><h5>Storage</h5><button data-app="local"><svg><use href="#i-layers"/></svg>Local storage</button><button data-app="session"><svg><use href="#i-layers"/></svg>Session storage</button><button data-app="cookies"><svg><use href="#i-app"/></svg>Cookies</button><button data-app="server-cookies"><svg><use href="#i-shield"/></svg>Veyra cookie jar</button><button data-app="indexeddb"><svg><use href="#i-layers"/></svg>IndexedDB</button><button data-app="caches"><svg><use href="#i-layers"/></svg>Cache storage</button><h5>Page</h5><button data-app="frame"><svg><use href="#i-info"/></svg>Frame &amp; document</button><button data-app="session-info"><svg><use href="#i-timer"/></svg>Veyra session</button></nav>
@@ -738,7 +728,6 @@ async function renderApplication() {
   } catch (e) { body.innerHTML = emptyMsg(e.message); }
 }
 
-
 let perfTimer = 0; const perfSamples = [];
 function buildPerformance() {
   $("dt-performance").innerHTML = `<div class="dt-sub"><button class="icon-btn" id="perfReload" title="Reload and measure"><svg><use href="#i-reload"/></svg></button><button class="dt-chip" id="perfRefresh">Refresh metrics</button><label class="dt-chk"><input type="checkbox" id="perfLive">Live monitor</label></div><div class="perf-wrap" id="perfBody"></div>`;
@@ -775,7 +764,6 @@ function drawPerf() {
   g.fillStyle = css.getPropertyValue("--text-2"); g.font = "11px sans-serif"; g.fillText(`DOM nodes ${last.nodes.toLocaleString()} (max ${mn.toLocaleString()})${last.heap ? ` · heap ${fmtBytes(last.heap)}` : ""}`, 8, 14);
 }
 
-
 const DEVICES = [["Responsive", 0, 0], ["iPhone SE", 375, 667], ["iPhone 14", 390, 844], ["Pixel 7", 412, 915], ["Galaxy S20", 360, 800], ["iPad Mini", 768, 1024], ["iPad Air", 820, 1180], ["Laptop", 1280, 800], ["Desktop HD", 1920, 1080]];
 let device = null;
 function toggleDevice() {
@@ -798,7 +786,6 @@ function applyDevice() {
   const r = $("frameWrap").getBoundingClientRect(); $("devScale").textContent = device.w > r.width || device.h > r.height ? "Scroll to see the whole viewport" : "";
 }
 
-
 function bridgeEvent(t, event, data) {
   if (event === "dom.select") { onPicked(t, data); return; }
   if (event === "dom.picking") { if (t === tab()) { picking = !!data.enabled; $("dtPick")?.classList.toggle("on", picking); } return; }
@@ -811,7 +798,7 @@ onBridgeEvent(bridgeEvent);
 
 export function initDevtools(b) {
   B = b;
-  
+
   const st = document.createElement("style"); st.textContent = `#view-page.with-device.active{display:flex;flex-direction:column}#view-page.with-device .page-split{flex:1;min-height:0;height:auto}#dtPick.on,#dtDevice.on{color:var(--accent);background:var(--accent-soft)}.remote-picking{cursor:crosshair}`; document.head.appendChild(st);
   hooks.dt = {
     toggle, open, close, inspect,
@@ -826,7 +813,6 @@ export function initDevtools(b) {
     hoverRemote: debounceRaf(pos => { if (picking) call("dom.nodeAt", { x: pos.x, y: pos.y }).catch(() => {}); })
   };
 }
-
 
 function buildAdvancedPanels() {
   $("dt-audit").innerHTML = `<div class="dt-sub"><button class="btn primary sm" id="auditRun">Run audit</button><span class="muted">Lighthouse-style performance, accessibility, SEO and best-practices checks.</span></div><div id="auditBody" class="dt-pane">${emptyMsg("Click Run audit to analyse the page.")}</div>`;
