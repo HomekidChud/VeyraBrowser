@@ -6,7 +6,7 @@ import {
   buildContentScriptShim, buildContentScriptSource, buildBackgroundWorkerSource,
   patternMatchesUrl, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS
 } from "../web/src/extension-manifest.js";
-import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon } from "../web/src/extension-actions.js";
+import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon, sameChromePackage } from "../web/src/extension-actions.js";
 
 const mv3Manifest = {
   manifest_version: 3,
@@ -100,6 +100,10 @@ const mv3Files = {
   assert.equal(actionBadge("A\u202EB\u0000CDE"), "ABCD");
   assert.equal(actionBadge(""), "");
   assert.throws(() => actionBadge(1), /string/);
+  const local = { kind: "chrome", name: "Test", manifest: { name: "Test" } };
+  assert.equal(sameChromePackage(local, { ...local, version: "2" }), true);
+  assert.equal(sameChromePackage(local, { ...local, manifest: { name: "Another" } }), false);
+  assert.equal(sameChromePackage(local, { ...local, manifest: { ...local.manifest, key: "pub" } }), false);
 }
 
 {

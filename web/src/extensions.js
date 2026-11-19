@@ -1,7 +1,7 @@
 import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText, INCOGNITO } from "./core.js?v=8.34.0-actions";
 import { dtCall, isRemote } from "./bridge.js?v=8.34.0-actions";
 import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.34.0";
-import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon } from "./extension-actions.js?v=8.34.0";
+import { actionAvailability, actionBadge, extensionPins, pinExtension, safeExtensionIcon, sameChromePackage } from "./extension-actions.js?v=8.34.0";
 
 let B;
 const BUILTIN = [];
@@ -99,7 +99,7 @@ function chromeRecord(d) {
   if (d?.kind !== "chrome" || !d.manifest) return d;
   const key = `${d.id}:${d.installedAt || 0}`;
   if (!chromeCache.has(key)) {
-    try { chromeCache.set(key, parseChromeManifest(d.manifest, d.files || {})); }
+    try { chromeCache.set(key, { ...parseChromeManifest(d.manifest, d.files || {}), id: d.id }); }
     catch (e) { addLog("warn", `Extension ${d.name} failed to load: ${e.message}`); chromeCache.set(key, d); }
   }
   return chromeCache.get(key);
@@ -297,8 +297,12 @@ async function loadUnpackedFolder(fileList) {
 }
 function installChrome(extension) {
   const list = devExts();
-  const index = list.findIndex(item => item.kind === "chrome" && item.id === extension.id);
+  const index = list.findIndex(item => sameChromePackage(item, extension));
   if (index >= 0) {
+    const old = list[index];
+    extension.id = old.id;
+    extension.enabled = old.enabled;
+    chromeCache.delete(`${old.id}:${old.installedAt || 0}`);
     stopBackground(extension.id);
     list[index] = extension;
   } else list.unshift(extension);
@@ -308,7 +312,7 @@ function installChrome(extension) {
   savePins(pins().filter(id => installed.some(item => item.id === id && item.action)));
   hooks.scheduleSync?.();
   applyAll();
-  startBackground(extension);
+  if (extension.enabled) startBackground(extension);
   renderExtensions();
 }
 async function fetchStore(force = false) {
@@ -485,9 +489,10 @@ function togglePin(id) {
   }
 }
 function card(e, on, dev = false) {
+  const siteScope = e.kind === "chrome" && !chromeRecord(e).contentScripts?.length ? "no page scripts" : e.matches?.join(", ") || "all sites";
   return `<article class="ext-card ${on ? "on" : ""}" data-ext="${esc(e.id)}"><div class="ext-top"><span class="ext-ico">${extensionIcon(e)}</span><div><h3>${esc(e.name)}${e.kind === "chrome" && e.permissions?.denied?.length ? ` <span class="ext-tag" style="color:#e5484d">${e.permissions.denied.length} disabled</span>` : ""}</h3><p>${esc(e.desc || e.description || "")}</p></div></div>
     ${e.zoom ? `<label class="field" style="margin:0"><span>Zoom for new pages: <b id="zoomVal">${Math.round((settings.zoomDefault || 1) * 100)}%</b></span><input type="range" min="50" max="200" step="10" value="${Math.round((settings.zoomDefault || 1) * 100)}" id="zoomRange"></label>` : ""}
-    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.kind === "chrome" ? `Chrome MV${e.manifestVersion}${e.source === "unpacked-folder" ? " · unpacked folder" : ""}` : e.script ? "userscript" : "CSS"} · ${esc(e.matches?.length ? e.matches.join(", ") : "all sites")}</p>` : ""}
+    ${dev ? `<p class="muted small mono" style="margin:0">${esc(e.version)} · ${e.kind === "chrome" ? `Chrome MV${e.manifestVersion}${e.source === "unpacked-folder" ? " · unpacked folder" : ""}` : e.script ? "userscript" : "CSS"} · ${esc(siteScope)}</p>` : ""}
     ${dev && e.kind === "chrome" ? chromeCardMeta(e) : ""}
     <div class="ext-foot">${dev ? `${e.kind === "chrome" ? "" : `<button class="btn ghost sm" data-edit="${esc(e.id)}">Edit ${e.script ? "script" : "CSS"}</button>`}<button class="btn ghost sm" data-remove="${esc(e.id)}">Remove</button>` : e.action && on ? `<button class="btn ghost sm" data-run="${esc(e.action)}">${e.action === "reader" ? "Open reader" : e.action === "stats" ? "Show stats" : "Open notes"}</button>` : `<span class="muted small">${e.server ? "Runs on the server + page" : e.chrome ? "Changes Veyra's interface" : "Runs in the page"}</span>`}
       ${e.kind === "chrome" && e.action ? pinButton(e) : ""}<span class="spacer"></span><input type="checkbox" class="switch" data-toggle="${esc(e.id)}" ${dev ? "data-dev" : ""} ${on ? "checked" : ""} aria-label="Enable ${esc(e.name)}"></div></article>`;

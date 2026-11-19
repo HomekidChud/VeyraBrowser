@@ -13,6 +13,14 @@ export function pinExtension(value, id) {
   return [...pins, id];
 }
 
+export function sameChromePackage(existing, incoming) {
+  if (existing?.kind !== "chrome" || incoming?.kind !== "chrome") return false;
+  const key = item => typeof item.manifest?.key === "string" ? item.manifest.key.trim() : "";
+  const previousKey = key(existing), nextKey = key(incoming);
+  if (previousKey || nextKey) return previousKey === nextKey;
+  return existing.name === incoming.name && existing.manifest?.name === incoming.manifest?.name;
+}
+
 export function actionAvailability(extension, workerStatus) {
   if (extension?.kind !== "chrome" || !extension.action) return "No toolbar action";
   if (!extension.enabled) return "Disabled";
