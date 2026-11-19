@@ -4,6 +4,7 @@ import {
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
 import { initSettings } from "./settings.js?v=8.36.0-workbench";
+import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
 import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=3";
@@ -568,6 +569,7 @@ function openMainMenu() {
   const items = [
     menuItem("i-tab", "New tab", "newTab", () => B.newTab()),
     menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
+    ...(onPage && originalSiteUrl(t.url) ? [menuItem("i-external", "Site not working?", "", () => B.showSiteRecovery(t))] : []),
     ...(INCOGNITO ? [menuItem("i-shield", "Hide incognito screen", "", () => hooks.lockPrivacyCover?.()), menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
@@ -627,18 +629,20 @@ async function openSiteInfo() {
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
   if (t.localPage) {
     const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN." : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
-    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p>`, anchor);
+    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p><button class="btn ghost sm" id="popDirect">Site options</button>`, anchor, p => {
+      p.querySelector("#popDirect").onclick = () => { closeFloating(); B.showSiteRecovery(t); };
+    });
     return;
   }
   const host = hostOf(t.url); const s = B.state.session; const secure = /^https:/.test(t.url);
   pop(`<h4>${esc(host)}</h4><p class="pop-sub">${secure ? "Connection between Veyra and this site is encrypted." : "This site doesn't use HTTPS. Don't enter passwords."}</p>
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button>${originalSiteUrl(t.url) ? `<button class="btn ghost sm" id="popDirect">Site options</button>` : ""}<button class="btn ghost sm" id="popCopy">Copy URL</button></div>
     <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra when they support Fast Proxy. Google and GitHub account pages open directly for verification.</p>`, anchor, p => {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
-    p.querySelector("#popDirect").onclick = () => { if (!B.showAccountOptions(t.url)) window.open(t.url, "_blank", "noopener,noreferrer"); closeFloating(); };
+    p.querySelector("#popDirect")?.addEventListener("click", () => { closeFloating(); B.showSiteRecovery(t); });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
     else p.querySelector("#popCookies").textContent = "0";

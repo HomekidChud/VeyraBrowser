@@ -34,6 +34,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml } from "./youtube.js?v=2";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=1";
+import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -965,15 +966,17 @@ function probeFrameForEscape(t) {
     if (!f.src || !/^https?:/i.test(f.src)) return;
     let origin = ""; try { origin = new URL(f.src, location.href).origin; } catch { return; }
     if (origin !== API_ORIGIN) return;
-    const loadedAt = Date.now();
+    const loadedAt = Date.now(), pageLoad = t.pageLoad, probe = {};
+    t.escapeProbe = probe;
     try { f.contentWindow?.postMessage?.({ type: "veyra:embed-probe" }, API_ORIGIN); } catch {}
     setTimeout(() => {
       try {
-        if (!state.tabs.includes(t) || t.view !== "page" || t.localPage || frameFor(t) !== f) return;
+        if (!state.tabs.includes(t) || t.view !== "page" || t.localPage || frameFor(t) !== f ||
+            t.pageLoad !== pageLoad || t.escapeProbe !== probe) return;
         if ((t.lastRuntimeAckAt || 0) > loadedAt) return;
         t.escapeRecoveries = (t.escapeRecoveries || 0) + 1;
         if (t.escapeRecoveries > 3) {
-          if (t.escapeRecoveries === 4) toast(`${hostOf(t.url)} keeps leaving the proxy, so it can't be shown here. Open it directly outside Veyra.`, { kind: "warn", ms: 7000 });
+          if (t.escapeRecoveries === 4 && activeTab() === t) showSiteRecovery(t, "This page isn’t responding inside Veyra.");
           return;
         }
         addLog("info", `${hostOf(t.url)} navigated out of the proxy; bringing it back inside Veyra.`);
@@ -993,6 +996,7 @@ function setFrameSrc(f, src, tab = null) {
 }
 function onFrameLoad(t) {
   if (!state.tabs.includes(t) || t.view !== "page" || t.localPage) return;
+  if (frameFor(t)?.hasAttribute("data-site-error")) return;
   probeFrameForEscape(t);
 
   try {
@@ -1646,7 +1650,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const load = t.pageLoad = Symbol();
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
-  if (t.localPage) frameFor(t)?.remove();
+  if (previousUrl !== url) t.escapeRecoveries = 0;
+  if (t.localPage || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
   t.sourceDisplayAliases ||= new Map();
   const suppliedDisplayUrl = isYouTubeUrl(url) ? "" : validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
   if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
@@ -1914,11 +1919,45 @@ export function recordHistory(kind, url, title, sid = state.session?.id) {
   if (state.history.length > (settings.historyMax || 1000)) state.history.length = settings.historyMax || 1000;
   saveHistory();
 }
+let dismissSiteRecovery;
+function showSiteRecovery(t = activeTab(), reason = "") {
+  const url = t?.view === "page" ? originalSiteUrl(t.url) : "";
+  if (!url || activeTab() !== t) return;
+  if (showAccountOptions(url)) return;
+  const target = new URL(url);
+  dismissSiteRecovery?.(true);
+  dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
+    title: `Site options: ${target.host}`, ms: 0,
+    actions: [
+      { label: "Retry in Veyra", onClick: () => {
+        if (activeTab() !== t || t.view !== "page" || originalSiteUrl(t.url) !== url) return;
+        t.escapeRecoveries = 0;
+        void reload({ hard: true });
+      } },
+      { label: "Open original site", href: url, primary: true }
+    ]
+  });
+  if (!reason && dismissSiteRecovery) $("toasts")?.querySelector("section:last-child .toast-action")?.focus({ preventScroll: true });
+}
 function renderError(t, kind, error) {
   t.view = "page"; t.loading = false;
+  if (t.browserSessionId) void stopBrowserSession(t);
+  t.browserMode = "FAST_PROXY";
   const titles = { server: "Veyra couldn't reach its server", unsupported: "This page can't be opened in Veyra", invalid: "That address isn't valid" };
+  frameFor(t)?.remove();
   const f = getOrCreateFrame(t);
-  f.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;background:#f6f7f9;color:#1b1f27}main{max-width:520px;padding:32px}h1{font-size:24px;margin:0 0 8px}p{color:#5b6372}code{font-size:12px;color:#8a93a3}button{margin-top:14px;height:38px;padding:0 18px;border-radius:99px;border:0;background:#3d6fd6;color:#fff;font-weight:600;cursor:pointer}</style><main><h1>${esc(titles[kind] || "The page could not be displayed")}</h1><p>${esc(error?.message || "Unknown error")}</p>${error?.requestId ? `<code>Request ${esc(error.requestId)}</code><br>` : ""}<button onclick="parent.postMessage({type:'veyra:local-retry'},'*')">Try again</button></main>`;
+  f.setAttribute("data-site-error", "");
+  f.setAttribute("sandbox", "allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+  f.removeAttribute("allow");
+  f.srcdoc = siteLoadErrorMarkup(titles[kind] || "The page could not be displayed", error, t.url);
+  f.addEventListener("load", () => {
+    f.contentDocument?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
+      if (frameFor(t) !== f || !state.tabs.includes(t)) return;
+      t.escapeRecoveries = 0;
+      if (activeTab() !== t) switchTab(t.id);
+      void reload();
+    });
+  }, { once: true });
   if (activeTab() === t) { showFrameForTab(t); setLoading(false); }
   addLog("error", `Open failed: ${error?.message}`, { requestId: error?.requestId });
 }
@@ -3050,7 +3089,6 @@ async function handleMessage(e) {
   }
 
   if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
-  if (d.type === "veyra:local-retry") { const t = tabForSource(e.source); if (t) { switchTab(t.id); reload(); } return; }
   if (d.type === "veyra:console-lab:open-proxy") {
     const frame = $("consoleLabFrame");
     if (frame && e.source === frame.contentWindow && e.origin === location.origin &&
@@ -3332,7 +3370,7 @@ export const B = {
   state, INTERNAL, activeTab, tabById, newTab, closeTab, switchTab, cycleTab, selectTabIndex, reopenClosedTab, duplicateTab, go, navigate, openInternal,
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
-  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions,
+  omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions, showSiteRecovery,
   syncAdminAccess, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab()),
   performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics, shiftActiveTab, toggleTabPin
 };
