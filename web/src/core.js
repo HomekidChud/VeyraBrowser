@@ -1,5 +1,5 @@
 import { toast, clearNotifications } from "./notifications.js?v=2";
-import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=2";
+import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=3";
 export { toast, clearNotifications };
 
 export function bootParam(name) {
@@ -24,7 +24,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.34.0";
+export const VERSION = "8.35.0";
 
 export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);
@@ -82,7 +82,7 @@ export function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 export const DEFAULT_SETTINGS = {
-  ...APPEARANCE, splitRatio: 50, performanceMode: "balanced", streamQuality: "adaptive",
+  ...APPEARANCE, splitRatio: 50, performanceMode: "balanced", streamQuality: "adaptive", youtubeInline: true,
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
   blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: false, warnBeforeClose: false,

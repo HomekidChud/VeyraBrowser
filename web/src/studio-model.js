@@ -11,7 +11,8 @@ export const APPEARANCE = Object.freeze({
   studioWallpaper: "auto", wallpaperStrength: 75, wallpaperFit: "cover", wallpaperX: 50, wallpaperY: 50, wallpaperShade: 50,
   speedDialLayout: "classic", studioMotion: false, ntpBrand: true, ntpSearch: true, ntpAlign: "center",
   ntpClock: true, ntpRecent: true, ntpShortcuts: true, gameFocus: false, reduceMotion: false,
-  studioSound: "off", studioVolume: 35, zoomDefault: 1, splitLayout: "columns"
+  studioSound: "off", studioVolume: 35, zoomDefault: 1, splitLayout: "columns",
+  settingsLayout: "cards", settingsDensity: "standard", settingsSurface: "tinted", chromeTintStrength: 22, chromeEdge: true
 });
 export const MAX_SETUPS = 12;
 export const MAX_SETUP_BYTES = 16 * 1024;
@@ -25,9 +26,10 @@ const choices = {
   wallpaperFit: ["cover", "contain", "stretch"], tabIndicator: ["classic", "underline", "outline"], ntpAlign: ["center", "start"],
   newTabBackdrop: ["glow", "grid", "plain"], studioWallpaper: Object.keys(WALLPAPERS),
   speedDialLayout: ["classic", "compact", "wide", "minimal"], studioSound: Object.keys(SOUND_PACKS),
-  fontScale: [0.9, 1, 1.1, 1.2], zoomDefault: [0.8, 0.9, 1, 1.1, 1.25, 1.5], splitLayout: ["columns", "stack"]
+  fontScale: [0.9, 1, 1.1, 1.2], zoomDefault: [0.8, 0.9, 1, 1.1, 1.25, 1.5], splitLayout: ["columns", "stack"],
+  settingsLayout: ["cards", "list"], settingsDensity: ["compact", "standard", "roomy"], settingsSurface: ["neutral", "tinted", "contrast"]
 };
-const numeric = { tabRailWidth: [160, 320], tabWidth: [120, 260], wallpaperStrength: [20, 90], wallpaperX: [0, 100], wallpaperY: [0, 100], wallpaperShade: [0, 100], studioVolume: [0, 100] };
+const numeric = { tabRailWidth: [160, 320], tabWidth: [120, 260], wallpaperStrength: [20, 90], wallpaperX: [0, 100], wallpaperY: [0, 100], wallpaperShade: [0, 100], studioVolume: [0, 100], chromeTintStrength: [0, 60] };
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
 export function toolbarOrder(value) {
