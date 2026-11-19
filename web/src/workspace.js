@@ -1,8 +1,10 @@
 export const WORKSPACE_PRESETS = Object.freeze({
-  glacier: { name: "Glacier", accent: "#8fb0f0", palette: "#10151c" },
-  pulse: { name: "Pulse", accent: "#ff769c", palette: "#221320" },
-  circuit: { name: "Circuit", accent: "#69e0b4", palette: "#10201d" },
-  ember: { name: "Ember", accent: "#ffb374", palette: "#231a16" }
+  glacier: { name: "Glacier", accent: "#8fb0f0", palette: "#10151c", wallpaper: "none", mode: "dark" },
+  pulse: { name: "Pulse", accent: "#ff769c", palette: "#221320", wallpaper: "orbit", mode: "dark" },
+  circuit: { name: "Circuit", accent: "#69e0b4", palette: "#10201d", wallpaper: "signal", mode: "dark" },
+  ember: { name: "Ember", accent: "#ffb374", palette: "#231a16", wallpaper: "dunes", mode: "dark" },
+  midnight: { name: "Midnight", accent: "#a7a6ff", palette: "#131425", wallpaper: "ridge", mode: "dark" },
+  daybreak: { name: "Daybreak", accent: "#365f9d", palette: "#e1eafa", wallpaper: "ridge", mode: "light" }
 });
 
 export const GROUP_COLOURS = ["#8fb0f0", "#ff769c", "#69e0b4", "#ffb374", "#c49bf0", "#c4db79"];

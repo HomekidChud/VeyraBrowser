@@ -54,3 +54,11 @@
 - Open `veyra://console-lab` and its existing plural spelling in the Veyra address bar. The singular address stays visible and no browsing proxy session starts. Reload and back/forward keep the lab usable. A signed-out or non-admin account sees the access prompt; verified admins see Console Lab.
 - From Overview, open all modules: Console, Agent Studio, Live Activity, Neural Analytics, Task Runs, Crawler Fleet and Diagnostics. Check console help and filtering, editable agent templates, profile save/filter and run history, status refresh, and the local diagnostics and clear report controls. Server probes still require Fast Proxy.
 - Open Website Analytics. Start with no metrics, then load the explicitly labeled demo or an aggregate CSV. Run a typed trend task, a top-pages or channels task and anomaly detection. Verify export, clear, invalid input, missing data and unknown task states. The CSV stays in this frame and no website-wide traffic is inferred from a URL.
+
+## Customization Studio
+
+- Open Settings → Appearance via the toolbar, menu or `veyra://customize`. Test themes, color mode, custom accent, typeface, density, and tab shape against the live preview and shell.
+- Choose an independent wallpaper and Speed Dial layout, then open a New tab. Upload and remove a raster wallpaper; reject invalid files. Incognito should never load normal-window images or setups.
+- Switch tab sides and hide/restore optional toolbar shortcuts without losing their menu actions. Toggle Game Focus and reduced motion, and preview or mute the opt-in tab sounds.
+- Save, switch, export, import and remove a named setup. Reject invalid imports without applying anything. Verify reload persistence and that resetting the look leaves unrelated settings intact.
+- At desktop and 375px, check the Studio, New tab, search, History, account UI and the signed-out Console Lab guard.

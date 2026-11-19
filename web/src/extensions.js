@@ -1,6 +1,6 @@
 
-import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.29.1-session-privacy";
-import { dtCall, isRemote } from "./bridge.js?v=8.29.1-session-privacy";
+import { $, esc, hostOf, uid, load, save, settings, saveSettings, hooks, toast, openFloating, closeFloating, api, addLog, copyText } from "./core.js?v=8.30.0-studio";
+import { dtCall, isRemote } from "./bridge.js?v=8.30.0-studio";
 import { parseChromeManifest, buildContentScriptSource, buildBackgroundWorkerSource, matchesUrl, readExtensionFolder, isBinaryPath, FOLDER_LIMITS } from "./extension-manifest.js?v=8.28.38-extension-folders";
 
 let B;

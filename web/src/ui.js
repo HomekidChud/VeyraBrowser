@@ -2,11 +2,13 @@
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.29.1-session-privacy";
-import { initExtensions } from "./extensions.js?v=8.29.1-session-privacy";
-import { initSettings } from "./settings.js?v=8.29.2-console-lab";
+} from "./core.js?v=8.30.0-studio";
+import { initExtensions } from "./extensions.js?v=8.30.0-studio";
+import { initSettings } from "./settings.js?v=8.30.0-studio";
 import { accountDestination } from "./account-navigation.js?v=2";
-import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=1";
+import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=2";
+import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=1";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=1";
 
 let B;
 
@@ -40,7 +42,7 @@ export function applyTheme() {
   const root = document.documentElement; root.dataset.theme = t;
   const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
   root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
-  root.style.setProperty("--workspace-tint", preset.palette);
+  root.style.setProperty("--workspace-tint", t === "light" ? "#f4f6fa" : preset.mode === "light" ? "#10151c" : preset.palette);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
   document.body.classList.toggle("compact", !!settings.compact || !!load("veyra-extensions", {}).compact);
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);
@@ -59,8 +61,10 @@ export function applyTheme() {
   document.body.classList.toggle("link-underline", !!settings.linkUnderline);
   $("bookmarksBar").classList.toggle("hidden", !settings.showBookmarksBar);
   $("homeBtn").classList.toggle("hidden", !settings.showHomeButton);
+  applyStudioVisuals(app, root);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "light" ? "#f6f7f9" : "#0d0f13");
 }
+hooks.updateStudioPreview = () => applyStudioVisuals($("app"), document.documentElement);
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => settings.theme === "system" && applyTheme());
 
 
@@ -305,6 +309,7 @@ hooks.onAuthChanged = onAuthChanged;
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
+  for (const key of DEVICE_APPEARANCE_KEYS) delete s[key];
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
   return {
     v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
@@ -334,6 +339,7 @@ export async function pullSync() {
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
+      for (const key of DEVICE_APPEARANCE_KEYS) delete remote[key];
       for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }
@@ -528,7 +534,7 @@ function openMainMenu() {
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
     menuItem("i-grid", "Create tab group…", "", () => B.groupActiveTab()),
-    menuItem("i-moon", "Customize workspace", "", () => B.openInternal("settings", { section: "appearance" })),
+    menuItem("i-sliders", "Customization Studio", "", () => B.openInternal("settings", { section: "appearance" })),
     menuItem("i-bolt", settings.gameFocus ? "Turn off Game Focus" : "Turn on Game Focus", "", () => {
       settings.gameFocus = !settings.gameFocus; saveSettings();
       toast(settings.gameFocus ? "Game Focus on. Background diagnostics are paused." : "Game Focus off");
@@ -660,6 +666,8 @@ hooks.openClearData = openClearData;
 export function initUI(b) {
   B = b;
   applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); B.syncAdminAccess(); renderBookmarksBar(); };
+  hooks.playStudioSound = playStudioSound;
+  for (const id of ["studioBtn", "ntpStudioBtn"]) $(id).onclick = () => B.openInternal("settings", { section: "appearance" });
   document.addEventListener("keydown", onKeyDown, true);
   wireOmnibox();
   $("menuBtn").onclick = () => $("mainMenu").classList.contains("hidden") ? openMainMenu() : closeFloating();

@@ -1,4 +1,5 @@
 import { toast, clearNotifications } from "./notifications.js?v=2";
+import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=1";
 export { toast, clearNotifications };
 
 export function bootParam(name) {
@@ -24,7 +25,7 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.29.1";
+export const VERSION = "8.30.0";
 // TEMPORARY: streamed Chromium is not fully working yet, so every UI path that
 // tries Chromium (the "Retry full browser" status button, the security-check
 // handoff, and the Chromium runtime option in Settings) is hidden. Flip this
@@ -59,7 +60,7 @@ export const INCOGNITO = (() => {
 const EPHEMERAL_KEYS = new Set([
   "veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes",
   "veyra-settings", "veyra-bookmarks", "veyra-extensions", "veyra-dev-extensions",
-  "veyra-tab-groups", "veyra-live-session"
+  "veyra-tab-groups", "veyra-live-session", ...STUDIO_LOCAL_KEYS
 ]);
 const memoryStore = new Map();
 const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS.has(key);
@@ -89,20 +90,17 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.user
 
 
 export const DEFAULT_SETTINGS = {
-  theme: "dark", accent: "#8fb0f0", fontScale: 1, compact: false, showBookmarksBar: true, showHomeButton: true,
-  workspacePreset: "glacier", tabLayout: "top", tabRailWidth: 212, tabRailCompact: false, chromeShape: "soft",
-  newTabBackdrop: "glow", gameFocus: false, splitLayout: "columns", splitRatio: 50,
+  ...APPEARANCE, splitRatio: 50,
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
-  ntpShortcuts: true, ntpRecent: true, ntpClock: true,
   blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: false, warnBeforeClose: false,
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
-  reduceMotion: false, focusRings: false, linkUnderline: false,
+  focusRings: false, linkUnderline: false,
   runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 6,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
-  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
+  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null,
   challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true,
   signinMode: "ask",
   
