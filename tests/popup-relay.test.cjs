@@ -7,10 +7,12 @@ const path = require("node:path");
   const root = path.join(__dirname, "..");
   const app = fs.readFileSync(path.join(root, "web", "src", "app.js"), "utf8");
 
-  assert.match(app, /function openProxiedPopup\(sourceTab, d\)/, "openProxiedPopup must be defined");
+  assert.match(app, /function openProxiedPopup\(sourceTab, d, sourceFrame\)/, "openProxiedPopup must be defined");
   assert.match(app, /newTab\(\{ url: target, .*popupOf: sourceTab\.id, popupId \}\)/, "the popup tab must remember its opener and handle before navigation");
   assert.match(app, /"allow-scripts allow-same-origin allow-forms allow-downloads"/, "proxy frames cannot open native popups");
   assert.match(app, /d\.type === "veyra:popup-open" && d\.url/, "the app must handle veyra:popup-open");
+  assert.match(app, /handlePlaybackPopup\(t, u, e\.source, true\)\) return;\s*newTab/, "playback links are handled before a tab can be opened");
+  assert.match(app, /void navigate\(decision\.url, \{ tab \}\)/, "a recognized embed transition navigates the original tab");
 
   assert.match(app, /d\.type === "veyra:popup-message" && d\.popupId/, "the app must handle veyra:popup-message (opener → popup)");
   assert.match(app, /from: "opener"/, "messages into the popup must be tagged from: opener");
