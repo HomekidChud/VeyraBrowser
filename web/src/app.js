@@ -543,9 +543,9 @@ export function switchTab(id) {
   if (ss.active && id !== ss.leftTabId && id !== ss.rightTabId) teardownSplitScreen();
   state.activeId = id; renderTabs(); renderActive({ push: true, replace: true });
 }
-export function newTab({ url = "", view = "", index = -1, background = false, section = "", displayUrl = "" } = {}) {
+export function newTab({ url = "", view = "", index = -1, background = false, section = "", displayUrl = "", popupOf = "", popupId = "" } = {}) {
   if (!background) hooks.playStudioSound?.("open");
-  const t = makeTab(); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
+  const t = makeTab({ popupOf, popupId }); if (index >= 0) state.tabs.splice(index, 0, t); else state.tabs.push(t);
   if (!background) state.activeId = t.id;
   renderTabs();
   if (url && interceptAccount(classify(url)?.url)) { if (!background) renderActive({ push: true }); }
@@ -955,7 +955,7 @@ function getOrCreateFrame(t) {
 
   f.setAttribute("sandbox", t.localPage === "now" ? "allow-popups allow-popups-to-escape-sandbox"
     : t.localPage === "youtube" ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-      : "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads");
+      : "allow-scripts allow-same-origin allow-forms allow-downloads");
   f.setAttribute("allow", INCOGNITO
     ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
     : "fullscreen; autoplay; clipboard-read; clipboard-write; picture-in-picture; encrypted-media");
@@ -3166,6 +3166,9 @@ function pageConsoleEntry(d, t) {
 function relayIntoFrame(tab, payload) {
   try { const f = frameFor(tab); if (!f?.contentWindow) return false; f.contentWindow.postMessage(payload, API_ORIGIN); return true; } catch { return false; }
 }
+function popupMessageOrigin(url) {
+  try { const parsed = new URL(url); return /^https?:$/.test(parsed.protocol) ? parsed.origin : ""; } catch { return ""; }
+}
 function notifyPopupClosed(openerTab, popupId) {
   if (!openerTab || !popupId) return;
   relayIntoFrame(openerTab, { type: "veyra:popup-closed", popupId });
@@ -3175,20 +3178,21 @@ function teardownPopupLinks(tab) {
 }
 
 function openProxiedPopup(sourceTab, d) {
-  const target = canonical(String(d.url || ""));
-  if (!target) return null;
+  const target = canonicalPopupUrl(d.url);
+  const popupId = typeof d.popupId === "string" ? d.popupId : "";
+  if (!target || !/^[\w-]{1,80}$/.test(popupId)) return null;
+  const existing = state.tabs.find(x => x.popupOf === sourceTab.id && x.popupId === popupId);
+  if (existing) return existing;
+  if (activeTab() !== sourceTab) return null;
   if (interceptAccount(target, sourceTab.url)) return null;
-  const popup = newTab({ url: target, index: state.tabs.indexOf(sourceTab) + 1 });
-  if (!popup) return null;
-  popup.popupOf = sourceTab.id;
-  popup.popupId = String(d.popupId || "");
-  return popup;
+  return newTab({ url: target, index: state.tabs.indexOf(sourceTab) + 1, popupOf: sourceTab.id, popupId });
 }
 
 function ackEmbedPing(e) {
-  try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {}
   const t = tabForSource(e.source);
-  if (t?.popupOf) relayIntoFrame(t, { type: "veyra:popup-role" });
+  if (!t || t.localPage || isRemote(t)) return;
+  try { e.source?.postMessage?.({ type: "veyra:embed-ack" }, API_ORIGIN); } catch {}
+  if (t.popupOf) relayIntoFrame(t, { type: "veyra:popup-role" });
 }
 
 function chooseSignin(t, url) {
@@ -3289,11 +3293,12 @@ async function handleMessage(e) {
 
   if (d.type === "veyra:open-direct-ping" || d.type === "veyra:open-direct") {
     if (e.origin !== API_ORIGIN) return;
+    const source = tabForSource(e.source);
+    if (!source || activeTab() !== source || frameFor(source)?.contentWindow !== e.source) return;
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
     const url = String(d.url || "");
     if (accountDestination(canonical(url))) {
-      const source = tabForSource(e.source);
-      if (source && activeTab() === source) showAccountOptions(canonical(url), source.url);
+      showAccountOptions(canonical(url), source.url);
       return;
     }
     if (/^https?:\/\//i.test(url)) { window.open(url, "_blank", "noopener"); addLog("info", `Opened directly: ${hostOf(url)}`); }
@@ -3387,7 +3392,8 @@ async function handleMessage(e) {
   if (d.type === "veyra:find-result") { const n = Number(d.matches || 0); $("findCount").textContent = n ? `${n} match${n === 1 ? "" : "es"}` : "No matches"; return; }
   if (d.type === "veyra:unsupported") { toast(d.reason || "That action isn't supported through the proxy", { kind: "warn" }); return; }
   if (d.type === "veyra:open" && d.url) {
-    const u = canonical(d.url); if (!u) return;
+    if (e.origin !== API_ORIGIN || t.view !== "page" || isRemote(t) || activeTab() !== t) return;
+    const u = canonicalPopupUrl(d.url); if (!u) return;
     if (interceptAccount(u, t.url)) return;
 
     const tgt = String(d.target || "_blank").toLowerCase();
@@ -3404,37 +3410,45 @@ async function handleMessage(e) {
   }
 
   if (d.type === "veyra:popup-open" && d.url) {
-    const target = canonical(String(d.url));
-    if (target && t.view === "page" && !isRemote(t)) {
-      if (openProxiedPopup(t, { url: target, popupId: d.popupId })) addLog("info", `Popup opened through the fast proxy: ${hostOf(target)}`);
-      else if (accountDestination(target)) notifyPopupClosed(t, String(d.popupId || ""));
-    }
+    if (e.origin !== API_ORIGIN || t.view !== "page" || isRemote(t)) return;
+    const popup = openProxiedPopup(t, d);
+    if (popup) addLog("info", `Popup opened through the fast proxy: ${hostOf(popup.url)}`);
+    else if (typeof d.popupId === "string" && d.popupId.length <= 80) notifyPopupClosed(t, d.popupId);
     return;
   }
 
   if (d.type === "veyra:popup-message" && d.popupId) {
+    if (e.origin !== API_ORIGIN) return;
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
-    if (popup) relayIntoFrame(popup, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "opener", popupId: String(d.popupId) });
+    const origin = popupMessageOrigin(d.virtualUrl || t.url);
+    if (popup && origin) relayIntoFrame(popup, { type: "veyra:relay-message", data: d.data, origin, from: "opener", popupId: String(d.popupId) });
     return;
   }
 
   if (d.type === "veyra:popup-to-opener") {
+    if (e.origin !== API_ORIGIN || frameFor(t)?.contentWindow !== e.source) return;
     const opener = t.popupOf ? state.tabs.find(x => x.id === t.popupOf) : null;
-    if (opener) relayIntoFrame(opener, { type: "veyra:relay-message", data: d.data, origin: d.virtualUrl || t.url, from: "popup", popupId: t.popupId || "" });
+    const origin = popupMessageOrigin(d.virtualUrl || t.url);
+    if (opener && origin) relayIntoFrame(opener, { type: "veyra:relay-message", data: d.data, origin, from: "popup", popupId: t.popupId || "" });
     return;
   }
 
   if (d.type === "veyra:popup-self-close" || (d.type === "veyra:popup-close" && d.popupId)) {
-    const popup = d.type === "veyra:popup-self-close" ? t : state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
+    if (e.origin !== API_ORIGIN) return;
+    const popup = d.type === "veyra:popup-self-close"
+      ? (t.popupOf && frameFor(t)?.contentWindow === e.source ? t : null)
+      : state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
     if (popup) closeTab(popup.id, { silent: true });
     return;
   }
 
   if (d.type === "veyra:popup-navigate" && d.url) {
-    const target = canonical(String(d.url));
+    if (e.origin !== API_ORIGIN) return;
+    const target = canonicalPopupUrl(d.url);
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
-    if (target && interceptAccount(target, t.url)) { if (popup) closeTab(popup.id, { silent: true }); return; }
-    if (target && popup) void loadInTab(popup, target, { loadFrame: true });
+    if (!target || !popup) return;
+    if (interceptAccount(target, t.url)) { closeTab(popup.id, { silent: true }); return; }
+    void loadInTab(popup, target, { loadFrame: true });
     return;
   }
   if (d.type === "veyra:challenge" && d.url) {
@@ -3521,6 +3535,10 @@ function escalateBrowserRequired(t, u, key, reason) {
   addLog("info", `Browser capability required (${reason || "site feature"}); switching ${hostOf(u)} to Chromium.`);
   toast("This site needs a browser feature. Switching to Chromium…", { ms: 3000 });
   void loadInTab(t, u, { forceBrowser: true, loadFrame: true, record: null });
+}
+function canonicalPopupUrl(value) {
+  if (typeof value !== "string" || !/^https?:\/\//i.test(value.trim())) return "";
+  return canonical(value);
 }
 function canonical(value) {
   let raw = String(value || "").trim();
