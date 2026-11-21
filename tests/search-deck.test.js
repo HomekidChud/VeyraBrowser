@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice } from "../web/src/search-deck.js";
+import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 
 test("category routing preserves the query and upgrades legacy history", () => {
@@ -40,6 +40,10 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(posterUrl("http://thumb.wikimedia.org/example.jpg"), "");
   assert.equal(posterUrl("https://science.nasa.gov/example.jpg"), "https://science.nasa.gov/example.jpg");
   assert.equal(posterUrl("https://science.nasa.gov.example.com/example.jpg"), "");
+  const openverseThumb = "https://api.openverse.org/v1/images/e211d652-746e-4c8a-b955-30d114360b8f/thumb/";
+  assert.equal(posterUrl(openverseThumb), openverseThumb);
+  assert.equal(posterUrl(`${openverseThumb}?full_size=true`), "");
+  assert.equal(posterUrl("https://api.openverse.org/v1/images/"), "");
   for (const host of ["assets.science.nasa.gov", "media.esa.int"]) {
     const image = `https://${host}/photo.jpg`;
     assert.equal(posterUrl(image), image);
@@ -54,6 +58,16 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(displayPrice({ value: "-1", currency: "INR" }), "");
   assert.equal(displayPrice({ value: "4.50", currency: "GBP" }), "");
   assert.equal(displayPrice({ value: "123456.70", currency: "INR" }), "₹1,23,456.70");
+});
+
+test("outside search links use consumer sites and carry the unmodified query as data", () => {
+  const query = "यूएसबी & 65W";
+  const links = externalSearchLinks(query, "shopping").map(({ url }) => new URL(url));
+  assert.deepEqual(links.map(url => url.hostname), ["www.amazon.in", "www.flipkart.com"]);
+  assert.equal(links[0].searchParams.get("k"), query);
+  assert.equal(links[1].searchParams.get("q"), query);
+  assert.equal(new URL(externalSearchLinks(query, "videos")[0].url).searchParams.get("search_query"), query);
+  assert.deepEqual(externalSearchLinks(query, "index"), []);
 });
 
 test("watch pages reject duplicate and unsolicited popups without blocking explicit links", () => {

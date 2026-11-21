@@ -36,6 +36,8 @@
 - Start on a Web search and submit a query with non-Latin text. Scroll to append another batch, or use **More results** if the list is short. Check that it appends without duplicates and the India region is carried through category changes and pagination.
 - Reload a legacy `/search/?q=…&type=deep` link; check that it opens Web with the same query and never requests the retired endpoint. In a signed-in fixture, switch categories and confirm reload and browser back/forward preserve the search. Guests and private windows should not persist new searches in the address bar. Check **Web**, **Images**, **Research** (Crossref) and **Veyra index** still show their own results.
 - Test valid `site:` and `-site:` filters, a malformed scope, an empty response, and a partial provider response. Check retry, result navigation and 375px layout, including scrollable category tabs and wrapping source labels.
+- After a page of repeated links, **More results** should skip it and show the next new batch without removing existing results or moving keyboard focus. If a source fails after a repeated page, **Retry more results** should retry that source. The app stops skipping after a bounded number of requests.
+- Search Videos and Shopping with no in-app matches: see clearly labeled YouTube and Indian retailer links outside Veyra, not products or videos counted as results. Verify outbound links send nothing until clicked, and are hidden for a scoped or incognito search. Confirm Openverse previews load without allowing arbitrary thumbnail hosts.
 
 ## Session privacy and VPN
 

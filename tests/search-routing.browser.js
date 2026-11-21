@@ -48,6 +48,13 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (/missing listing/.test(req.query.q)) return res.json({ provider: "none", status: "empty", results: [] });
+  if (req.query.q === "repeat fixture" && next === 20 &&
+      calls.filter(call => call.query.q === "repeat fixture" && call.query.offset === "20").length === 1) {
+    return res.json({ provider: "none", status: "unavailable", results: [] });
+  }
+  if (req.query.q === "repeat fixture") return res.json({ provider: "bing", nextOffset: next < 20 ? next + 10 : null,
+    results: [{ title: next === 20 ? "New after repeat" : "First result", url: next === 20 ? "https://example.in/new" : `https://example.in/repeat?utm_source=${next}` }] });
   if (paged && type === "images" && req.query.provider === "wikimedia") {
     return res.json({ provider: "wikimedia", nextPage: null,
       results: [{ title: "Commons continuation", url: "https://example.in/commons" }] });
@@ -111,6 +118,7 @@ try {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
         if (url.hostname === "www.google.co.in") return route.fulfill({ contentType: "text/html", body: "<h1>External search fixture</h1>" });
+        if (url.hostname === "www.amazon.in") return route.fulfill({ contentType: "text/html", body: "<h1>External retailer fixture</h1>" });
         if (url.href === "https://www.tiktok.com/player/v1/6718335390845095173?autoplay=0") {
           tiktokRequests++;
           return route.fulfill({ contentType: "text/html", body: `<h1>TikTok fixture</h1><script>
@@ -208,6 +216,24 @@ try {
       await result("Final indexed result").waitFor();
       await page.getByText("End of available results").waitFor();
       assert.equal(await page.getByRole("button", { name: "More results" }).count(), 0);
+      await page.goto(`${origin}${prefix}/search/?q=repeat+fixture`);
+      await result("First result").waitFor();
+      await page.getByRole("button", { name: "More results" }).click();
+      await page.getByRole("button", { name: "Retry more results" }).click();
+      await result("New after repeat").waitFor();
+      assert.equal(await result("First result").count(), 1);
+      assert.deepEqual(calls.filter(call => call.query.q === "repeat fixture" && call.path === "/api/search/web").map(call => call.query.offset), ["0", "10", "20", "20"]);
+      await page.goto(`${origin}${prefix}/search/?q=missing+listing&type=shopping`);
+      await page.getByText("Search outside Veyra").waitFor();
+      assert.equal(await page.locator("#searchResults article").count(), 0);
+      const [retailer] = await Promise.all([context.waitForEvent("page"), page.getByRole("link", { name: "Search Amazon India" }).click()]);
+      await retailer.waitForURL("https://www.amazon.in/s?**");
+      assert.equal(new URL(retailer.url()).searchParams.get("k"), "missing listing");
+      assert.equal(await retailer.evaluate(() => document.referrer), "");
+      await retailer.close();
+      await page.goto(`${origin}${prefix}/search/?q=site%3Aamazon.in+missing+listing&type=shopping`);
+      await page.getByText("No results within the requested site scope").waitFor();
+      assert.equal(await page.getByRole("link", { name: "Search Amazon India" }).count(), 0);
       if (!mobile) await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(`${origin}${prefix}/browse/`);
       await page.locator("#ntpInput").fill("recover");
@@ -241,6 +267,9 @@ try {
       assert.equal(await page.locator("#searchResults img").count(), 0);
       assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
+      await page.goto(`${origin}${prefix}/search/?q=missing+listing&type=videos&incognito=1`);
+      await page.getByText("No matching watch pages from Veyra’s sources.").waitFor();
+      assert.equal(await page.getByRole("link", { name: "Search YouTube" }).count(), 0);
 
       const post = "https://www.tiktok.com/@scout2015/video/6718335390845095173";
       const openPost = async () => {
