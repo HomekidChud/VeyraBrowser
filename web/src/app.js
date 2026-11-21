@@ -37,6 +37,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=4";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
+import { mountTikTokPlayer, publicTikTokPost, tiktokPlayerPage } from "./tiktok.js?v=1";
 import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -921,7 +922,7 @@ export function updateIdentity() {
   const bm = t.url && state.bookmarks.some(b => b.url === t.url);
   $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
   $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
-  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${t.localPage === "youtube" ? "Direct player" : t.localPage ? "Direct launch" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${["youtube", "tiktok"].includes(t.localPage) ? "Direct player" : t.localPage ? "Direct launch" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
 
   document.title = t.view === "page" && t.title && t.title !== "New tab" ? `${t.title} — Veyra` : "Veyra";
 
@@ -957,6 +958,7 @@ function getOrCreateFrame(t) {
 
   f.setAttribute("sandbox", t.localPage === "now" ? "allow-popups allow-popups-to-escape-sandbox"
     : t.localPage === "youtube" ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+    : t.localPage === "tiktok" ? "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
       : "allow-scripts allow-same-origin allow-forms allow-downloads");
   f.setAttribute("allow", INCOGNITO
     ? "autoplay; encrypted-media; display-capture 'none'; fullscreen 'none'; picture-in-picture 'none'"
@@ -1014,6 +1016,17 @@ function localFrameDocument(frame) {
   } catch { return null; }
 }
 function onFrameLoad(t) {
+  if (t.localPage === "tiktok" && state.tabs.includes(t) && t.view === "page") {
+    const frame = frameFor(t), doc = localFrameDocument(frame), load = t.pageLoad, url = t.url;
+    if (doc?.URL !== tiktokPlayerPage()) return;
+    const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "tiktok"
+      && t.pageLoad === load && t.url === url && frameFor(t) === frame && localFrameDocument(frame) === doc;
+    mountTikTokPlayer(doc, url, {
+      directAllowed: () => current() && directTikTokAllowed() && t.tiktokSession === state.session,
+      openProxy: () => { if (current()) void loadInTab(t, url, { trackHistory: false, skipTikTokPlayer: true }); }
+    });
+    return;
+  }
   if (t.localPage === "youtube" && state.tabs.includes(t) && t.view === "page") {
     const frame = frameFor(t), url = t.url, load = t.pageLoad, doc = localFrameDocument(frame);
     const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "youtube"
@@ -1617,8 +1630,14 @@ async function serverAllowsInlineWatch(id) {
     return status?.inlineWatch === true && status.state === "ready";
   } catch { return false; }
 }
-function localPageKind(url, watchInline = false) {
+let pendingVpnConnections = 0;
+function directTikTokAllowed() {
+  return !INCOGNITO && !state.vpn.connected && !pendingVpnConnections && !settings.vpnAutoProfile
+    && (settings.runtime || "auto") === "auto";
+}
+function localPageKind(url, watchInline = false, tiktokAllowed = false) {
   if (inlineYouTubeAllowed() && !watchInline && youtubeEmbedUrl(url)) return "youtube";
+  if (tiktokAllowed) return "tiktok";
   return nowGameUrl(url) ? "now" : "";
 }
 function resolveStrategy(url) {
@@ -1691,7 +1710,7 @@ function openCrawl(t, url, session, enabled = true) {
     return null;
   }).finally(() => { if (t.crawlToken === token) t.crawlToken = null; });
 }
-async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "", trackHistory = true } = {}) {
+async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "", trackHistory = true, skipTikTokPlayer = false } = {}) {
   t.needsInitialLoad = false;
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
@@ -1722,19 +1741,29 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!current()) return;
   t.youtubeInlineWatch = watchInline;
   if (watchInline && t.browserSessionId) void stopBrowserSession(t);
-  const direct = loadFrame && !(forceBrowser && watchId) && localPageKind(url, watchInline);
+  const tiktokSession = state.session;
+  let tiktokAllowed = !!(loadFrame && !skipTikTokPlayer && !forceBrowser && publicTikTokPost(url) && directTikTokAllowed());
+  if (tiktokAllowed && tiktokSession) {
+    // Resumed sessions can already be protected before the VPN panel has refreshed.
+    const vpn = await api(`/api/vpn/session?sid=${encodeURIComponent(tiktokSession.id)}`, { timeoutMs: 4500 }).catch(() => null);
+    tiktokAllowed = vpn?.connected === false && state.session === tiktokSession && directTikTokAllowed();
+    if (!current()) return;
+  }
+  const direct = loadFrame && !(forceBrowser && watchId) && localPageKind(url, watchInline, tiktokAllowed);
   if (direct) {
     frameFor(t)?.remove();
     if (t.browserSessionId) void stopBrowserSession(t);
     Object.assign(t, {
       localPage: direct, youtubeEmbed: direct === "youtube", browserMode: "LOCAL", renderWinner: "local",
-      failoverReason: null, sessionId: null, title: record?.title || (direct === "youtube" ? "YouTube" : "now.gg"), loading: false, done: true
+      failoverReason: null, sessionId: null, title: record?.title || (direct === "youtube" ? "YouTube" : direct === "tiktok" ? "TikTok" : "now.gg"), loading: false, done: true
     });
     const frame = getOrCreateFrame(t);
     frame.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     if (direct === "youtube") frame.setAttribute("allow", "encrypted-media; fullscreen; picture-in-picture");
+    else if (direct === "tiktok") frame.setAttribute("allow", "fullscreen");
     else frame.removeAttribute("allow");
-    frame.srcdoc = direct === "youtube" ? youtubeFallbackHtml(url) : nowGameMarkup(url);
+    if (direct === "tiktok") { t.tiktokSession = tiktokSession; frame.src = tiktokPlayerPage(); }
+    else frame.srcdoc = direct === "youtube" ? youtubeFallbackHtml(url) : nowGameMarkup(url);
     if (trackHistory) recordHistory(record?.kind || "page", url, t.title, null);
     if (active) renderActive({ push: false });
     renderTabsSoon();
@@ -3009,12 +3038,15 @@ export async function refreshVpnStatus(onProfiles) {
   return state.vpn;
 }
 export async function connectVpn(profileId, { quiet = false } = {}) {
-  const s = await ensureSession();
-  const r = await api("/api/vpn/connect", { json: { sessionId: s.id, profileId } });
-  if (state.session !== s) return;
-  state.vpn.connected = true; state.vpn.profile = r.profile || null;
-  if (!quiet) toast(`VPN connected · ${r.profile?.name || profileId}`);
-  reloadPagesAfterVpn(); $("vpnBtn").classList.toggle("on", true); updateIdentity();
+  pendingVpnConnections++;
+  try {
+    const s = await ensureSession();
+    const r = await api("/api/vpn/connect", { json: { sessionId: s.id, profileId } });
+    if (state.session !== s) return;
+    state.vpn.connected = true; state.vpn.profile = r.profile || null;
+    if (!quiet) toast(`VPN connected · ${r.profile?.name || profileId}`);
+    reloadPagesAfterVpn(); $("vpnBtn").classList.toggle("on", true); updateIdentity();
+  } finally { pendingVpnConnections--; }
 }
 export async function disconnectVpn() {
   if (!state.session) return;
@@ -3029,7 +3061,7 @@ function reloadPagesAfterVpn() {
       void stopBrowserSession(t).then(() => {
         if (state.tabs.includes(t) && t.view === "page" && t.url === url && t.pageLoad === pageLoad) void loadInTab(t, url);
       });
-    } else if (activeTab() === t || t.localPage === "youtube" || t.youtubeInlineWatch) void loadInTab(t, t.url);
+    } else if (activeTab() === t || ["youtube", "tiktok"].includes(t.localPage) || t.youtubeInlineWatch) void loadInTab(t, t.url);
     else t.needsReload = true;
   }
 }
