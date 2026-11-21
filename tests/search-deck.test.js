@@ -24,6 +24,12 @@ test("pagination carries category adapter and does not repeat results", () => {
   assert.deepEqual(mergeResults([image], [{ ...image, url: "https://example.com/another-source" }, later]), [image, later]);
   const canonical = { ...first, canonicalUrl: first.url, providers: ["bing"] };
   assert.deepEqual(mergeResults([canonical], [{ ...canonical, url: `${first.url}?utm_source=other` }]), [canonical]);
+  assert.deepEqual(mergeResults([first], [{ url: `${first.url}?utm_source=other&fbclid=123#section` }]), [first]);
+  const watch = { url: "https://www.youtube.com/watch?v=abcdefghijk&t=42" };
+  const other = { url: "https://youtu.be/abcdefghijl" };
+  const lookalike = { url: "https://youtube.com.example.org/watch?v=abcdefghijk" };
+  assert.deepEqual(mergeResults([watch], [{ url: "https://m.youtube.com/shorts/abcdefghijk" },
+    { url: "https://youtu.be/abcdefghijk" }, other, lookalike]), [watch, other, lookalike]);
 });
 
 test("result URLs, thumbnail allowlist, source labels, and optional prices", () => {

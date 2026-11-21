@@ -8,7 +8,7 @@
 
 ## Change category
 - Use Web, Images, Videos, News, Shopping, Research, Discussions or Veyra index. Check rich cards, attributed sources, pagination, retry/empty states and site filtering.
-- Switch categories with a click, swipe or arrow keys. Confirm they keep the query, request the India region on subsequent pages and can be restored through browser history without putting queries in an incognito URL.
+- Switch categories with a click or arrow keys. At 375px, swipe the single horizontal row to see later categories. Scroll near the end of a long result list to append the next batch without jumping or repeating links; use **More results** when the viewport does not scroll and **Retry more results** if a batch fails.
 - Old links with `type=deep` must load Web with the same query. Research must still show journal results. Shopping shows INR only when a provider supplied an explicit rupee price; other listings must not get a converted or made-up amount.
 - Open a result in Veyra or Ctrl/Cmd-click to open a background tab. Videos continue through the existing YouTube watch flow where applicable.
 

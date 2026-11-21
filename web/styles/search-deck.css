@@ -61,6 +61,9 @@ body.incognito .search-deck {
 }
 .search-deck .search-hero button:hover { filter: brightness(.9); }
 .search-deck .search-tabs { gap: .25rem; margin-top: .875rem; overflow-x: auto; border-color: var(--search-line); scrollbar-width: thin; }
+.search-deck .search-tabs { flex-wrap: nowrap; overscroll-behavior-x: contain; scrollbar-color: var(--search-muted) transparent; }
+.search-deck .search-tabs::-webkit-scrollbar { display: initial; height: .25rem; }
+.search-deck .search-tabs::-webkit-scrollbar-thumb { background: var(--search-muted); border-radius: .25rem; }
 .search-deck .search-tabs [data-src] {
   flex: none; min-height: 2.75rem; margin: 0; padding: .5rem .875rem;
   white-space: nowrap; color: var(--search-muted); font-size: var(--search-copy); font-weight: 500;
@@ -140,10 +143,12 @@ body.incognito .search-deck {
 .search-deck .ai-badge svg { display: none; }
 .search-deck :is(.ai-source-chip,.ai-answer-header .muted,.ai-answer-unavailable span,.ai-answer-unavailable p,.ai-answer-feedback,.ai-caveats li,#searchCoverage) { color: var(--search-muted); }
 .search-deck .btn.ghost { min-height: 2.75rem; border-color: var(--search-line); background: var(--search-field); color: var(--search-ink); border-radius: .375rem; }
+.search-feed-status { margin: .75rem 0 0; color: var(--search-muted); font-size: var(--search-caption); }
+.search-feed-status:empty { display: none; }
 @media (max-width: 600px) {
   .search-masthead { gap: .75rem; }
-  .search-deck .search-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: .5rem; }
-  .search-deck .search-tabs [data-src] { justify-content: center; padding-inline: .125rem; font-size: var(--search-caption); }
+  .search-deck .search-tabs { margin-top: .5rem; }
+  .search-deck .search-tabs [data-src] { padding-inline: .625rem; font-size: var(--search-caption); }
   .search-deck .search-toolbar { align-items: center; margin-block: .5rem; }
   .search-deck .search-meta span { width: auto; }
   .search-panel:is([data-category=images], [data-category=videos]) .search-rich-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .875rem; }

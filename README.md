@@ -35,6 +35,8 @@ The override is accepted only when the page itself is served from `localhost`, `
 
 Search fills the active browser tab. Web opens a plain list of links and snippets, Images and Videos use a gallery, and News, Shopping, Research, Discussions, and Veyra index have their own views. The browser requests the India region on every page. Providers without a regional filter, such as Crossref and Hacker News, still include global results. Shopping opens Indian merchant pages in Veyra and shows a rupee price only when one is explicitly supplied; prices are not converted and stock is not inferred.
 
+Categories sit side by side; swipe the row on a phone to see the rest. Scrolling near the bottom loads another batch when one is available. The **More results** button remains for short result lists, keyboard navigation, and retry. Web can continue into the Veyra crawler index after provider pages run out.
+
 Open `/search/?q=moon&type=images` under the deployed app base to link directly to a result category. Old `type=deep` links now open Web with the same query. The web and Android shells use the same route. Search requests go to the Veyra API without opening a proxy browsing session first; a proxy session is still required when opening a website.
 
 Signed-in users can request a cited summary below the results. A search never starts a summary automatically. Incognito does not load result thumbnails, and guest and incognito sessions cannot request AI summaries.

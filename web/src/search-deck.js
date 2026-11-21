@@ -40,7 +40,19 @@ export function posterUrl(value) {
     "images-assets.nasa.gov", "science.nasa.gov", "assets.science.nasa.gov", "www.esa.int", "media.esa.int"].includes(new URL(url).hostname) ? url : "";
 }
 export function mergeResults(previous, next) {
-  const key = row => row.imageUrl || row.canonicalUrl || row.url;
+  const key = row => {
+    try {
+      const u = new URL(row.imageUrl || row.canonicalUrl || row.url);
+      u.hash = "";
+      for (const name of [...u.searchParams.keys()]) if (/^utm_|^(?:fbclid|gclid|mc_cid|mc_eid)$/i.test(name)) u.searchParams.delete(name);
+      if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(u.hostname)) {
+        const videoId = u.hostname === "youtu.be" ? /^\/([\w-]{11})\/?$/.exec(u.pathname)?.[1] :
+          u.pathname === "/watch" ? u.searchParams.get("v") : /^\/shorts\/([\w-]{11})\/?$/.exec(u.pathname)?.[1];
+        if (/^[\w-]{11}$/.test(videoId || "")) return `youtube:${videoId}`;
+      }
+      return u.href;
+    } catch { return row.url; }
+  };
   const merged = new Map(previous.map(row => [key(row), row]));
   for (const row of next) {
     const id = key(row), existing = merged.get(id);
@@ -52,7 +64,7 @@ export function icon(name) { return `<svg aria-hidden="true"><use href="#${name}
 export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
-    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
+    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
   };
   return Object.hasOwn(labels, provider) ? labels[provider] : "";
 }

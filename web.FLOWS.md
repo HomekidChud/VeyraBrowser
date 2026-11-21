@@ -33,7 +33,7 @@
 
 ## Search region and routes
 
-- Start on a Web search and submit a query with non-Latin text. Check that **More results** appends without duplicates and that the India region is carried through category changes and pagination.
+- Start on a Web search and submit a query with non-Latin text. Scroll to append another batch, or use **More results** if the list is short. Check that it appends without duplicates and the India region is carried through category changes and pagination.
 - Reload a legacy `/search/?q=…&type=deep` link; check that it opens Web with the same query and never requests the retired endpoint. In a signed-in fixture, switch categories and confirm reload and browser back/forward preserve the search. Guests and private windows should not persist new searches in the address bar. Check **Web**, **Images**, **Research** (Crossref) and **Veyra index** still show their own results.
 - Test valid `site:` and `-site:` filters, a malformed scope, an empty response, and a partial provider response. Check retry, result navigation and 375px layout, including scrollable category tabs and wrapping source labels.
 

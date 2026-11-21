@@ -48,6 +48,23 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (paged && type === "images" && req.query.provider === "wikimedia") {
+    return res.json({ provider: "wikimedia", nextPage: null,
+      results: [{ title: "Commons continuation", url: "https://example.in/commons" }] });
+  }
+  if (req.query.q === "scroll fixture") {
+    if (!next) return res.json({ provider: "fixture", nextOffset: 10, results: Array.from({ length: 14 }, (_, i) => ({
+      title: `Scroll result ${i + 1}`, url: `https://example.in/scroll/${i + 1}`, snippet: "This is a long results feed."
+    })) });
+    if (next === 20 && calls.filter(call => call.query.q === "scroll fixture" && call.query.offset === "20").length === 1) {
+      return res.status(503).json({ ok: false, error: "Provider temporarily unavailable." });
+    }
+    if (next === 10) return res.json({ provider: "fixture", nextOffset: 20, results: [
+      { title: "Duplicate first result", url: "https://example.in/scroll/1?utm_campaign=test#section" },
+      ...Array.from({ length: 14 }, (_, i) => ({ title: `Scroll result ${i + 15}`, url: `https://example.in/scroll/${i + 15}` }))
+    ] });
+    return res.json({ provider: "veyra-index", nextOffset: null, results: [{ title: "Final indexed result", url: "https://example.in/archive" }] });
+  }
   const row = { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet." };
   const second = { title: `More ${type} results`, url: "https://example.in/more", snippet: "Another snippet." };
   const results = next ? [row, second] : type === "shopping" ? [
@@ -56,7 +73,8 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   ] : paged && type === "images" ? [row, { ...second, title: "Second image", url: "https://example.in/gallery" }] : [row];
   if (type === "images") results[0].thumbnail = "https://upload.wikimedia.org/fixture.jpg";
   res.json({ ok: true, status: "ok", provider: "fixture", nextOffset: paged && type === "web" && !next ? 20 : null,
-    nextPage: paged && type === "images" && !next ? 1 : null, more: false, results });
+    nextPage: paged && type === "images" ? 1 : null,
+    nextProvider: paged && type === "images" && next ? "wikimedia" : undefined, more: false, results });
 });
 api.use((_req, res) => res.json({ ok: true }));
 
@@ -139,11 +157,26 @@ try {
       await page.setViewportSize({ width: 375, height: 812 });
       assert.equal(await page.locator("#searchResults").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 2);
       assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
-      assert.equal(await page.locator("#searchTabs").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      assert.equal(await page.locator("#searchTabs").evaluate(el => el.scrollWidth > el.clientWidth &&
+        new Set([...el.children].map(child => Math.round(child.getBoundingClientRect().top))).size === 1), true);
+      await page.locator("#searchTabs").hover();
+      await page.mouse.wheel(260, 0);
+      await page.waitForFunction(() => document.querySelector("#searchTabs").scrollLeft > 0);
+      await page.getByRole("tab", { name: "Images" }).press("End");
+      await result("index result for India rail").waitFor();
+      assert.ok(await page.locator("#searchTabs").evaluate(el => el.scrollLeft > 0));
+      await page.getByRole("tab", { name: "Veyra index" }).press("Home");
+      await result("web result for India rail").waitFor();
+      await page.getByRole("tab", { name: "Web" }).press("ArrowRight");
+      await result("images result for India rail").waitFor();
       assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
       await page.getByRole("button", { name: "More results" }).click();
       await result("More images results").waitFor();
       assert.ok(calls.some(call => call.query.type === "images" && call.query.page === "1" && call.query.region === "IN"));
+      await page.getByRole("button", { name: "More results" }).click();
+      await result("Commons continuation").waitFor();
+      assert.ok(calls.some(call => call.query.provider === "wikimedia" && call.query.page === "1" && call.query.region === "IN"));
+      assert.equal(await result("More images results").count(), 1);
       for (const [label, type] of [["Videos", "videos"], ["News", "news"], ["Shopping", "shopping"], ["Research", "research"], ["Discussions", "discussions"], ["Veyra index", "index"]]) {
         await page.getByRole("tab", { name: label }).click();
         await result(`${type} result for India rail`).waitFor();
@@ -154,6 +187,24 @@ try {
       assert.ok(!calls.some(call => call.path === "/api/search/deep" || call.path === "/api/search/answer"));
       await page.getByRole("tab", { name: "Web" }).click();
       await result("web result for India rail").waitFor();
+      await page.goto(`${origin}${prefix}/search/?q=scroll+fixture`);
+      await result("Scroll result 14").waitFor();
+      const firstNode = await result("Scroll result 1").elementHandle();
+      await firstNode.focus();
+      assert.ok(!calls.some(call => call.query.q === "scroll fixture" && call.query.offset === "10"));
+      await page.mouse.move(210, 570);
+      await page.mouse.wheel(0, 5000);
+      await result("Scroll result 28").waitFor();
+      assert.equal(await firstNode.evaluate(el => el.isConnected), true, "appending must preserve existing result elements");
+      assert.equal(await firstNode.evaluate(el => el === document.activeElement), true, "appending must preserve keyboard focus");
+      assert.equal(await result("Duplicate first result").count(), 0);
+      assert.ok(calls.some(call => call.query.q === "scroll fixture" && call.query.feed === "1" && call.query.offset === "10"));
+      await page.mouse.wheel(0, 5000);
+      await page.getByRole("button", { name: "Retry more results" }).waitFor();
+      await page.getByRole("button", { name: "Retry more results" }).click();
+      await result("Final indexed result").waitFor();
+      await page.getByText("End of available results").waitFor();
+      assert.equal(await page.getByRole("button", { name: "More results" }).count(), 0);
       if (!mobile) await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(`${origin}${prefix}/browse/`);
       await page.locator("#ntpInput").fill("recover");
