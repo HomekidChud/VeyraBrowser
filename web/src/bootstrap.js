@@ -34,18 +34,18 @@
   });
 
   const gateScript = document.createElement("script");
-  gateScript.src = `${base}src/gate.js?v=8.29.1-session-privacy`;
+  gateScript.src = `${base}src/gate.js?v=8.37.3-search-routing`;
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.2-embed-playback`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.3-search-routing`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
       const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
       if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.2-embed-playback`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.3-search-routing`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();

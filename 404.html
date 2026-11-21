@@ -8,16 +8,18 @@
 <body>
   <script>
     const target = new URL(location.href);
-    const route = target.pathname.match(/^(.*?\/web)\/((?:admin|settings|extensions)(?:\/[a-z-]+)?)\/?$/);
-    const webRoot = target.pathname.match(/^(.*?\/web)(?:\/|$)/)?.[1];
-    if (route) {
-      target.pathname = `${route[1]}/`;
-      target.searchParams.set("veyra_route", route[2]);
+    const projectRoot = target.pathname.match(/^\/VeyraBrowser(?=\/|$)/i)?.[0] || "";
+    const webRoot = target.pathname.match(/^((?:\/VeyraBrowser)?\/web)(?=\/|$)/i)?.[1] || `${projectRoot}/web`;
+    const prefix = target.pathname.startsWith(`${webRoot}/`) ? webRoot : projectRoot;
+    const route = target.pathname.slice(prefix.length).replace(/^\/+|\/+$/g, "");
+    const entry = `${webRoot}/`;
+    if (target.pathname !== entry) {
+      target.pathname = entry;
+      if (/^(?:browse|search|calculator|downloads|history|extensions|settings|vpn|dev|admin|console|resources|links|incognito|cast|internet)(?:\/[a-z-]+)*$/.test(route)) {
+        target.searchParams.set("veyra_route", route);
+      }
       location.replace(target.href);
-    } else if (webRoot) {
-      target.pathname = `${webRoot}/`;
-      location.replace(target.href);
-    } else location.replace("./web/" + location.search + location.hash);
+    }
   </script>
   <a href="./web/">Open Veyra Browser</a>
 </body>

@@ -70,10 +70,16 @@
     return nativeFetch(input, init);
   };
 
-  function gateStatus() {
-    return nativeFetch(`${API_ORIGIN}/api/gate/status`, { headers: staffHeaders(), credentials: "omit", cache: "no-store" })
-      .then(r => r.json().catch(() => ({})))
-      .catch(() => null);
+  async function gateStatus() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await nativeFetch(`${API_ORIGIN}/api/gate/status`, {
+        headers: staffHeaders(), credentials: "omit", cache: "no-store", signal: controller.signal
+      });
+      return await response.json();
+    } catch { return null; }
+    finally { clearTimeout(timer); }
   }
 
   function renderScreen(status) {
