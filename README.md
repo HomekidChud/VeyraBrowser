@@ -31,6 +31,14 @@ python3 -m http.server 8080 --directory web
 
 The override is accepted only when the page itself is served from `localhost`, `127.0.0.1`, or `::1`; public deployments continue using the fixed Render metadata.
 
+### Veyra Search
+
+Search fills the active browser tab. Web combines ordinary links with a category preview panel; Images, Videos, News, Shopping, Research, Discussions, and Veyra index can each be opened directly. Shopping links open the merchant in Veyra; the browser does not process purchases. Without an eBay connection, product discovery depends on the configured web providers and does not show prices or stock.
+
+Signed-in users can request a cited summary of the source pages behind a category. This is text retrieval, not analysis of image pixels, video playback, or retailer inventory. Incognito does not automatically request category previews or load result thumbnails, and guest and incognito sessions cannot request AI summaries.
+
+Deploy the matching VeyraServer category endpoint first, then ship the Pages and Capacitor client. An older API still supports Web and Veyra index. See [Search smoke checks](FLOWS.md) for browser QA.
+
 ### YouTube Watch Desk
 
 The official player is available only after the Veyra API returns `ready` from `GET /api/media/youtube/:id`. Configure `YOUTUBE_DATA_API_KEY` in the server environment (not in this repository or the static client). The [YouTube status lookup](https://developers.google.com/youtube/data/guides/made_for_kids_status) checks whether the selected video is embeddable and not Made for Kids; the watch page links out when eligibility cannot be established. The queue is held in the active tab's memory and is not a recommendation feed.

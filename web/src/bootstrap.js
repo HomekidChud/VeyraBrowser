@@ -27,6 +27,8 @@
   deckStyle.rel = "stylesheet"; deckStyle.href = `${base}styles/settings-deck.css?v=3`; document.head.appendChild(deckStyle);
   const velocityStyle = document.createElement("link");
   velocityStyle.rel = "stylesheet"; velocityStyle.href = `${base}styles/velocity.css?v=2`; document.head.appendChild(velocityStyle);
+  const searchStyle = document.createElement("link");
+  searchStyle.rel = "stylesheet"; searchStyle.href = `${base}styles/search-deck.css?v=1`; document.head.appendChild(searchStyle);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
@@ -36,14 +38,14 @@
   gateScript.onload = async () => {
     const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
     if (!unlocked) return;
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.2-watch-rollout`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.0-search-deck`; document.body.appendChild(app);
     if (location.protocol === "https:" && "serviceWorker" in navigator) {
       const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
       if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
     }
   };
   gateScript.onerror = () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.36.2-watch-rollout`; document.body.appendChild(app);
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.37.0-search-deck`; document.body.appendChild(app);
   };
   document.head.appendChild(gateScript);
 })();
