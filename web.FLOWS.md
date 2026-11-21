@@ -31,6 +31,12 @@
 - On a normal browser profile, verify **GitHub signup** is added once and opens the official signup page in a separate tab. Remove it, reload and verify it stays removed. An existing signup bookmark with a custom name should be preserved. Incognito should not seed it.
 - Check toast actions, input submission, deduplication, screen fit at 375 px, and reduced-motion behavior. Check that saved Google bookmarks open directly and ordinary bookmarks do not change behavior.
 
+## Deep Search
+
+- Start on a Web search, choose **Deep Search**, and submit a query with non-Latin text. Check that each result shows its source, **More results** appends without duplicates, and the count describes rows shown rather than a total estimate.
+- Reload an explicit `/search/?q=…&type=deep` deep link. In a signed-in fixture, switch categories and confirm reload and browser back/forward preserve the search. Guests and private windows should not persist new searches in the address bar. Check **Web**, **Images**, **Research** (Crossref) and **Veyra index** still show their own results.
+- Test valid `site:` and `-site:` filters, a malformed scope, an empty response, and a partial provider response. Check retry, result navigation and 375px layout, including scrollable category tabs and wrapping source labels.
+
 ## Session privacy and VPN
 
 - In a fresh guest context, browse a fixture site, end the session and confirm the tab closes without restoring its URL. Reload and verify browsing history, tab state and the session ID weren't written to local storage. Confirm the intentionally saved GitHub signup bookmark still exists.

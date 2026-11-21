@@ -1,14 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice } from "../web/src/search-deck.js";
+import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, deepSourceLabel, displayPrice } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 
 test("category routing preserves the query and upgrades legacy history", () => {
-  assert.equal(Object.keys(CATEGORIES).length, 8);
+  assert.equal(Object.keys(CATEGORIES).length, 9);
   assert.deepEqual(Object.keys(CATEGORIES).filter(isVertical), ["images", "videos", "news", "shopping", "research", "discussions"]);
   assert.equal(searchCategory("__proto__"), "web");
   assert.deepEqual(readSearchState(searchStateKey('Welsh "hills"?', "news")), { query: 'Welsh "hills"?', source: "news" });
+  assert.deepEqual(readSearchState(searchStateKey("日本語 site:example.com", "deep")), { query: "日本語 site:example.com", source: "deep" });
   assert.deepEqual(readSearchState("veyra:search:old history"), { query: "old history" });
   assert.equal(readSearchState("veyra:search-v2:invalid"), null);
 });
@@ -21,6 +22,11 @@ test("pagination carries category adapter and does not repeat results", () => {
   assert.deepEqual(mergeResults([first], [{ ...first, title: "duplicate" }, later]), [first, later]);
   const image = { ...first, imageUrl: "https://science.nasa.gov/example.jpg" };
   assert.deepEqual(mergeResults([image], [{ ...image, url: "https://example.com/another-source" }, later]), [image, later]);
+  const deep = { ...first, canonicalUrl: first.url, providers: ["bing"] };
+  assert.deepEqual(mergeResults([deep], [{ ...deep, url: `${first.url}?utm_source=other`, providers: ["veyra-index", "bing"] }]),
+    [{ ...deep, providers: ["bing", "veyra-index"] }]);
+  assert.equal(deepSourceLabel("veyra-index"), "Veyra index");
+  assert.equal(deepSourceLabel("__proto__"), "");
 });
 
 test("result URLs, thumbnail allowlist, source labels, and optional prices", () => {
