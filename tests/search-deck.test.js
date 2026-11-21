@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice } from "../web/src/search-deck.js";
-import { blockPlaybackPopup } from "../web/src/playback-popups.js";
+import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 
 test("category routing preserves the query and upgrades legacy history", () => {
   assert.equal(Object.keys(CATEGORIES).length, 8);
@@ -56,4 +56,26 @@ test("watch pages reject duplicate and unsolicited popups without blocking expli
   assert.equal(blockPlaybackPopup(watch, watch, true), true);
   assert.equal(blockPlaybackPopup("https://example.com/videos/fixture", "https://example.com/details"), false);
   assert.equal(blockPlaybackPopup("https://xhamster.com.example.org/videos/fixture", "https://example.com/details"), false);
+});
+
+test("the same embed and watch video share an ID and only the embed may open the watch page in place", () => {
+  const embed = "https://xhamster.com/embed/xhA123?ref=fixture";
+  const watch = "https://www.xhamster.com/videos/test-player-xha123";
+  const redirect = "https://adc3.lol/videos/test-player-xhA123?prs=fixture&target=https://example.com/#track";
+  assert.deepEqual(playbackPopupDecision(embed, redirect, true), {
+    action: "watch-in-place", key: xhamsterPlaybackKey(embed), url: "https://xhamster.com/videos/test-player-xhA123"
+  });
+  assert.deepEqual(playbackPopupDecision(embed, watch), {
+    action: "watch-in-place", key: xhamsterPlaybackKey(embed), url: watch
+  });
+  assert.equal(xhamsterPlaybackKey(embed), xhamsterPlaybackKey(watch));
+  assert.equal(blockPlaybackPopup(embed, watch, true), true, "the watch destination is never a popup");
+  for (const [from, to] of [[embed, embed], [watch, embed], [watch, redirect], [embed, "https://example.com/unsolicited"]]) {
+    assert.equal(playbackPopupDecision(from, to).action, "block");
+  }
+  for (const url of ["https://adc3.lol/videos/another-xhB456", "https://adc3.lol.example.com/videos/test-player-xhA123",
+    "https://adc3.lol:444/videos/test-player-xhA123", "https://www.xhamster.com/videos/another-xhB456",
+    "https://example.com/details"]) assert.equal(playbackPopupDecision(embed, url, true).action, "allow");
+  for (const source of ["https://xhamster.com.example.com/embed/xhA123", "https://xhamster.com/embed/not-a-video",
+    "https://xhamster.com/embed/xhA123/extra"]) assert.equal(playbackPopupDecision(source, watch).action, "allow");
 });

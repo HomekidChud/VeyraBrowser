@@ -13,7 +13,7 @@ import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=3";
-import { blockPlaybackPopup } from "./playback-popups.js?v=1";
+import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
@@ -1682,6 +1682,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
+  resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
@@ -2218,6 +2219,7 @@ export async function reload({ hard = false } = {}) {
   const t = activeTab(); if (!t) return;
   if ($("reloadBtn").dataset.loading === "1" && !hard) return stopLoad();
   if (t.view === "page" && t.url) {
+    playbackHandoffs.delete(t);
 
     if (isRemote(t) && t.browserStatus === "VERIFICATION_REQUIRED") {
       const url = t.url;
@@ -3150,10 +3152,28 @@ function teardownPopupLinks(tab) {
   if (tab.popupOf) { const opener = state.tabs.find(x => x.id === tab.popupOf); notifyPopupClosed(opener, tab.popupId); }
 }
 
-function openProxiedPopup(sourceTab, d) {
+const playbackHandoffs = new WeakMap();
+function resetPlaybackHandoff(tab, url) {
+  if (playbackHandoffs.has(tab) && playbackHandoffs.get(tab) !== xhamsterPlaybackKey(url)) playbackHandoffs.delete(tab);
+}
+function handlePlaybackPopup(tab, target, sourceFrame, explicitLink = false) {
+  const decision = playbackPopupDecision(tab.url, target, explicitLink);
+  if (decision.action === "allow") return false;
+  if (decision.action === "watch-in-place" && activeTab() === tab && frameFor(tab)?.contentWindow === sourceFrame) {
+    if (playbackHandoffs.get(tab) === decision.key) {
+      if (!tab.loading) toast("The site returned to the embed without starting playback. Reload the tab to retry.", { kind: "warn", ms: 5200 });
+    } else {
+      playbackHandoffs.set(tab, decision.key);
+      void navigate(decision.url, { tab });
+    }
+  }
+  return true;
+}
+
+function openProxiedPopup(sourceTab, d, sourceFrame) {
   const target = canonicalPopupUrl(d.url);
   const popupId = typeof d.popupId === "string" ? d.popupId : "";
-  if (!target || !/^[\w-]{1,80}$/.test(popupId) || blockPlaybackPopup(sourceTab.url, target)) return null;
+  if (!target || !/^[\w-]{1,80}$/.test(popupId) || handlePlaybackPopup(sourceTab, target, sourceFrame)) return null;
   const existing = state.tabs.find(x => x.popupOf === sourceTab.id && x.popupId === popupId);
   if (existing) return existing;
   if (activeTab() !== sourceTab) return null;
@@ -3371,7 +3391,7 @@ async function handleMessage(e) {
 
     const tgt = String(d.target || "_blank").toLowerCase();
     if ((tgt === "_top" || tgt === "_parent") && t.view === "page" && !isRemote(t)) { void loadInTab(t, u, { loadFrame: true }); return; }
-    if (blockPlaybackPopup(t.url, u, true)) return;
+    if (handlePlaybackPopup(t, u, e.source, true)) return;
     newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return;
   }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
@@ -3385,7 +3405,7 @@ async function handleMessage(e) {
 
   if (d.type === "veyra:popup-open" && d.url) {
     if (e.origin !== API_ORIGIN || t.view !== "page" || isRemote(t)) return;
-    const popup = openProxiedPopup(t, d);
+    const popup = openProxiedPopup(t, d, e.source);
     if (popup) addLog("info", `Popup opened through the fast proxy: ${hostOf(popup.url)}`);
     else if (typeof d.popupId === "string" && d.popupId.length <= 80) notifyPopupClosed(t, d.popupId);
     return;
@@ -3482,6 +3502,7 @@ async function handleMessage(e) {
       if (!same && fromRootFrame) {
 
         t.url = target;
+        if (e.origin === API_ORIGIN) resetPlaybackHandoff(t, target);
         t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
         pushTabHistory(t, target);
         recordHistory("page", target, d.title || hostOf(target), t.sessionId || state.session?.id);
@@ -3501,6 +3522,7 @@ async function handleMessage(e) {
       t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
     }
 
+    if (e.origin === API_ORIGIN) resetPlaybackHandoff(t, t.url);
     if (d.source === "document-navigation" && t.loading) { t.loading = false; clearTimeout(t.loadGuard); if (activeTab() === t) setLoading(false); }
     if (activeTab() === t) { updateAddress(); updateIdentity(); syncRoute({ replace: true }); }
     renderTabsSoon();
