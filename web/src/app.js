@@ -1,8 +1,9 @@
 import {
   API, API_ORIGIN, APP_BASE, $, qsa, esc, hostOf, pathOf, displayUrl, uid, fmtBytes, fmtClock, timeAgo, letterIcon,
   settings, saveSettings, load, save, remove, api, proxyUrl, addLog, logs, netLog, toast, clearNotifications, hooks, auth, isAdmin,
-  engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED, ensureApiAwake
+  engineUrl, engineName, openFloating, closeFloating, ctxMenu, promptDialog, confirmDialog, rawFetch, copyText, VERSION, ApiError, INCOGNITO, SEARCH_ENGINES, sendNeuralFeedback, CHROMIUM_TRY_DISABLED
 } from "./core.js?v=8.36.0-workbench";
+import { createApiReadiness, recoverableApiError } from "./api-readiness.js?v=1";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
 import { initUI } from "./ui.js?v=8.36.1-inline-watch";
@@ -56,7 +57,7 @@ export const state = {
 };
 const INTERNAL = {
   newtab: { title: "New tab", icon: "i-home", path: "/browse" },
-  search: { title: "Veyra Search", icon: "i-search", path: "/search" },
+  search: { title: "Veyra Search", icon: "i-search", path: "/search/" },
   calculator: { title: "Calculator", icon: "i-calc", path: "/calculator" },
   downloads: { title: "Downloads", icon: "i-download", path: "/downloads" },
   history: { title: "History", icon: "i-history", path: "/history" },
@@ -642,7 +643,7 @@ function routeForTab(t) {
     const params = new URLSearchParams();
     if (t.searchQuery) params.set("q", t.searchQuery);
     if (t.searchSource && t.searchSource !== "web") params.set("type", t.searchSource);
-    return ["/search", params.size ? `?${params}` : ""];
+    return ["/search/", params.size ? `?${params}` : ""];
   }
   if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
   if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
@@ -1002,11 +1003,21 @@ function setFrameSrc(f, src, tab = null) {
   }
   f.src = src;
 }
+function localFrameDocument(frame) {
+  if (!frame) return null;
+  try {
+    // Proxied documents live on the API origin, not the browser shell origin.
+    // WebKit reports an access error when a load listener attempts inspection.
+    if (!frame.hasAttribute("srcdoc") && frame.src && frame.src !== "about:blank"
+        && new URL(frame.src, location.href).origin !== location.origin) return null;
+    return frame.contentDocument;
+  } catch { return null; }
+}
 function onFrameLoad(t) {
   if (t.localPage === "youtube" && state.tabs.includes(t) && t.view === "page") {
-    const frame = frameFor(t), url = t.url, load = t.pageLoad, doc = frame?.contentDocument;
+    const frame = frameFor(t), url = t.url, load = t.pageLoad, doc = localFrameDocument(frame);
     const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "youtube"
-      && t.url === url && t.pageLoad === load && frameFor(t) === frame && frame?.contentDocument === doc
+      && t.url === url && t.pageLoad === load && frameFor(t) === frame && !!doc && localFrameDocument(frame) === doc
       && !INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false;
     if (current()) wireYouTubeDesk(doc, url, t.youtubeQueue ||= [], {
       current, check: id => api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 6500 }),
@@ -1019,8 +1030,7 @@ function onFrameLoad(t) {
   probeFrameForEscape(t);
 
   try {
-    const f = frameFor(t);
-    const doc = f && f.contentDocument;
+    const doc = localFrameDocument(frameFor(t));
     if (doc && doc.querySelector("[data-veyra-fullpage]")) {
       t.fullPage = true;
       t.browserMode = "FAST_PROXY";
@@ -1059,8 +1069,8 @@ function proxyDocStats(t) {
   const f = frameFor(t);
   if (!f) return null;
   try {
-    const doc = f.contentDocument;
-    if (!doc) return null;
+    const doc = localFrameDocument(f);
+    if (!doc) return { sameOrigin: false, allowlisted: hostNeedsRealBrowser(t.url) };
     const body = doc.body;
     const text = (body?.innerText || "").replace(/\s+/g, " ").trim();
     const kids = body ? body.children.length : 0;
@@ -1304,25 +1314,26 @@ function showFrameForTab(t) {
   loadRestoredTab(t);
 }
 
-const WAKE_CODES = new Set(["API_TIMEOUT", "API_NETWORK_ERROR"]);
-export async function wakeServer(maxMs = 100000) {
-  const until = Date.now() + maxMs; let n = 0;
-  while (Date.now() < until) {
-    n++;
-    setLoading(true, Math.min(12 + n * 3, 40), `Waking up the Veyra server… (${Math.round((maxMs - (until - Date.now())) / 1000)} s)`);
-    try { const h = await api("/health", { timeoutMs: 12000 }); if (h?.ok !== false) return true; } catch {}
-    await new Promise(r => setTimeout(r, 2500));
-  }
-  return false;
+const waitForApi = createApiReadiness(signal => rawFetch(`${API}/api/health`, {
+  cache: "no-store", credentials: "omit", redirect: "error", signal
+}));
+export async function wakeServer() {
+  setLoading(true, 18, "Waiting for the Veyra server…");
+  return waitForApi();
 }
 async function createSessionWithWake() {
   const json = { incognito: !!state.incognito };
-  try { return await api("/api/session", { json, timeoutMs: 20000 }); }
+  const create = async timeoutMs => {
+    const body = await api("/api/session", { json, timeoutMs });
+    if (typeof body?.sessionId !== "string" || !body.sessionId) throw new ApiError("The server did not return a browsing session.", 0, "API_INVALID_RESPONSE");
+    return body;
+  };
+  try { return await create(20000); }
   catch (e) {
-    if (!WAKE_CODES.has(e.code) && ![502, 503, 504].includes(e.status)) throw e;
+    if (!recoverableApiError(e)) throw e;
     addLog("info", "Server is asleep or busy, waking it up…");
     if (!(await wakeServer())) throw new ApiError("The Veyra server didn't wake up in time. It may be redeploying; try again in a minute.", 0, "SERVER_ASLEEP");
-    return await api("/api/session", { json, timeoutMs: 30000 });
+    return create(30000);
   }
 }
 export async function ensureSession() {
@@ -1436,7 +1447,10 @@ export async function endSession(reason = "timer") {
 
     const pageTabs = ephemeral ? state.tabs : state.tabs.filter(t => t.view === "page");
     const restoreUrls = ephemeral ? [] : [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
-    for (const t of pageTabs) { teardownTab(t); hooks.dt?.onTabClosed(t); }
+    for (const t of pageTabs) {
+      t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
+      teardownTab(t); hooks.dt?.onTabClosed(t);
+    }
     state.tabs = ephemeral ? [] : state.tabs.filter(t => t.view !== "page");
     if (!state.tabs.length) state.tabs.push(makeTab());
     if (!tabById(state.activeId)) state.activeId = state.tabs[0].id;
@@ -1682,6 +1696,10 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
+  if (!forceBrowser && resolveStrategy(url).googleSearchFallback) {
+    showSearch(new URL(url).searchParams.get("q") || "", { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
+    return;
+  }
   resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
@@ -1728,8 +1746,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   catch (e) { if (current()) return renderError(t, "server", e); return; }
 
   if (!current()) return;
-  if (loadFrame) await ensureApiAwake(msg => { if (current() && activeTab() === t) setLoading(true, 18, msg); });
-  if (!current()) return;
   t.sessionId = session.id;
   if (trackHistory) recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
   let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false }
@@ -1740,11 +1756,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   }
   if (!current()) return;
   t.loadStrategy = strategy.key;
-  if (strategy.googleSearchFallback) {
-    let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
-    showSearch(q, { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
-    return;
-  }
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
@@ -1995,7 +2006,7 @@ function renderError(t, kind, error) {
   f.removeAttribute("allow");
   f.srcdoc = siteLoadErrorMarkup(titles[kind] || "The page could not be displayed", error, t.url);
   f.addEventListener("load", () => {
-    f.contentDocument?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
+    localFrameDocument(f)?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
       if (frameFor(t) !== f || !state.tabs.includes(t)) return;
       t.escapeRecoveries = 0;
       if (activeTab() !== t) switchTab(t.id);
@@ -2298,12 +2309,13 @@ async function runSearch(query, offset = 0, opts = {}) {
   if (t.searchRequest && !offset) t.searchRequest.abort();
   const request = t.searchRequest = new AbortController();
   const lang = (navigator.language || "en").slice(0, 2);
-  const current = () => t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchRequest === request && !request.signal.aborted;
+  const current = () => state.tabs.includes(t) && t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchRequest === request && !request.signal.aborted;
   const visible = () => current() && activeTab() === t;
   const scope = siteScope(query);
-  let signal = request.signal;
+  const signal = request.signal;
   t.searchQuery = query;
   t.searchLoading = !!query;
+  t.searchConnecting = false;
   t.searchError = "";
   if (!offset) {
     t.searchAnswerRequest?.abort();
@@ -2313,11 +2325,6 @@ async function runSearch(query, offset = 0, opts = {}) {
   if (visible()) renderSearch();
   if (!query) return;
   try {
-    if (ephemeralSession()) {
-      const session = await ensureSession();
-      signal = AbortSignal.any ? AbortSignal.any([signal, session.controller.signal]) : signal;
-      if (!current()) return;
-    }
     if (!offset && !opts.corrected && !scope.active) {
       void api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal }).then(correction => {
         if (!current() || !correction.changed || typeof correction.corrected !== "string" || correction.corrected.toLowerCase() === query.toLowerCase()) return;
@@ -2325,11 +2332,27 @@ async function runSearch(query, offset = 0, opts = {}) {
         if (visible()) renderSearchCorrection(t);
       }).catch(() => {});
     }
-    const b = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
+    const fetchResults = async () => {
+      const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.provider)}`, { timeoutMs: 11500, signal })
       : source === "web"
       ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent(lang)}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`, { signal });
+      if (!Array.isArray(data?.results)) throw new ApiError("The server did not return search results.", 0, "API_INVALID_RESPONSE");
+      return data;
+    };
+    let b;
+    try { b = await fetchResults(); }
+    catch (e) {
+      if (offset || !current() || !recoverableApiError(e)) throw e;
+      t.searchConnecting = true;
+      if (visible()) renderSearch();
+      if (!(await waitForApi())) throw new ApiError("Could not reach the Veyra server. Try again in a moment.", 0, "SERVER_ASLEEP");
+      if (!current()) return;
+      t.searchConnecting = false;
+      if (visible()) renderSearch();
+      b = await fetchResults();
+    }
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
@@ -2346,8 +2369,10 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!vertical && !ephemeralSession() && !offset && b.results.length) void fetchAIAnswer(t);
   } catch (e) {
     if (!current()) return;
+    t.searchConnecting = false;
     t.searchLoading = false;
-    if (!offset) t.searchError = vertical && e.status === 404 ? "This category is not enabled on the connected Veyra server yet." : e.message;
+    if (!offset) t.searchError = vertical && e.status === 404 ? "This category is not enabled on the connected Veyra server yet."
+      : recoverableApiError(e) ? "The Veyra server could not complete the search. Try again." : e.message;
     else if (visible()) toast("Could not load more search results. Try again.", { kind: "warn" });
     if (visible()) renderSearch();
   }
@@ -2543,7 +2568,7 @@ function renderSearch() {
     return;
   }
   if (!d) {
-    stat.textContent = "Searching…";
+    stat.textContent = t.searchConnecting ? "Waiting for the Veyra server…" : "Searching…";
     meta.textContent = category.description;
     results.innerHTML = searchSkeleton(source);
     return;
@@ -3647,19 +3672,20 @@ async function boot() {
   try {
     wire();
 
-    void ensureApiAwake();
-    startIncognitoAddressRotation();
     cleanupUnfinishedSessionHistory();
     const params = new URLSearchParams(location.search);
     const r = params.get("veyra_route");
     if (r && /^\/?incognito\/?$/.test(r)) { location.replace(APP_BASE + "/browse?incognito=1"); return; }
     if (r) try {
-      const path = r.startsWith("/") ? r : "/" + r;
+      const route = new URL("/" + r.replace(/^\/+/, ""), location.origin);
+      const path = route.pathname;
+      params.delete("veyra_route");
+      for (const [key, value] of route.searchParams) if (!params.has(key)) params.set(key, value);
+      const query = params.toString();
+      const suffix = (query ? `?${query}` : "") + (route.hash || location.hash);
       if (/^\/admin(?:\/[a-z-]+)?\/?$/.test(path)) {
-        params.delete("veyra_route");
-        const query = params.toString();
-        history.replaceState({}, "", routeUrl(path.endsWith("/") ? path : `${path}/`) + (query ? `?${query}` : "") + location.hash);
-      } else history.replaceState({}, "", APP_BASE + path);
+        history.replaceState({}, "", routeUrl(path.endsWith("/") ? path : `${path}/`) + suffix);
+      } else history.replaceState({}, "", routeUrl(/^\/search\/?$/.test(path) ? "/search/" : path) + suffix);
     } catch {}
     const t = makeTab(); state.tabs.push(t); state.activeId = t.id;
     initUI(B); initDevtools(B);
@@ -3669,6 +3695,7 @@ async function boot() {
     if (!/^\/admin(?:\/|$)/.test(currentRoute())) await revisitSavedSession();
     applyRoute();
     applyStartup(params);
+    startIncognitoAddressRotation();
 
     addLog("info", `Veyra ${VERSION} ready · API ${API}`);
   } catch (e) { $("fatalOverlay").classList.remove("hidden"); $("fatalMessage").textContent = e.stack || e.message; console.error(e); }

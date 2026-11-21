@@ -3,6 +3,8 @@
 ## Start a search
 - From New Tab or the address bar, enter `Yr Wyddfa`; the active Veyra tab shows its own Search form, AI overview when signed in, and Web results across the content area. The Web tab has no category preview panel and does not request the all-category feed, at desktop or phone widths.
 - Submit a different query from that form, accept a spelling correction when offered, and use More results if available. Confirm a new or restored tab retains its own results, category and answer.
+- Open or reload `/search/?q=moon&type=images` under the app base, then try the same link with the legacy Pages prefix (without `/web`). Both should display Images for `moon`, not the landing or server health page.
+- In a fresh guest or incognito window, search before opening a website. A search should work without creating a browsing session, and an unavailable server should leave the query in the tab with a retry action. Incognito must not put a new query in the address.
 
 ## Change category
 - Use Web, Images, Videos, News, Shopping, Research, Discussions or Veyra index. Check rich cards, attributed sources, pagination, retry/empty states and site filtering.
