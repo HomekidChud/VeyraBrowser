@@ -35,7 +35,7 @@ export function resultUrl(value) {
 export function posterUrl(value) {
   const url = resultUrl(value);
   return url && url.startsWith("https:") && ["imgs.search.brave.com", "upload.wikimedia.org", "thumb.wikimedia.org", "i.ebayimg.com", "i.ytimg.com",
-    "images-assets.nasa.gov", "science.nasa.gov", "www.esa.int"].includes(new URL(url).hostname) ? url : "";
+    "images-assets.nasa.gov", "science.nasa.gov", "assets.science.nasa.gov", "www.esa.int", "media.esa.int"].includes(new URL(url).hostname) ? url : "";
 }
 export function mergeResults(previous, next) {
   const key = row => row.imageUrl || row.url;

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice } from "../web/src/search-deck.js";
 import { blockPlaybackPopup } from "../web/src/playback-popups.js";
 
@@ -30,6 +31,15 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(posterUrl("http://thumb.wikimedia.org/example.jpg"), "");
   assert.equal(posterUrl("https://science.nasa.gov/example.jpg"), "https://science.nasa.gov/example.jpg");
   assert.equal(posterUrl("https://science.nasa.gov.example.com/example.jpg"), "");
+  for (const host of ["assets.science.nasa.gov", "media.esa.int"]) {
+    const image = `https://${host}/photo.jpg`;
+    assert.equal(posterUrl(image), image);
+    assert.equal(posterUrl(`https://${host}.example.com/photo.jpg`), "");
+    for (const path of ["../web/index.html", "../web/browse/index.html"]) {
+      const csp = readFileSync(new URL(path, import.meta.url), "utf8").match(/img-src ([^;]+)/)?.[1].split(/\s+/) || [];
+      assert.ok(csp.includes(`https://${host}`), `${path} permits the exact image host`);
+    }
+  }
   assert.equal(providerLabel("peertube"), "PeerTube via Sepia Search");
   assert.equal(displayPrice(null), "");
   assert.equal(displayPrice({ value: "-1", currency: "GBP" }), "");
