@@ -12,6 +12,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
+import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=1";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
@@ -607,7 +608,8 @@ export function closeTab(id, { silent = false } = {}) {
   if (!silent && settings.confirmCloseWithCrawl && t.jobId && !t.done && !confirm("This tab is still being indexed. Close it anyway?")) return;
   if (!silent) hooks.playStudioSound?.("close");
   if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
-  else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section });
+  else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section, ...(t.view === "search" ? { searchQuery: t.searchQuery, searchSource: t.searchSource } : {}) });
+  t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
   teardownTab(t); hooks.dt?.onTabClosed(t);
 
   teardownPopupLinks(t);
@@ -618,7 +620,7 @@ export function closeTab(id, { silent = false } = {}) {
   if (state.splitScreen.active && (state.splitScreen.leftTabId === id || state.splitScreen.rightTabId === id)) teardownSplitScreen();
   renderTabs(); renderActive({ push: true, replace: true });
 }
-export function reopenClosedTab() { const c = state.closed.pop(); if (!c) return toast("No recently closed tabs"); if (c.url) newTab({ url: c.url, index: Math.min(c.index, state.tabs.length) }); else newTab({ view: c.view, section: c.section, index: Math.min(c.index, state.tabs.length) }); }
+export function reopenClosedTab() { const c = state.closed.pop(); if (!c) return toast("No recently closed tabs"); const index = Math.min(c.index, state.tabs.length); if (c.url) newTab({ url: c.url, index }); else if (c.view === "search") showSearch(c.searchQuery || "", { tab: newTab({ index }), source: c.searchSource }); else newTab({ view: c.view, section: c.section, index }); }
 export function cycleTab(delta) { if (state.tabs.length < 2) return; const i = state.tabs.findIndex(t => t.id === state.activeId); switchTab(state.tabs[(i + delta + state.tabs.length) % state.tabs.length].id); }
 export function selectTabIndex(n) { const t = n === 9 ? state.tabs[state.tabs.length - 1] : state.tabs[n - 1]; if (t) switchTab(t.id); }
 
@@ -635,7 +637,12 @@ function currentRoute() {
 function routeForTab(t) {
   if (!t) return ["/browse", ""];
   if (t.view === "page") return ["/browse", ""];
-  if (t.view === "search") return ["/search", t.searchQuery ? `?q=${encodeURIComponent(t.searchQuery)}` : ""];
+  if (t.view === "search") {
+    const params = new URLSearchParams();
+    if (t.searchQuery) params.set("q", t.searchQuery);
+    if (t.searchSource && t.searchSource !== "web") params.set("type", t.searchSource);
+    return ["/search", params.size ? `?${params}` : ""];
+  }
   if (t.view === "calculator") return ["/calculator", t.calcExpression ? `?q=${encodeURIComponent(t.calcExpression)}` : ""];
   if (t.view === "settings") return [t.section ? `/settings/${t.section}` : "/settings", ""];
   if (t.view === "console") return ["/browse", "#console"];
@@ -699,7 +706,7 @@ function applyRoute() {
     else renderActive({ push: false });
     return;
   }
-  if (view === "search") { showSearch(params.get("q") || "", { push: false }); return; }
+  if (view === "search") { showSearch(params.get("q") || "", { push: false, source: searchCategory(params.get("type")) }); return; }
   if (view === "calculator") { openInternal("calculator", { push: false, calc: params.get("q") || "" }); return; }
   openInternal(view, { push: false, section: first === "dev" && second === "platform" ? (third || "") : (second || "") });
 }
@@ -2201,7 +2208,8 @@ export async function forward() {
 }
 async function restoreHistoryEntry(t) {
   const e = t.history[t.histIndex]; if (!e) return;
-  if (e.startsWith("veyra:search:")) return showSearch(e.slice(13), { tab: t, pushHist: false });
+  const search = readSearchState(e);
+  if (search) return showSearch(search.query, { tab: t, pushHist: false, source: search.source });
   if (e.startsWith("veyra:")) { const [view, section] = e.slice(6).split("/"); const idx = t.histIndex; openInternal(view, { tab: t, section }); t.histIndex = idx; t.history.length = Math.max(t.history.length, idx + 1); updateNavButtons(); return; }
   await navigate(e, { tab: t, pushHist: false });
 }
@@ -2272,113 +2280,147 @@ export function closeFind() { $("findBar").classList.add("hidden"); pageCommand(
 export function showSearch(query = "", { tab = null, push = true, pushHist = true, source = "", engine = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view === "page") teardownTab(t);
-  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, loading: false, browserSessionId: "", searchSource: source || t.searchSource || settings.searchSource || "web", searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
-  if (pushHist) pushTabHistory(t, "veyra:search:" + query);
+  t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
+  query = query.trim().slice(0, 600);
+  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, searchAnswer: null, searchPreviews: null, searchLoading: !!query, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
+  if (pushHist) pushTabHistory(t, searchStateKey(query, t.searchSource));
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
-  if (query) runSearch(query);
+  if (query) runSearch(query, 0, { tab: t });
 }
 const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave Search API", none: "no provider" };
 async function runSearch(query, offset = 0, opts = {}) {
-  const t = activeTab(); if (!t || t.view !== "search") return; t.searchQuery = query;
-  const source = t.searchSource || "web";
-  const request = t.searchRequest = Symbol();
-  const current = () => activeTab() === t && t.view === "search" && t.searchQuery === query && t.searchRequest === request;
+  const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
+  const source = searchCategory(t.searchSource), vertical = isVertical(source);
+  if (t.searchRequest && !offset) t.searchRequest.abort();
+  const request = t.searchRequest = new AbortController();
+  const lang = (navigator.language || "en").slice(0, 2);
+  const current = () => t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchRequest === request && !request.signal.aborted;
+  const visible = () => current() && activeTab() === t;
   const scope = siteScope(query);
-  let signal;
-  if (query.trim() && ephemeralSession()) {
-    try { signal = (await ensureSession()).controller.signal; }
-    catch { if (current()) toast("Could not start a private search session.", { kind: "warn" }); return; }
-    if (!current() || signal.aborted) return;
+  let signal = request.signal;
+  t.searchQuery = query;
+  t.searchLoading = !!query;
+  t.searchError = "";
+  if (!offset) {
+    t.searchAnswerRequest?.abort();
+    Object.assign(t, { searchData: null, searchPreviews: null, searchAnswer: null, searchCorrection: null });
+    if (visible()) $("view-search").scrollTop = 0;
   }
-  if (scope.active) t.searchCorrection = null;
-  if (!offset && !opts.corrected && query.trim() && !scope.active) {
-    try {
-      const correction = await api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal });
-      if (correction.changed && correction.corrected && correction.corrected.toLowerCase() !== query.toLowerCase()) {
-        t.searchCorrection = { original: query, corrected: correction.corrected };
-
-      }
-    } catch {}
-  }
-  if (!current() || signal?.aborted) return;
-  const correction = t.searchCorrection;
-  const correctionEl = $("searchCorrection");
-  if (correctionEl) {
-    correctionEl.classList.toggle("hidden", !correction);
-    correctionEl.innerHTML = correction ? `Did you mean: <a href="#" data-corrected="${esc(correction.corrected)}">${esc(correction.corrected)}</a>` : "";
-    correctionEl.querySelector("[data-corrected]")?.addEventListener("click", e => {
-      e.preventDefault();
-      const corrected = e.currentTarget.dataset.corrected;
-      t.searchCorrection = null; t.searchQuery = corrected;
-      const input = $("searchInput"); if (input) input.value = corrected;
-      runSearch(corrected, 0, { corrected: true });
-    });
-  }
-  renderSearchTabs(t);
-  $("searchMore").classList.add("hidden");
-  $("searchStat").textContent = "Searching…"; $("searchMeta").textContent = "";
-  $("aiAnswer").classList.add("hidden");
-  if (!offset) $("searchResults").innerHTML = Array.from({ length: 4 }, () => `<div class="result"><div class="skel" style="height:16px;width:55%;border-radius:4px;background:var(--surface-3)"></div><div style="height:10px"></div><div style="height:12px;width:85%;border-radius:4px;background:var(--surface-2)"></div></div>`).join("");
+  if (visible()) renderSearch();
+  if (!query) return;
   try {
-    const b = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : source === "web"
-      ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent((navigator.language || "en").slice(0, 2))}`, { timeoutMs: 20000, signal })
+    if (ephemeralSession()) {
+      const session = await ensureSession();
+      signal = AbortSignal.any ? AbortSignal.any([signal, session.controller.signal]) : signal;
+      if (!current()) return;
+    }
+    if (!offset && !opts.corrected && !scope.active) {
+      void api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal }).then(correction => {
+        if (!current() || !correction.changed || typeof correction.corrected !== "string" || correction.corrected.toLowerCase() === query.toLowerCase()) return;
+        t.searchCorrection = correction.corrected.slice(0, 600);
+        if (visible()) renderSearchCorrection(t);
+      }).catch(() => {});
+    }
+    if (!offset && source === "web" && !INCOGNITO && !scope.active) {
+      const context = t.searchPreviews = { loading: true, query };
+      if (visible()) renderSearchExplore(t);
+      void api(`/api/search/vertical?${searchParams(query, "all", lang)}`, { timeoutMs: 14500, signal }).then(data => {
+        if (t.searchPreviews !== context || t.view !== "search") return;
+        Object.assign(context, { loading: false, sections: data.sections || [] });
+        if (activeTab() === t) renderSearchExplore(t);
+      }).catch(() => {
+        if (t.searchPreviews !== context) return;
+        context.loading = false; context.error = true;
+        if (activeTab() === t && t.view === "search") renderSearchExplore(t);
+      });
+    }
+    const b = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
+      ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.provider)}`, { timeoutMs: 11500, signal })
+      : source === "web"
+      ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent(lang)}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`, { signal });
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rows.filter(row => scopedUrl(scope, row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
-    if (scope.active) {
+    b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
+    if (scope.active && !vertical) {
       b.siteFilter ||= scope;
       if (source === "index" || (b.more && !Number.isInteger(b.nextOffset))) b.nextOffset = rows.length ? offset + rows.length : null;
       if (!(b.nextOffset > offset) || (source === "web" && b.nextOffset >= 60) || (source === "index" && b.total != null && b.nextOffset >= b.total)) b.nextOffset = null;
     }
-    if (offset && t.searchData) {
-      const merged = new Map(t.searchData.results.map(row => [row.url, row]));
-      for (const row of b.results) if (!merged.has(row.url)) merged.set(row.url, row);
-      t.searchData = { ...b, results: [...merged.values()] };
-    } else t.searchData = b;
-    renderSearch();
-
-    if (!ephemeralSession() && !offset && (b.results || []).length > 0) fetchAIAnswer(t, query, b.results, source);
-  } catch (e) { if (!current()) return; if (offset && t.searchData) { renderSearch(); toast("Could not load more search results. Try again.", { kind: "warn" }); return; } $("searchStat").textContent = "Search failed"; $("searchMeta").textContent = e.message; $("searchResults").innerHTML = `<div class="empty"><b>Veyra Search couldn't finish</b><span>${esc(e.message)}</span><button class="btn ghost sm" id="searchRetry">Try again</button></div>`; $("searchRetry").onclick = () => runSearch(query); }
+    if (offset && b.status === "unavailable") throw new Error("The result provider is temporarily unavailable.");
+    t.searchData = offset && t.searchData ? { ...b, results: mergeResults(t.searchData.results, b.results) } : b;
+    t.searchLoading = false;
+    if (visible()) renderSearch();
+    if (!vertical && !ephemeralSession() && !offset && b.results.length) void fetchAIAnswer(t);
+  } catch (e) {
+    if (!current()) return;
+    t.searchLoading = false;
+    if (!offset) t.searchError = vertical && e.status === 404 ? "This category is not enabled on the connected Veyra server yet." : e.message;
+    else if (visible()) toast("Could not load more search results. Try again.", { kind: "warn" });
+    if (visible()) renderSearch();
+  }
 }
-async function fetchAIAnswer(t, query, results, source = "web") {
-  const ai = $("aiAnswer");
-  if (!ai) return;
-  ai.classList.remove("hidden");
-  ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Reading ${source === "index" ? "Veyra Index sources" : "the top sources"}…</span></div><div class="ai-answer-body"><div class="spinner" style="width:18px;height:18px;border-width:2px"></div></div></div>`;
+async function fetchAIAnswer(t) {
+  if (ephemeralSession() || t.searchAnswer?.status === "loading") return;
+  const { searchQuery: query, searchSource: source, searchData } = t;
+  const vertical = isVertical(source) ? source : "";
+  const request = t.searchAnswerRequest = new AbortController();
+  const current = () => t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchAnswerRequest === request && !request.signal.aborted && !ephemeralSession();
+  t.searchAnswer = { status: "loading" };
+  if (activeTab() === t) renderAIAnswer(t);
   try {
-    const r = await api("/api/search/answer", { json: { query, source, results: results.slice(0, 12).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: 20000 });
-    if (activeTab() !== t || t.searchQuery !== query) return;
+    const r = await api("/api/search/answer", { json: vertical ? { query, vertical, lang: (navigator.language || "en").slice(0, 2) } : { query, source, results: searchData.results.slice(0, 12).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: vertical ? 35000 : 20000, signal: request.signal });
+    if (!current()) return;
+    t.searchAnswer = { status: "done", response: r || {} };
+  } catch (error) {
+    if (!current()) return;
+    t.searchAnswer = { status: "error", error: String(error?.message || "Veyra could not contact the answer service.").slice(0, 220) };
+  }
+  if (activeTab() === t) renderAIAnswer(t);
+}
+function renderAIAnswer(t) {
+  const ai = $("aiAnswer"), source = t.searchSource, query = t.searchQuery, answer = t.searchAnswer;
+  const badge = `<span class="ai-badge">${searchIcon("i-bolt")} Veyra AI</span>`;
+  if (ephemeralSession() || (!answer && !(isVertical(source) && t.searchData?.results?.length))) { ai.classList.add("hidden"); ai.replaceChildren(); return; }
+  ai.classList.remove("hidden");
+  if (!answer || answer.status === "loading" || answer.status === "error") {
+    const detail = !answer ? `<p>Ask Veyra to summarize the readable source pages behind these results.</p><button class="btn ghost sm" type="button" id="searchSummarize">Summarize ${esc(CATEGORIES[source].label.toLowerCase())} sources</button>`
+      : answer.status === "loading" ? `<div class="spinner" aria-label="Loading"></div>` : `<p>${esc(answer.error)}</p><button class="btn ghost sm" type="button" id="searchSummarize">Try summary again</button>`;
+    ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header">${badge}<span class="ai-thinking">${!answer ? "Source overview" : answer.status === "loading" ? "Reading source pages…" : "Summary service unavailable"}</span></div><div class="ai-answer-body">${detail}</div></div>`;
+    $("searchSummarize")?.addEventListener("click", () => void fetchAIAnswer(t));
+    return;
+  }
+    const r = answer.response;
     const scope = siteScope(query);
-    if (r.hasAnswer && !unsafeAiText(r.answer) && !(r.sources || []).some(row => !scopedUrl(scope, row.url) || (row.canonicalUrl && !scopedUrl(scope, row.canonicalUrl)))) {
+    if (r.hasAnswer && !unsafeAiText(r.answer) && !(r.sources || []).some(row => !resultUrl(row.url) || !scopedUrl(scope, row.url) || (row.canonicalUrl && !scopedUrl(scope, row.canonicalUrl)))) {
       const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
       const feedbackId = /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
       ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${esc(r.confidenceLabel || "Evidence quality")}</span></div><div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, query, r.sources || [])}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources" aria-label="Sources">${r.sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}"><img src="${esc(sourceFaviconUrl(s.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>` : ""}${feedbackId ? `<div class="ai-answer-feedback"><span>Was this summary helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful">Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful">Not helpful</button><span class="ai-feedback-status" data-ai-feedback-status aria-live="polite"></span></div>` : ""}</div>`;
-      ai.querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
-      ai.querySelectorAll("[data-followup]").forEach(b => b.onclick = () => { t.searchQuery = b.dataset.followup; runSearch(t.searchQuery); });
+      wireSearchLinks(ai);
       ai.querySelectorAll("[data-ai-feedback]").forEach(button => button.addEventListener("click", async () => {
         const buttons = [...ai.querySelectorAll("[data-ai-feedback]")], status = ai.querySelector("[data-ai-feedback-status]");
         buttons.forEach(item => { item.disabled = true; }); if (status) status.textContent = "Saving feedback…";
         try {
           await api("/api/search/answer/feedback", { json: { observationId: feedbackId, rating: button.dataset.aiFeedback }, timeoutMs: 8000 });
-          if (status) status.textContent = "Thanks — this will help improve future summaries.";
+          answer.feedback = true;
+          if (status) status.textContent = "Thanks. Your feedback helps tune answer quality.";
         } catch (error) {
           buttons.forEach(item => { item.disabled = false; });
           if (status) status.textContent = `Feedback was not saved: ${String(error?.message || "please try again").slice(0, 120)}`;
         }
       }));
+      if (answer.feedback) {
+        ai.querySelectorAll("[data-ai-feedback]").forEach(button => { button.disabled = true; });
+        ai.querySelector("[data-ai-feedback-status]").textContent = "Feedback saved.";
+      }
     } else {
       const configured = r.code !== "AI_MODEL_NOT_CONFIGURED";
       const title = configured ? "No safe summary returned" : "AI summaries are not configured yet";
       const reason = unsafeAiText(r.reason) ? "The server could not produce a verified summary." : (r.reason || "The server did not return a grounded summary.");
       ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Summary status</span></div><div class="ai-answer-body ai-answer-unavailable"><b>${esc(title)}</b><p>${esc(reason)}</p><span>Search results are still available below. Veyra will not substitute copied source passages for an original, grounded summary.</span></div></div>`;
     }
-  } catch (error) {
-    if (activeTab() !== t || t.searchQuery !== query) return;
-    ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="ai-thinking">Summary status</span></div><div class="ai-answer-body ai-answer-unavailable"><b>Summary service unavailable</b><p>${esc(String(error?.message || "Veyra could not contact the answer service.").slice(0, 220))}</p><span>Search results remain available below.</span></div></div>`;
-  }
 }
 function sourceFaviconUrl(url) {
   try { return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(new URL(url).hostname)}.ico`; } catch { return ""; }
@@ -2397,32 +2439,167 @@ function unsafeAiText(value) {
   return /CLIENT_CANARY_STATE|USER_DEFINED|(?:\\u[0-9a-f]{4}){2,}|(?:window|globalThis|self)\s*[.(]|\b(?:set\s*\(|document\.cookie|webpackJsonp)\b|enjoy the videos and music you love|upload original content/i.test(text)
     || /[{}[\];]{3,}/.test(text) && text.length > 120;
 }
-function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => w.length > 1 && !/:/.test(w)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "gi"), "<mark>$1</mark>") : s; }
+function highlightTerms(text, q) { const s = esc(text); const words = String(q).split(/\s+/).filter(w => /^[\p{L}\p{N}]{2,}$/u.test(w)).slice(0, 30); return words.length ? s.replace(new RegExp(`(${words.join("|")})`, "giu"), "<mark>$1</mark>") : s; }
+function wireSearchLinks(container, { learn = false } = {}) {
+  const follow = e => {
+    if (e.type === "auxclick" && e.button !== 1) return;
+    const url = resultUrl(e.currentTarget.dataset.open);
+    if (!url) return;
+    e.preventDefault();
+    if (learn) sendNeuralFeedback(url, true, 1.0);
+    if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url, background: true }); else navigate(url);
+  };
+  container.querySelectorAll("[data-open]").forEach(link => { link.onclick = follow; link.onauxclick = follow; });
+}
+function submitSearch(query, { corrected = false } = {}) {
+  const t = activeTab(); if (t?.view !== "search") return;
+  const q = query.trim().slice(0, 600);
+  pushTabHistory(t, searchStateKey(q, t.searchSource));
+  t.searchQuery = q;
+  t.title = q ? `${q} - Veyra Search` : "Veyra Search";
+  if (q) recordHistory("search", `veyra://search?q=${encodeURIComponent(q)}`, t.title);
+  renderTabs(); updateAddress(); updateNavButtons(); syncRoute();
+  void runSearch(q, 0, { corrected });
+}
+function selectSearchCategory(category) {
+  const t = activeTab(); if (t?.view !== "search" || t.searchSource === category || !Object.hasOwn(CATEGORIES, category)) return;
+  t.searchSource = category;
+  if (category === "web" || category === "index") { settings.searchSource = category; saveSettings(); }
+  pushTabHistory(t, searchStateKey(t.searchQuery, category));
+  updateNavButtons(); syncRoute();
+  void runSearch(t.searchQuery, 0, { corrected: true });
+}
 function renderSearchTabs(t) {
-  qsa("#searchTabs [data-src]").forEach(b => { const on = b.dataset.src === (t.searchSource || "web"); b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  const source = searchCategory(t.searchSource);
+  qsa("#searchTabs [data-src]").forEach(b => {
+    const on = b.dataset.src === source;
+    b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
+  });
+  $("searchPanel").setAttribute("aria-labelledby", `search-tab-${source}`);
+}
+function renderSearchCorrection(t) {
+  const box = $("searchCorrection");
+  box.classList.toggle("hidden", !t.searchCorrection);
+  box.innerHTML = t.searchCorrection ? `Did you mean <button type="button" id="searchCorrected">${esc(t.searchCorrection)}</button>?` : "";
+  $("searchCorrected")?.addEventListener("click", () => submitSearch(t.searchCorrection, { corrected: true }));
+}
+function searchDate(value) {
+  const date = new Date(value || NaN);
+  return Number.isFinite(date.valueOf()) ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date) : "";
+}
+function richResult(r, source, { compact = false } = {}) {
+  const url = resultUrl(r.url);
+  if (!url) return "";
+  const media = ["images", "videos", "shopping"].includes(source);
+  const poster = !INCOGNITO && posterUrl(r.thumbnail);
+  const title = r.title || url;
+  const attribution = r.source || hostOf(url);
+  const date = searchDate(r.publishedAt), price = displayPrice(r.price);
+  const details = [date, r.license, r.condition].filter(Boolean).map(esc).join(" · ");
+  return `<article class="search-card search-card-${source}${compact ? " search-card-compact" : ""}">
+    <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
+      ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
+      <div class="search-card-copy"><span class="search-card-source">${esc(attribution)}${attribution !== hostOf(url) && !compact ? ` · ${esc(hostOf(url))}` : ""}</span>
+        <h3>${esc(title)}</h3>${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
+        ${!compact && r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
+      </div>
+    </a>
+  </article>`;
+}
+function hideBrokenSearchImages(container) {
+  container.querySelectorAll(".search-card-art img").forEach(img => {
+    const hide = () => { img.hidden = true; };
+    if (img.complete && !img.naturalWidth) hide();
+    else img.addEventListener("error", hide, { once: true });
+  });
+}
+function searchSkeleton(source) {
+  return `<div class="search-skeleton ${isVertical(source) ? "search-skeleton-grid" : ""}" aria-hidden="true">${Array.from({ length: 4 }, () => "<div><span></span><span></span></div>").join("")}</div>`;
+}
+function renderSearchExplore(t) {
+  const explore = $("searchExplore"), preview = t.searchPreviews;
+  const show = t.searchSource === "web" && !!t.searchQuery && !!preview;
+  explore.classList.toggle("hidden", !show);
+  $("searchPanel").classList.toggle("with-explore", show);
+  if (!show) { explore.replaceChildren(); return; }
+  const sections = (preview.sections || []).filter(section => isVertical(section.type) && section.results?.some(row => resultUrl(row.url)));
+  explore.innerHTML = `<header class="search-explore-header">${searchIcon("i-grid")}<div><h2>Explore results</h2><p>More ways to search</p></div></header>${
+    preview.loading ? `<p class="search-preview-note" role="status">Looking across categories…</p>${searchSkeleton("images")}`
+      : sections.length ? `<div class="search-preview-strip" tabindex="0" aria-label="Category previews">${sections.map(section => `<section class="search-preview-section">
+          <div class="search-preview-heading"><h3>${searchIcon(CATEGORIES[section.type].icon)}${esc(CATEGORIES[section.type].label)}</h3><button class="btn ghost sm" type="button" data-search-category="${section.type}" aria-label="See all ${esc(CATEGORIES[section.type].label.toLowerCase())}">See all</button></div>
+          <div class="search-preview-cards">${section.results.slice(0, 3).map(row => richResult(row, section.type, { compact: true })).join("")}</div>
+        </section>`).join("")}</div>`
+      : `<p class="search-preview-note">${preview.error ? "Category previews are temporarily unavailable. Try a category directly." : "No category previews matched this query. Try a category directly."}</p>`}`;
+  wireSearchLinks(explore); hideBrokenSearchImages(explore);
+}
+function searchEmpty(icon, title, message, button = "") {
+  return `<div class="empty search-empty">${searchIcon(icon)}<b>${esc(title)}</b><span>${esc(message)}</span>${button}</div>`;
 }
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
-  $("searchInput").value = t.searchQuery;
+  const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web";
+  if (document.activeElement !== $("searchInput") || $("searchInput").value === "") $("searchInput").value = t.searchQuery;
+  $("searchInput").placeholder = web ? "Search the web with Veyra" : `Search ${category.label.toLowerCase()}`;
+  $("searchInput").setAttribute("aria-label", web ? "Search the web" : `Search ${category.label.toLowerCase()}`);
+  $("searchOnGoogle").disabled = !t.searchQuery;
+  $("searchPanel").dataset.category = source;
   renderSearchTabs(t);
+  renderSearchCorrection(t);
+  renderAIAnswer(t);
+  renderSearchExplore(t);
+  const results = $("searchResults"), more = $("searchMore"), stat = $("searchStat"), meta = $("searchMeta");
   const d = t.searchData;
-  const web = (t.searchSource || "web") === "web";
-  if (!t.searchQuery) { $("searchResults").innerHTML = ""; $("aiAnswer").classList.add("hidden"); $("searchStat").textContent = "Veyra Search"; $("searchMeta").textContent = web ? "Veyra searches multiple providers in parallel — Brave, Bing, DuckDuckGo and Wikipedia — and merges the best results." : "Search pages Veyra has indexed. Operators like site: and intitle: work too."; $("searchMore").classList.add("hidden"); loadIndexStats(); setTimeout(() => $("searchInput").focus(), 20); return; }
-  if (!d) return;
-  $("searchStat").textContent = web || d.siteFilter ? `${(d.results?.length || 0)} results` : `${d.total == null ? (d.results?.length || 0) + "+" : Number(d.total).toLocaleString()} results`;
-  $("searchMeta").textContent = `${web ? `from ${PROVIDER_LABEL[d.provider] || d.provider} · ` : ""}${d.responseTimeMs ?? "—"} ms${d.cached ? " · cached" : ""}${d.query?.intent ? ` · ${d.query.intent} search` : ""}${d.ranking?.method ? ` · ranked by ${d.ranking.method}` : ""}${web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? " · Google API not configured on this server" : ""}`;
-  $("searchResults").innerHTML = (d.results || []).map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : r.relevance != null && web ? ` <span class="result-relevance">${Math.round(r.relevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")
-    || (d.siteFilter ? `<div class="empty"><svg><use href="#i-search"/></svg><b>${d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope"}</b><span>${d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : "Results outside the requested scope are not shown."}</span></div>`
-      : web ? `<div class="empty"><svg><use href="#i-search"/></svg><b>No web results for “${esc(t.searchQuery)}”</b><span>No provider returned usable results. Veyra will retry with alternate providers.</span><button class="btn primary sm" id="searchRetryVeyra">Retry with Veyra</button></div>`
-      : `<div class="empty"><svg><use href="#i-search"/></svg><b>No indexed pages match “${esc(t.searchQuery)}”</b><span>The Veyra index only has pages Veyra has opened. Switch to Web to search everything.</span><button class="btn ghost sm" id="searchWeb">Search the web</button></div>`);
-  $("searchResults").querySelectorAll("[data-open]").forEach(a => a.onclick = e => { e.preventDefault(); sendNeuralFeedback(a.dataset.open, true, 1.0); if (e.ctrlKey || e.metaKey || e.button === 1) newTab({ url: a.dataset.open, background: true }); else navigate(a.dataset.open); });
-  $("searchWeb")?.addEventListener("click", () => { t.searchSource = "web"; t.searchData = null; runSearch(t.searchQuery); });
-  $("searchRetryVeyra")?.addEventListener("click", () => { t.searchData = null; runSearch(t.searchQuery); });
-  const more = d.siteFilter ? d.nextOffset != null : web ? (d.results?.length || 0) >= 8 && (d.results?.length || 0) < 60 : d.total == null ? (d.results?.length || 0) >= 10 : (d.results?.length || 0) < d.total;
-  $("searchMore").classList.toggle("hidden", !more); $("searchMore").onclick = () => runSearch(t.searchQuery, d.siteFilter ? d.nextOffset : d.results.length);
-  loadIndexStats();
+  more.classList.add("hidden");
+  results.setAttribute("aria-busy", String(!!t.searchLoading));
+  results.classList.toggle("search-rich-results", vertical && !!d?.results?.length);
+  $("searchCoverage").classList.toggle("hidden", source !== "index");
+  if (source === "index") void loadIndexStats();
+  if (!t.searchQuery) {
+    stat.textContent = category.label;
+    meta.textContent = `${category.description}. On Web and Index, try a site: operator to narrow your search.`;
+    results.innerHTML = `<div class="search-start"><span class="search-start-icon">${searchIcon(category.icon)}</span><h2>What are you looking for?</h2><p>Search freely, or choose a category to narrow the results.</p></div>`;
+    return;
+  }
+  if (t.searchError || d?.status === "unavailable") {
+    stat.textContent = `${category.label} search unavailable`;
+    meta.textContent = category.description;
+    results.innerHTML = searchEmpty(category.icon, "This search couldn’t finish", t.searchError || "The provider is temporarily unavailable. Try again or switch categories.", '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>');
+    $("searchRetry").onclick = () => void runSearch(t.searchQuery);
+    return;
+  }
+  if (!d) {
+    stat.textContent = "Searching…";
+    meta.textContent = category.description;
+    results.innerHTML = searchSkeleton(source);
+    return;
+  }
+  const shown = d.results.length, total = source === "index" && !d.siteFilter && d.total != null ? Number(d.total).toLocaleString() : shown;
+  stat.textContent = `${total} ${Number(total) === 1 ? "result" : "results"}`;
+  const label = vertical ? providerLabel(d.provider) : web ? PROVIDER_LABEL[d.provider] || (d.provider !== "none" ? d.provider : "") : "Veyra index";
+  const note = source === "shopping" ? d.provider === "ebay" ? "Listing prices can change; confirm on eBay" : "Product links only; check merchants for prices and stock"
+    : web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured" : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
+  meta.textContent = [label, note].filter(Boolean).join(" · ");
+  const retry = '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>';
+  results.innerHTML = shown ? vertical ? d.results.map(row => richResult(row, source)).join("")
+    : `<h2 class="search-result-heading">${web ? "Web results" : "Indexed pages"}</h2>${d.results.map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : r.relevance != null && web ? ` <span class="result-relevance">${Math.round(r.relevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")}`
+    : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : "Results outside the requested scope are not shown.")
+    : searchEmpty(category.icon, `No ${category.label.toLowerCase()} results for “${t.searchQuery}”`, web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.", web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>');
+  wireSearchLinks(results, { learn: !vertical });
+  hideBrokenSearchImages(results);
+  $("searchWeb")?.addEventListener("click", () => selectSearchCategory("web"));
+  $("searchRetry")?.addEventListener("click", () => void runSearch(t.searchQuery));
+  const canMore = vertical ? d.nextPage != null : d.siteFilter ? d.nextOffset != null : web ? d.more !== false && shown >= 8 && shown < 60 : d.total == null ? shown >= 10 : shown < d.total;
+  more.classList.toggle("hidden", !canMore);
+  more.disabled = !!t.searchLoading;
+  more.textContent = t.searchLoading ? "Loading more…" : "More results";
+  more.onclick = () => void runSearch(t.searchQuery, vertical ? d.nextPage : d.siteFilter ? d.nextOffset : shown);
 }
-async function loadIndexStats() { try { const b = await api("/api/search/stats", { timeoutMs: 6000 }); $("searchCoverage").textContent = `Veyra Index: ${Number(b.documents || 0).toLocaleString()} pages · ${Number(b.domains || 0).toLocaleString()} domains`; } catch { $("searchCoverage").textContent = ""; } }
+let indexStatsAt = 0;
+async function loadIndexStats() {
+  if (indexStatsAt > Date.now() - 60_000) return;
+  indexStatsAt = Date.now();
+  try { const b = await api("/api/search/stats", { timeoutMs: 6000 }); $("searchCoverage").textContent = `Veyra Index: ${Number(b.documents || 0).toLocaleString()} pages · ${Number(b.domains || 0).toLocaleString()} domains`; } catch { $("searchCoverage").textContent = ""; }
+}
 let suggestTimer = 0;
 function loadSuggestions(q) {
   clearTimeout(suggestTimer);
@@ -3387,12 +3564,26 @@ function wire() {
   $("sessionPill").onclick = () => hooks.openSessionPopover?.($("sessionPill"));
   $("sessionRestart").onclick = async () => { $("sessionOverlay").classList.add("hidden"); try { await ensureSession(); toast("New session started"); } catch (e) { toast(e.message, { kind: "err" }); } const last = state.history.find(h => h.kind === "page"); if (last) { /* offer the last page again */ toast(`Open ${hostOf(last.url)} again?`, { action: () => go(last.url), actionLabel: "Open", ms: 6000 }); } };
   $("sessionHome").onclick = () => { $("sessionOverlay").classList.add("hidden"); goHome(); };
-  $("searchForm").onsubmit = e => { e.preventDefault(); const q = $("searchInput").value.trim(); const t = activeTab(); pushTabHistory(t, "veyra:search:" + q); t.searchQuery = q; t.searchCorrection = null; t.title = q ? `${q} - Veyra Search` : "Veyra Search"; renderTabs(); syncRoute(); runSearch(q); };
+  $("searchForm").onsubmit = e => { e.preventDefault(); submitSearch($("searchInput").value); };
   $("searchInput").oninput = e => loadSuggestions(e.target.value);
+  $("searchOnGoogle").onclick = () => {
+    const q = activeTab()?.searchQuery;
+    if (q) newTab({ url: `https://www.google.com/search?q=${encodeURIComponent(q)}` });
+  };
+  $("searchTabs").innerHTML = Object.entries(CATEGORIES).map(([key, value]) => `<button type="button" id="search-tab-${key}" role="tab" data-src="${key}" aria-controls="searchPanel" aria-selected="false" tabindex="-1">${searchIcon(value.icon)}${esc(value.label)}</button>`).join("");
   $("searchTabs").addEventListener("click", e => {
-    const b = e.target.closest("[data-src]"); const t = activeTab(); if (!b || !t || t.view !== "search") return;
-    t.searchSource = b.dataset.src; settings.searchSource = b.dataset.src; saveSettings(); t.searchData = null;
-    if (t.searchQuery) runSearch(t.searchQuery); else renderSearch();
+    const b = e.target.closest("[data-src]"); if (b) selectSearchCategory(b.dataset.src);
+  });
+  $("searchTabs").addEventListener("keydown", e => {
+    const tabs = [...e.currentTarget.querySelectorAll("[data-src]")], i = tabs.indexOf(e.target);
+    if (i < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const next = tabs[e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+    next.focus(); next.click();
+  });
+  $("searchExplore").addEventListener("click", e => {
+    const button = e.target.closest("[data-search-category]");
+    if (button) { selectSearchCategory(button.dataset.searchCategory); $(`search-tab-${button.dataset.searchCategory}`)?.focus(); }
   });
   $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
   $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();
