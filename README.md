@@ -10,7 +10,7 @@ npm run check
 npm run sync
 ```
 
-The static application lives in `web/`. GitHub Pages is deployed from `web/` by `.github/workflows/pages.yml`; Android builds copy the same directory through Capacitor.
+The static application lives in `web/`. GitHub Pages uses **Deploy from a branch**, with `main` and `/(root)` as its only publishing source. The project landing page redirects into `web/`, and the root `404.html` restores deep links there. Keep the root directory layout when publishing: deploying `web/` directly as a separate Pages artifact would hide the canonical `/VeyraBrowser/web/` routes. Android builds still copy `web/` through Capacitor.
 
 ## Android
 
