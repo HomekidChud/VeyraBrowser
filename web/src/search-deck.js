@@ -68,7 +68,8 @@ export function icon(name) { return `<svg aria-hidden="true"><use href="#${name}
 export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
-    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search", openverse: "Openverse"
+    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search", openverse: "Openverse",
+    "verified-videos": "Verified YouTube watch links", "india-storefronts": "Indian retailer listings"
   };
   return Object.hasOwn(labels, provider) ? labels[provider] : "";
 }

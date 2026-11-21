@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=7";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=8";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -2373,7 +2373,7 @@ async function runSearch(query, offset = 0, opts = {}) {
     }
     const fetchResults = async () => {
       const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
-      ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.nextProvider || t.searchData?.provider)}`, { timeoutMs: 11500, signal })
+      ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.nextProvider || t.searchData?.provider)}${INCOGNITO ? "&incognito=1" : ""}`, { timeoutMs: 11500, signal })
       : source === "web"
       ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(t.searchEngine ? { engine: t.searchEngine } : {}) })}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?${new URLSearchParams({ q: query, offset, limit: 10, region: SEARCH_REGION })}`, { signal });
@@ -2440,7 +2440,7 @@ async function fetchAIAnswer(t) {
   t.searchAnswer = { status: "loading" };
   if (activeTab() === t) renderAIAnswer(t);
   try {
-    const r = await api("/api/search/answer", { json: vertical ? { query, vertical, lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION } : { query, source, results: searchData.results.slice(0, 12).map(r => ({ url: r.url, title: r.title, snippet: r.snippet })) }, timeoutMs: vertical ? 35000 : 20000, signal: request.signal });
+    const r = await api("/api/search/answer", { json: vertical ? { query, vertical, lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION } : { query, source, results: searchData.results.slice(0, 12).map(r => ({ url: r.url })) }, timeoutMs: vertical ? 35000 : 23000, signal: request.signal });
     if (!current()) return;
     t.searchAnswer = { status: "done", response: r || {} };
   } catch (error) {
@@ -2488,7 +2488,7 @@ function renderAIAnswer(t) {
       }
     } else {
       const configured = r.code !== "AI_MODEL_NOT_CONFIGURED";
-      const title = configured ? "No safe summary returned" : "AI summaries are not configured yet";
+      const title = configured ? "No supported summary for this search" : "AI summaries are not configured yet";
       const reason = unsafeAiText(r.reason) ? "The server could not produce a verified summary." : (r.reason || "The server did not return a grounded summary.");
       ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-body ai-answer-unavailable"><b>${esc(title)}</b><p>${esc(reason)}</p></div></div>`;
     }
@@ -2498,12 +2498,12 @@ function sourceFaviconUrl(url) {
 }
 function renderAnswerWithSourceLogos(answer, query, sources) {
   const byId = new Map((sources || []).map(s => [String(s.id), s]));
-  return highlightTerms(answer, query).replace(/\[S(\d+)\]/g, (match, n) => {
+  return String(answer).split(/\n{2,}/).filter(Boolean).map(paragraph => `<p>${highlightTerms(paragraph, query).replace(/\[S(\d+)\]/g, (match, n) => {
     const source = byId.get(`S${n}`);
     if (!source) return match;
     const label = source.title || displayUrl(source.url);
     return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}"><img src="${esc(sourceFaviconUrl(source.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a>`;
-  });
+  })}</p>`).join("");
 }
 function unsafeAiText(value) {
   const text = String(value || "");

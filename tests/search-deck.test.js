@@ -54,6 +54,8 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
     }
   }
   assert.equal(providerLabel("peertube"), "PeerTube via Sepia Search");
+  assert.equal(providerLabel("verified-videos"), "Verified YouTube watch links");
+  assert.equal(providerLabel("india-storefronts"), "Indian retailer listings");
   assert.equal(displayPrice(null), "");
   assert.equal(displayPrice({ value: "-1", currency: "INR" }), "");
   assert.equal(displayPrice({ value: "4.50", currency: "GBP" }), "");

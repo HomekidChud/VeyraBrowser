@@ -38,6 +38,8 @@
 - Test valid `site:` and `-site:` filters, a malformed scope, an empty response, and a partial provider response. Check retry, result navigation and 375px layout, including scrollable category tabs and wrapping source labels.
 - After a page of repeated links, **More results** should skip it and show the next new batch without removing existing results or moving keyboard focus. If a source fails after a repeated page, **Retry more results** should retry that source. The app stops skipping after a bounded number of requests.
 - Search Videos and Shopping with no in-app matches: see clearly labeled YouTube and Indian retailer links outside Veyra, not products or videos counted as results. Verify outbound links send nothing until clicked, and are hidden for a scoped or incognito search. Confirm Openverse previews load without allowing arbitrary thumbnail hosts.
+- Search Videos for “how to fix a leaking tap” and “how to make crispy dosa”. Verify the labeled YouTube cards point to `watch?v=…` and attribute the creator. In Shopping, search “wireless headphones” and “USB-C 65W charger”, then verify the cards link to direct Indian retailer listings, any displayed price is in rupees, and no standalone cable is shown for the charger query.
+- As a signed-in user select **Summarize sources with AI**. A longer answer should render readable paragraphs with clickable citations. The button stays hidden in guest and incognito sessions.
 
 ## Session privacy and VPN
 

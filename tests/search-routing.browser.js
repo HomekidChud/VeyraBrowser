@@ -37,7 +37,7 @@ api.post("/api/search/answer", express.json(), (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   assert.equal(req.body.region, "IN");
   assert.equal(req.body.vertical, "research");
-  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]", sources: [
+  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]\n\nThis is a second cited paragraph. [S1]", sources: [
     { id: "S1", url: "https://example.test/fixture", title: "Research fixture" }
   ] });
 });
@@ -309,6 +309,9 @@ try {
       assert.equal(await summary.evaluate(el => Boolean(document.querySelector("#searchResults").compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
       await summary.click();
       await page.getByText("This is a cited fixture summary.", { exact: true }).waitFor();
+      await page.getByText("This is a second cited paragraph.", { exact: true }).waitFor();
+      assert.equal(await page.locator("#aiAnswer .ai-answer-body > p").count(), 2);
+      assert.equal(await page.locator("#aiAnswer .ai-answer-body .ai-source-cite").count(), 2);
       const cited = page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`));
       await page.getByRole("link", { name: "Source Research fixture" }).click();
       assert.match(await (await cited).text(), /Fixture website/);
