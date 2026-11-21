@@ -312,9 +312,11 @@ try {
       await page.getByText("This is a second cited paragraph.", { exact: true }).waitFor();
       assert.equal(await page.locator("#aiAnswer .ai-answer-body > p").count(), 2);
       assert.equal(await page.locator("#aiAnswer .ai-answer-body .ai-source-cite").count(), 2);
-      const cited = page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`));
-      await page.getByRole("link", { name: "Source Research fixture" }).click();
-      assert.match(await (await cited).text(), /Fixture website/);
+      const [cited] = await Promise.all([
+        page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`)),
+        page.getByRole("link", { name: "Source Research fixture" }).first().click()
+      ]);
+      assert.match(await cited.text(), /Fixture website/);
 
       assert.deepEqual(errors, []);
       console.log(`${engine}: India category requests and pagination, legacy routing, INR, responsive Images, recovery, private search, opt-in summaries, and TikTok regression`);
