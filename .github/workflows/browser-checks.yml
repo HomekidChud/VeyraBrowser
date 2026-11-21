@@ -1,7 +1,7 @@
 name: Browser checks
 on:
   pull_request:
-    paths: ["web/**", "scripts/**", "tests/**", "package*.json", ".github/workflows/browser-checks.yml"]
+    paths: ["web/**", "scripts/**", "tests/**", "package*.json", "index.html", "404.html", ".github/workflows/**"]
   workflow_dispatch:
 permissions:
   contents: read

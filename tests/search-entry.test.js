@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import { createApiReadiness, recoverableApiError } from "../web/src/api-readiness.js";
@@ -15,6 +15,21 @@ function redirect(entry, href) {
   } });
   return destination;
 }
+
+test("branch-based Pages has a single publisher and the project root hands off to web/", () => {
+  const workflows = new URL("../.github/workflows/", import.meta.url);
+  for (const name of readdirSync(workflows).filter(name => /\.ya?ml$/.test(name))) {
+    const yaml = readFileSync(new URL(name, workflows), "utf8");
+    assert.doesNotMatch(yaml, /actions\/(?:upload-pages-artifact|deploy-pages)@/,
+      `${name} must not publish an Actions artifact in addition to the main branch`);
+  }
+  const start = redirect("index.html", "https://pages.example/VeyraBrowser/?q=moon&type=images#results");
+  assert.equal(start.href, "https://pages.example/VeyraBrowser/web/?q=moon&type=images#results");
+  for (const [file, bootstrap] of [["web/index.html", "./src/bootstrap.js"], ["web/browse/index.html", "../src/bootstrap.js"]]) {
+    const html = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.ok(html.includes(`src="${bootstrap}?`), `${file} loads its app entry within web/`);
+  }
+});
 
 test("legacy Pages and Android/static search entries preserve query, category, and fragment", () => {
   const suffix = "?q=moon%20%26%20stars&type=images#results";
