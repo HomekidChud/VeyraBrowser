@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.37.4-tiktok-player";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=2", "./src/bootstrap.js?v=8.37.4-tiktok-player"];
+const CACHE = "veyra-browser-shell-v8.38.0-deep-search";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=3", "./src/bootstrap.js?v=8.38.0-deep-search"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=3";
+import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, deepSourceLabel, displayPrice } from "./search-deck.js?v=4";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -2334,10 +2334,10 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
 const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", brave: "Brave Search API", none: "no provider" };
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
-  const source = searchCategory(t.searchSource), vertical = isVertical(source);
+  const source = searchCategory(t.searchSource), vertical = isVertical(source), deep = source === "deep";
   if (t.searchRequest && !offset) t.searchRequest.abort();
   const request = t.searchRequest = new AbortController();
-  const lang = (navigator.language || "en").slice(0, 2);
+  const lang = (navigator.language || "en").slice(0, deep ? 35 : 2);
   const current = () => state.tabs.includes(t) && t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchRequest === request && !request.signal.aborted;
   const visible = () => current() && activeTab() === t;
   const scope = siteScope(query);
@@ -2354,7 +2354,7 @@ async function runSearch(query, offset = 0, opts = {}) {
   if (visible()) renderSearch();
   if (!query) return;
   try {
-    if (!offset && !opts.corrected && !scope.active) {
+    if (!deep && !offset && !opts.corrected && !scope.active) {
       void api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal }).then(correction => {
         if (!current() || !correction.changed || typeof correction.corrected !== "string" || correction.corrected.toLowerCase() === query.toLowerCase()) return;
         t.searchCorrection = correction.corrected.slice(0, 600);
@@ -2364,6 +2364,8 @@ async function runSearch(query, offset = 0, opts = {}) {
     const fetchResults = async () => {
       const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.provider)}`, { timeoutMs: 11500, signal })
+      : deep
+      ? await api(`/api/search/deep?${new URLSearchParams({ q: query, page: offset, lang })}`, { timeoutMs: 16000, signal })
       : source === "web"
       ? await api(`/api/search/web?q=${encodeURIComponent(query)}&offset=${offset}${t.searchEngine ? `&engine=${encodeURIComponent(t.searchEngine)}` : ""}&lang=${encodeURIComponent(lang)}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=10`, { signal });
@@ -2386,21 +2388,25 @@ async function runSearch(query, offset = 0, opts = {}) {
     b.source = source;
     const rows = b.results || [];
     b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
-    if (scope.active && !vertical) {
+    if (scope.active && !vertical && !deep) {
       b.siteFilter ||= scope;
       if (source === "index" || (b.more && !Number.isInteger(b.nextOffset))) b.nextOffset = rows.length ? offset + rows.length : null;
       if (!(b.nextOffset > offset) || (source === "web" && b.nextOffset >= 60) || (source === "index" && b.total != null && b.nextOffset >= b.total)) b.nextOffset = null;
     }
     if (offset && b.status === "unavailable") throw new Error("The result provider is temporarily unavailable.");
-    t.searchData = offset && t.searchData ? { ...b, results: mergeResults(t.searchData.results, b.results) } : b;
+    if (deep && Number.isInteger(b.nextPage) && b.nextPage <= offset) b.nextPage = null;
+    t.searchData = offset && t.searchData ? {
+      ...b, ...(deep ? { partial: t.searchData.partial || b.partial } : {}),
+      results: mergeResults(t.searchData.results, b.results)
+    } : b;
     t.searchLoading = false;
     if (visible()) renderSearch();
-    if (!vertical && !ephemeralSession() && !offset && b.results.length) void fetchAIAnswer(t);
+    if (!deep && !vertical && !ephemeralSession() && !offset && b.results.length) void fetchAIAnswer(t);
   } catch (e) {
     if (!current()) return;
     t.searchConnecting = false;
     t.searchLoading = false;
-    if (!offset) t.searchError = vertical && e.status === 404 ? "This category is not enabled on the connected Veyra server yet."
+    if (!offset) t.searchError = (vertical || deep) && e.status === 404 ? "This category is not enabled on the connected Veyra server yet."
       : recoverableApiError(e) ? "The Veyra server could not complete the search. Try again." : e.message;
     else if (visible()) toast("Could not load more search results. Try again.", { kind: "warn" });
     if (visible()) renderSearch();
@@ -2567,7 +2573,7 @@ function searchEmpty(icon, title, message, button = "") {
 }
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
-  const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web";
+  const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web", deep = source === "deep";
   if (document.activeElement !== $("searchInput") || $("searchInput").value === "") $("searchInput").value = t.searchQuery;
   $("searchInput").placeholder = web ? "Search the web with Veyra" : `Search ${category.label.toLowerCase()}`;
   $("searchInput").setAttribute("aria-label", web ? "Search the web" : `Search ${category.label.toLowerCase()}`);
@@ -2585,7 +2591,7 @@ function renderSearch() {
   if (source === "index") void loadIndexStats();
   if (!t.searchQuery) {
     stat.textContent = category.label;
-    meta.textContent = `${category.description}. On Web and Index, try a site: operator to narrow your search.`;
+    meta.textContent = `${category.description}. On Web, Deep Search and Veyra index, use site: to narrow your search.`;
     results.innerHTML = `<div class="search-start"><span class="search-start-icon">${searchIcon(category.icon)}</span><h2>What are you looking for?</h2><p>Search freely, or choose a category to narrow the results.</p></div>`;
     return;
   }
@@ -2603,25 +2609,30 @@ function renderSearch() {
     return;
   }
   const shown = d.results.length, total = source === "index" && !d.siteFilter && d.total != null ? Number(d.total).toLocaleString() : shown;
-  stat.textContent = `${total} ${Number(total) === 1 ? "result" : "results"}`;
-  const label = vertical ? providerLabel(d.provider) : web ? PROVIDER_LABEL[d.provider] || (d.provider !== "none" ? d.provider : "") : "Veyra index";
-  const note = source === "shopping" ? d.provider === "ebay" ? "Listing prices can change; confirm on eBay" : "Product links only; check merchants for prices and stock"
+  stat.textContent = `${total} ${Number(total) === 1 ? "result" : "results"}${deep ? " shown" : ""}`;
+  const label = deep ? "Web providers + Veyra index" : vertical ? providerLabel(d.provider) : web ? PROVIDER_LABEL[d.provider] || (d.provider !== "none" ? d.provider : "") : "Veyra index";
+  const note = deep ? [d.partial && "Some providers did not respond", d.limitReached && "Batch limit reached"].filter(Boolean).join(" · ")
+    : source === "shopping" ? d.provider === "ebay" ? "Listing prices can change; confirm on eBay" : "Product links only; check merchants for prices and stock"
     : web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured" : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
   meta.textContent = [label, note].filter(Boolean).join(" · ");
   const retry = '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>';
   results.innerHTML = shown ? vertical ? d.results.map(row => richResult(row, source)).join("")
-    : `<h2 class="search-result-heading">${web ? "Web results" : "Indexed pages"}</h2>${d.results.map(r => `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : r.relevance != null && web ? ` <span class="result-relevance">${Math.round(r.relevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p></article>`).join("")}`
+    : `<h2 class="search-result-heading">${deep ? "Deep Search results" : web ? "Web results" : "Indexed pages"}</h2>${d.results.map(r => {
+      const providers = deep && Array.isArray(r.providers) ? r.providers.map(deepSourceLabel).filter(Boolean) : [];
+      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || r.url))}${r.queryRelevance != null ? ` <span class="result-relevance">${Math.round(r.queryRelevance * 100)}% match</span>` : r.relevance != null && web ? ` <span class="result-relevance">${Math.round(r.relevance * 100)}% match</span>` : ""}</div><a class="r-title" href="${esc(r.url)}" data-open="${esc(r.url)}">${highlightTerms(r.title || r.url, t.searchQuery)}</a><p>${highlightTerms(r.snippet || "No description available.", t.searchQuery)}</p>${providers.length ? `<p class="deep-providers">${esc(`Found via ${providers.join(", ")}`)}</p>` : ""}</article>`;
+    }).join("")}`
     : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : "Results outside the requested scope are not shown.")
-    : searchEmpty(category.icon, `No ${category.label.toLowerCase()} results for “${t.searchQuery}”`, web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.", web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>');
-  wireSearchLinks(results, { learn: !vertical });
+    : searchEmpty(category.icon, deep ? `No results for “${t.searchQuery}”` : `No ${category.label.toLowerCase()} results for “${t.searchQuery}”`, deep || web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.", deep || web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>');
+  wireSearchLinks(results, { learn: !vertical && !deep });
   hideBrokenSearchImages(results);
   $("searchWeb")?.addEventListener("click", () => selectSearchCategory("web"));
   $("searchRetry")?.addEventListener("click", () => void runSearch(t.searchQuery));
-  const canMore = vertical ? d.nextPage != null : d.siteFilter ? d.nextOffset != null : web ? d.more !== false && shown >= 8 && shown < 60 : d.total == null ? shown >= 10 : shown < d.total;
+  const paged = vertical || deep;
+  const canMore = paged ? Number.isInteger(d.nextPage) : d.siteFilter ? d.nextOffset != null : web ? d.more !== false && shown >= 8 && shown < 60 : d.total == null ? shown >= 10 : shown < d.total;
   more.classList.toggle("hidden", !canMore);
   more.disabled = !!t.searchLoading;
   more.textContent = t.searchLoading ? "Loading more…" : "More results";
-  more.onclick = () => void runSearch(t.searchQuery, vertical ? d.nextPage : d.siteFilter ? d.nextOffset : shown);
+  more.onclick = () => void runSearch(t.searchQuery, paged ? d.nextPage : d.siteFilter ? d.nextOffset : shown);
 }
 let indexStatsAt = 0;
 async function loadIndexStats() {

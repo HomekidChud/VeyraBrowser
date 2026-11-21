@@ -32,6 +32,7 @@
 .search-deck .r-title, .search-deck .result p { overflow-wrap: anywhere; }
 .search-deck .r-title { display: inline-block; margin-bottom: .25rem; }
 .search-deck .result p { font-size: var(--search-copy); line-height: 1.5; }
+.search-deck .result .deep-providers { margin-top: .5rem; color: var(--text-2); font-size: var(--search-caption); }
 .search-result-heading { margin: .125rem 0 .25rem; font: 750 1rem/1.25 var(--font-ui); }
 .search-deck .search-rich-results { grid-template-columns: repeat(auto-fill, minmax(min(100%, 15.25rem), 1fr)); gap: 1rem; }
 .search-panel:is([data-category=news], [data-category=research], [data-category=discussions]) .search-rich-results { grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
