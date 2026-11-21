@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.37.3-search-routing";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=2", "./src/bootstrap.js?v=8.37.3-search-routing"];
+const CACHE = "veyra-browser-shell-v8.37.4-tiktok-player";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=2", "./src/bootstrap.js?v=8.37.4-tiktok-player"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -18,6 +18,7 @@ self.addEventListener("fetch", event => {
   const scope = new URL(self.registration.scope).pathname;
   const shellPath = url.pathname.slice(scope.length);
   if (!url.pathname.startsWith(scope) || (request.mode !== "navigate" && !/^(?:src|styles|assets)\//.test(shellPath) && shellPath !== "manifest.webmanifest")) return;
+  if (shellPath === "media/tiktok.html") return;
   const staticAsset = request.destination === "script" || request.destination === "style" || request.destination === "image" || request.destination === "font" || url.pathname.endsWith("manifest.webmanifest");
   if (!staticAsset && request.mode !== "navigate") return;
   event.respondWith((async () => {

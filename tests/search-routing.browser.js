@@ -15,6 +15,7 @@ const web = fileURLToPath(new URL("../web/", import.meta.url));
 const prefix = "/VeyraBrowser/web";
 const api = express();
 const calls = [];
+let vpnMode = "off";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
   if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -27,6 +28,8 @@ api.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 api.post("/api/session", (_req, res) => res.json({ ok: true, sessionId: "browser_fixture_session", timeLimitMs: 300000, guest: true }));
+api.get("/api/vpn/session", (_req, res) => vpnMode === "unknown"
+  ? res.status(503).json({ ok: false }) : res.json({ ok: true, connected: vpnMode === "on" }));
 api.get("/api/view", (_req, res) => res.type("html").send("<h1>Fixture website</h1>"));
 api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) => {
   if (req.query.q === "recover" && calls.filter(call => call.query.q === "recover" && call.path === "/api/search/web").length === 1)
@@ -64,7 +67,18 @@ try {
       calls.length = 0;
       const mobile = engine === "webkit";
       const context = await browser.newContext(mobile ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true } : {});
-      await context.route("**/*", route => route.request().url().startsWith("http://127.0.0.1:") ? route.continue() : route.abort());
+      let tiktokRequests = 0;
+      await context.route("**/*", route => {
+        const url = new URL(route.request().url());
+        if (url.hostname === "127.0.0.1") return route.continue();
+        if (url.href === "https://www.tiktok.com/player/v1/6718335390845095173?autoplay=0") {
+          tiktokRequests++;
+          return route.fulfill({ contentType: "text/html", body: `<h1>TikTok fixture</h1><script>
+            parent.postMessage({type:"onPlayerReady","x-tiktok-player":true}, "*");
+          </script>` });
+        }
+        return route.abort();
+      });
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", error => errors.push(error.stack || error.message));
@@ -114,8 +128,39 @@ try {
       assert.equal(new URL(page.url()).searchParams.get("incognito"), "1");
       assert.ok(calls.some(call => call.path === "/api/search/vertical" && call.query.q === "private moon" && call.query.private === "1"));
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
+
+      const post = "https://www.tiktok.com/@scout2015/video/6718335390845095173";
+      const openPost = async () => {
+        await page.locator("#address").fill(post);
+        await page.locator("#address").press("Enter");
+      };
+      const frame = page.frameLocator("#frame-t1");
+      const proxyPage = frame.getByRole("heading", { name: "Fixture website" });
+      const tiktokPage = frame.getByRole("heading", { name: "TikTok player" });
+      await openPost();
+      await proxyPage.waitFor();
+      assert.equal(tiktokRequests, 0, "incognito did not reach the official player");
+
+      await page.goto(`${origin}${prefix}/browse/?incognito=0`);
+      await openPost();
+      await tiktokPage.waitFor();
+      assert.equal(tiktokRequests, 0, "the panel is local until the user clicks");
+      assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).getAttribute("href"), post);
+      await frame.getByRole("button", { name: "Load TikTok player" }).click();
+      await frame.getByRole("status").getByText("TikTok player ready.", { exact: false }).waitFor();
+      assert.equal(tiktokRequests, 1);
+      await frame.getByRole("button", { name: "Use Fast Proxy" }).click();
+      await proxyPage.waitFor();
+      for (const mode of ["on", "unknown", "off"]) {
+        vpnMode = mode;
+        await openPost();
+        if (mode === "off") await tiktokPage.waitFor();
+        else await proxyPage.waitFor();
+        assert.equal(tiktokRequests, 1);
+      }
+
       assert.deepEqual(errors, []);
-      console.log(`${engine}: deep links, reload, guest search, server wake, access denial, website session, Settings, and incognito`);
+      console.log(`${engine}: search routing and recovery, sessions, incognito, and opt-in TikTok player with VPN and Fast Proxy fallback`);
     } finally { await browser.close(); }
   }
 } finally {
