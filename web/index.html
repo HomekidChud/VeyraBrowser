@@ -14,7 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="./src/bootstrap.js?v=8.38.0-deep-search"></script>
+  <script src="./src/bootstrap.js?v=8.39.0-search-india"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -252,22 +252,25 @@
           <div class="search-deck">
             <header class="search-masthead">
               <div class="search-brand"><svg aria-hidden="true"><use href="#logo"/></svg><h1>Veyra Search</h1></div>
+              <span class="search-region"><svg aria-hidden="true"><use href="#i-globe"/></svg>India</span>
               <form class="search-hero" id="searchForm" role="search" autocomplete="off">
-                <svg aria-hidden="true"><use href="#i-search"/></svg><input id="searchInput" list="searchSuggestions" maxlength="600" placeholder="Search the web with Veyra" aria-label="Search the web"><button class="btn primary">Search</button>
+                <svg aria-hidden="true"><use href="#i-search"/></svg><input id="searchInput" list="searchSuggestions" maxlength="600" placeholder="Search the web" aria-label="Search the web"><button type="submit">Search</button>
                 <datalist id="searchSuggestions"></datalist>
               </form>
-              <button type="button" class="btn ghost sm search-external" id="searchOnGoogle"><svg aria-hidden="true"><use href="#i-external"/></svg>Open on Google</button>
             </header>
             <div class="search-tabs" id="searchTabs" role="tablist" aria-label="Search categories"></div>
             <div id="searchPanel" role="tabpanel" class="search-panel">
-              <div class="search-meta" role="status"><b id="searchStat"></b><span id="searchMeta"></span></div>
+              <div class="search-toolbar">
+                <div class="search-meta" role="status"><b id="searchStat"></b><span id="searchMeta"></span></div>
+                <button type="button" class="search-external hidden" id="searchOnGoogle" title="Opens outside Veyra and its VPN" aria-label="Open Google in a new tab outside Veyra">Google<svg aria-hidden="true"><use href="#i-external"/></svg></button>
+              </div>
               <div id="searchCorrection" class="search-correction hidden" role="status"></div>
               <div class="search-layout">
                 <div class="search-main">
-                  <div id="aiAnswer" class="ai-answer hidden" aria-live="polite"></div>
                   <div id="searchResults" class="search-results"></div>
                   <button type="button" class="btn ghost hidden" id="searchMore">More results</button>
                   <p class="muted small" id="searchCoverage"></p>
+                  <div id="aiAnswer" class="ai-answer hidden" aria-live="polite"></div>
                 </div>
               </div>
             </div>
