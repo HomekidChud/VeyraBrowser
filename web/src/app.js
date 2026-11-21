@@ -2339,7 +2339,7 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   renderTabs(); renderActive({ push });
   if (query) runSearch(query, 0, { tab: t });
 }
-const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", "veyra-index": "Veyra index", brave: "Brave Search API", none: "no provider" };
+const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", "veyra-index": "Veyra index", brave: "Brave Search API", wikipedia: "Wikipedia", none: "no provider" };
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
   const source = searchCategory(t.searchSource), vertical = isVertical(source);

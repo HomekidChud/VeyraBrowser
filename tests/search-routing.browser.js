@@ -54,7 +54,8 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   }
   if (req.query.q === "scroll fixture") {
     if (!next) return res.json({ provider: "fixture", nextOffset: 10, results: Array.from({ length: 14 }, (_, i) => ({
-      title: `Scroll result ${i + 1}`, url: `https://example.in/scroll/${i + 1}`, snippet: "This is a long results feed."
+      title: `Scroll result ${i + 1}`, url: `https://example.in/scroll/${i + 1}`, snippet: "This is a long results feed.",
+      ...(i === 0 ? { displayUrl: `example.in/${"a".repeat(104)}` } : {})
     })) });
     if (next === 20 && calls.filter(call => call.query.q === "scroll fixture" && call.query.offset === "20").length === 1) {
       return res.status(503).json({ ok: false, error: "Provider temporarily unavailable." });
@@ -189,6 +190,8 @@ try {
       await result("web result for India rail").waitFor();
       await page.goto(`${origin}${prefix}/search/?q=scroll+fixture`);
       await result("Scroll result 14").waitFor();
+      assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true,
+        "long unbroken result URLs must not expand the mobile result column");
       const firstNode = await result("Scroll result 1").elementHandle();
       await firstNode.focus();
       assert.ok(!calls.some(call => call.query.q === "scroll fixture" && call.query.offset === "10"));
