@@ -132,6 +132,10 @@ body.incognito .search-deck {
 .search-start p { margin: 0 0 .25rem; }
 .search-start p, .search-deck .search-empty span { color: var(--search-muted); font-size: var(--search-copy); }
 .search-deck .search-empty > svg { color: var(--search-muted); }
+.search-alternatives { display: grid; gap: .5rem; max-width: 100%; padding-top: .75rem; }
+.search-alternatives > div { display: flex; flex-wrap: wrap; gap: .5rem; }
+.search-alternatives .btn { min-height: 44px; }
+.search-alternatives svg { width: .875rem; height: .875rem; }
 .search-skeleton { display: grid; gap: 0; }
 .search-skeleton-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 1rem; }
 .search-skeleton > div { border-bottom: 1px solid var(--search-line); padding: 1.25rem 0; display: grid; gap: .625rem; }

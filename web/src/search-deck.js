@@ -36,6 +36,10 @@ export function resultUrl(value) {
 }
 export function posterUrl(value) {
   const url = resultUrl(value);
+  if (url.startsWith("https://api.openverse.org/")) {
+    const u = new URL(url);
+    return /^\/v1\/images\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/thumb\/$/i.test(u.pathname) && !u.search && !u.hash ? url : "";
+  }
   return url && url.startsWith("https:") && ["imgs.search.brave.com", "upload.wikimedia.org", "thumb.wikimedia.org", "i.ebayimg.com", "i.ytimg.com",
     "images-assets.nasa.gov", "science.nasa.gov", "assets.science.nasa.gov", "www.esa.int", "media.esa.int"].includes(new URL(url).hostname) ? url : "";
 }
@@ -64,9 +68,19 @@ export function icon(name) { return `<svg aria-hidden="true"><use href="#${name}
 export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
-    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
+    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search", openverse: "Openverse"
   };
   return Object.hasOwn(labels, provider) ? labels[provider] : "";
+}
+export function externalSearchLinks(query, source) {
+  const link = (label, base, param) => ({ label, url: `${base}?${new URLSearchParams({ [param]: query })}` });
+  if (source === "videos") return [link("Search YouTube", "https://www.youtube.com/results", "search_query")];
+  if (source === "shopping") return [
+    link("Search Amazon India", "https://www.amazon.in/s", "k"),
+    link("Search Flipkart", "https://www.flipkart.com/search", "q")
+  ];
+  if (source === "images") return [link("Search Openverse", "https://openverse.org/search/image", "q")];
+  return [];
 }
 export function displayPrice(price) {
   if (price?.currency !== "INR" || !/^\d{1,12}(?:\.\d{1,2})?$/.test(price.value) || !(Number(price.value) > 0)) return "";

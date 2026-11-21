@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=6";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=7";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -2339,7 +2339,7 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   renderTabs(); renderActive({ push });
   if (query) runSearch(query, 0, { tab: t });
 }
-const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", "veyra-index": "Veyra index", brave: "Brave Search API", wikipedia: "Wikipedia", none: "no provider" };
+const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", "veyra-index": "Veyra index", brave: "Brave Search API", wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", none: "" };
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
   const source = searchCategory(t.searchSource), vertical = isVertical(source);
@@ -2396,7 +2396,7 @@ async function runSearch(query, offset = 0, opts = {}) {
     b.source = source;
     const rows = b.results || [];
     b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
-    if (scope.active && !vertical) {
+    if (scope.active) {
       b.siteFilter ||= scope;
     }
     if (!vertical) {
@@ -2415,6 +2415,11 @@ async function runSearch(query, offset = 0, opts = {}) {
       t.searchData = { ...b, results, noNew: results.length === previous.results.length };
     } else t.searchData = b;
     t.searchLoading = false;
+    const next = vertical ? b.nextPage : b.nextOffset;
+    const skipBudget = opts.skipBudget ?? 2;
+    if (offset && t.searchData.noNew && Number.isSafeInteger(next) && next > 0 && skipBudget > 0) {
+      return runSearch(query, next, { tab: t, skipBudget: skipBudget - 1 });
+    }
     if (visible()) renderSearch();
   } catch (e) {
     if (!current()) return;
@@ -2597,6 +2602,14 @@ function searchSkeleton(source) {
 function searchEmpty(icon, title, message, button = "") {
   return `<div class="empty search-empty">${searchIcon(icon)}<b>${esc(title)}</b><span>${esc(message)}</span>${button}</div>`;
 }
+function searchAlternatives(t, source) {
+  if (INCOGNITO || siteScope(t.searchQuery).active) return "";
+  const links = externalSearchLinks(t.searchQuery, source);
+  if (!links.length) return "";
+  return `<div class="search-alternatives"><span>Search outside Veyra</span><div>${links.map(({ label, url }) =>
+    `<a class="btn ghost sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Opens outside Veyra and its VPN">${esc(label)} ${searchIcon("i-external")}</a>`
+  ).join("")}</div></div>`;
+}
 let paintedSearch = null;
 function loadNextSearchPage({ auto = false } = {}) {
   const t = activeTab();
@@ -2631,11 +2644,11 @@ function renderSearch() {
     results.innerHTML = `<div class="search-start"><h2>${web ? "Search the web" : esc(category.label)}</h2><p>${web ? "Search across the web, or choose a category to narrow your results." : `${esc(category.description)}.`}</p>${web || source === "index" ? "<p>Use <code>site:example.com</code> to search one website.</p>" : ""}</div>`;
     return;
   }
-  if (t.searchError || d?.status === "unavailable") {
+  if (t.searchError || ["unavailable", "cancelled"].includes(d?.status)) {
     paintedSearch = null;
     stat.textContent = `${category.label} search unavailable`;
     meta.textContent = category.description;
-    results.innerHTML = searchEmpty(category.icon, "This search couldn’t finish", t.searchError || "The provider is temporarily unavailable. Try again or switch categories.", '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>');
+    results.innerHTML = searchEmpty(category.icon, "This search couldn’t finish", t.searchError || "The provider is temporarily unavailable. Try again or switch categories.", '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>' + searchAlternatives(t, source));
     $("searchRetry").onclick = () => void runSearch(t.searchQuery);
     return;
   }
@@ -2648,7 +2661,9 @@ function renderSearch() {
   }
   const shown = d.results.length, total = source === "index" && !d.siteFilter && d.total != null ? Number(d.total) : shown;
   stat.textContent = `${total.toLocaleString(SEARCH_LOCALE)} ${total === 1 ? "result" : "results"}`;
-  const label = vertical ? providerLabel(d.provider) : web ? PROVIDER_LABEL[d.provider] || (d.provider !== "none" ? d.provider : "") : "Veyra index";
+  const providers = [...new Set(d.results.map(row => vertical ? providerLabel(row.provider) : PROVIDER_LABEL[row.source]).filter(Boolean))];
+  const label = source === "index" ? "Veyra index" : providers.length > 1 ? providers.slice(0, 3).join(" + ") + (providers.length > 3 ? " + more" : "")
+    : providers[0] || (vertical ? providerLabel(d.provider) : PROVIDER_LABEL[d.provider] || "");
   const note = source === "shopping" ? "Check the retailer for current prices and stock"
     : web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured" : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
   meta.textContent = [label, note].filter(Boolean).join(" · ");
@@ -2672,7 +2687,11 @@ function renderSearch() {
     }
   } else {
     results.innerHTML = shown ? renderRows(d.results) : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : "Results outside the requested scope are not shown.")
-    : searchEmpty(category.icon, `No results for “${t.searchQuery}”`, web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.", web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>');
+    : searchEmpty(category.icon, `No results for “${t.searchQuery}”`,
+      source === "shopping" ? "No matching product listings from Veyra’s sources." :
+      source === "videos" ? "No matching watch pages from Veyra’s sources." :
+      web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.",
+      (web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>') + searchAlternatives(t, source));
     wireSearchLinks(results, { learn: !vertical });
     hideBrokenSearchImages(results);
   }
