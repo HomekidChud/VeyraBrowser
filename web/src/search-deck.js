@@ -34,17 +34,19 @@ export function resultUrl(value) {
 }
 export function posterUrl(value) {
   const url = resultUrl(value);
-  return url && url.startsWith("https:") && ["imgs.search.brave.com", "upload.wikimedia.org", "thumb.wikimedia.org", "i.ebayimg.com", "i.ytimg.com"].includes(new URL(url).hostname) ? url : "";
+  return url && url.startsWith("https:") && ["imgs.search.brave.com", "upload.wikimedia.org", "thumb.wikimedia.org", "i.ebayimg.com", "i.ytimg.com",
+    "images-assets.nasa.gov", "science.nasa.gov", "www.esa.int"].includes(new URL(url).hostname) ? url : "";
 }
 export function mergeResults(previous, next) {
-  const merged = new Map(previous.map(row => [row.url, row]));
-  for (const row of next) if (!merged.has(row.url)) merged.set(row.url, row);
+  const key = row => row.imageUrl || row.url;
+  const merged = new Map(previous.map(row => [key(row), row]));
+  for (const row of next) if (!merged.has(key(row))) merged.set(key(row), row);
   return [...merged.values()];
 }
 export function icon(name) { return `<svg aria-hidden="true"><use href="#${name}"/></svg>`; }
 export function providerLabel(provider) {
   return ({
-    brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay",
+    brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
     "google-news-rss": "Google News feed", "web-discovery": "Web discovery", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
   })[provider] || "";
 }

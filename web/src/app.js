@@ -12,7 +12,8 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=1";
+import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice } from "./search-deck.js?v=2";
+import { blockPlaybackPopup } from "./playback-popups.js?v=1";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
 
@@ -2282,7 +2283,7 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   if (t.view === "page") teardownTab(t);
   t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
   query = query.trim().slice(0, 600);
-  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, searchAnswer: null, searchPreviews: null, searchLoading: !!query, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
+  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, searchAnswer: null, searchLoading: !!query, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
   if (pushHist) pushTabHistory(t, searchStateKey(query, t.searchSource));
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
@@ -2304,7 +2305,7 @@ async function runSearch(query, offset = 0, opts = {}) {
   t.searchError = "";
   if (!offset) {
     t.searchAnswerRequest?.abort();
-    Object.assign(t, { searchData: null, searchPreviews: null, searchAnswer: null, searchCorrection: null });
+    Object.assign(t, { searchData: null, searchAnswer: null, searchCorrection: null });
     if (visible()) $("view-search").scrollTop = 0;
   }
   if (visible()) renderSearch();
@@ -2322,19 +2323,6 @@ async function runSearch(query, offset = 0, opts = {}) {
         if (visible()) renderSearchCorrection(t);
       }).catch(() => {});
     }
-    if (!offset && source === "web" && !INCOGNITO && !scope.active) {
-      const context = t.searchPreviews = { loading: true, query };
-      if (visible()) renderSearchExplore(t);
-      void api(`/api/search/vertical?${searchParams(query, "all", lang)}`, { timeoutMs: 14500, signal }).then(data => {
-        if (t.searchPreviews !== context || t.view !== "search") return;
-        Object.assign(context, { loading: false, sections: data.sections || [] });
-        if (activeTab() === t) renderSearchExplore(t);
-      }).catch(() => {
-        if (t.searchPreviews !== context) return;
-        context.loading = false; context.error = true;
-        if (activeTab() === t && t.view === "search") renderSearchExplore(t);
-      });
-    }
     const b = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.provider)}`, { timeoutMs: 11500, signal })
       : source === "web"
@@ -2343,7 +2331,7 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
+    b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
     if (scope.active && !vertical) {
       b.siteFilter ||= scope;
       if (source === "index" || (b.more && !Number.isInteger(b.nextOffset))) b.nextOffset = rows.length ? offset + rows.length : null;
@@ -2487,23 +2475,25 @@ function searchDate(value) {
   const date = new Date(value || NaN);
   return Number.isFinite(date.valueOf()) ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date) : "";
 }
-function richResult(r, source, { compact = false } = {}) {
+function richResult(r, source) {
   const url = resultUrl(r.url);
   if (!url) return "";
   const media = ["images", "videos", "shopping"].includes(source);
   const poster = !INCOGNITO && posterUrl(r.thumbnail);
   const title = r.title || url;
   const attribution = r.source || hostOf(url);
+  const sourcePage = source === "images" ? resultUrl(r.sourcePageUrl) : "";
   const date = searchDate(r.publishedAt), price = displayPrice(r.price);
   const details = [date, r.license, r.condition].filter(Boolean).map(esc).join(" · ");
-  return `<article class="search-card search-card-${source}${compact ? " search-card-compact" : ""}">
+  return `<article class="search-card search-card-${source}">
     <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
       ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
-      <div class="search-card-copy"><span class="search-card-source">${esc(attribution)}${attribution !== hostOf(url) && !compact ? ` · ${esc(hostOf(url))}` : ""}</span>
+      <div class="search-card-copy"><span class="search-card-source">${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
         <h3>${esc(title)}</h3>${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
-        ${!compact && r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
+        ${r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
       </div>
     </a>
+    ${sourcePage && sourcePage !== url ? `<a class="search-image-source" href="${esc(sourcePage)}" data-open="${esc(sourcePage)}">Source page<span class="sr-only"> for ${esc(title)}</span></a>` : ""}
   </article>`;
 }
 function hideBrokenSearchImages(container) {
@@ -2515,22 +2505,6 @@ function hideBrokenSearchImages(container) {
 }
 function searchSkeleton(source) {
   return `<div class="search-skeleton ${isVertical(source) ? "search-skeleton-grid" : ""}" aria-hidden="true">${Array.from({ length: 4 }, () => "<div><span></span><span></span></div>").join("")}</div>`;
-}
-function renderSearchExplore(t) {
-  const explore = $("searchExplore"), preview = t.searchPreviews;
-  const show = t.searchSource === "web" && !!t.searchQuery && !!preview;
-  explore.classList.toggle("hidden", !show);
-  $("searchPanel").classList.toggle("with-explore", show);
-  if (!show) { explore.replaceChildren(); return; }
-  const sections = (preview.sections || []).filter(section => isVertical(section.type) && section.results?.some(row => resultUrl(row.url)));
-  explore.innerHTML = `<header class="search-explore-header">${searchIcon("i-grid")}<div><h2>Explore results</h2><p>More ways to search</p></div></header>${
-    preview.loading ? `<p class="search-preview-note" role="status">Looking across categories…</p>${searchSkeleton("images")}`
-      : sections.length ? `<div class="search-preview-strip" tabindex="0" aria-label="Category previews">${sections.map(section => `<section class="search-preview-section">
-          <div class="search-preview-heading"><h3>${searchIcon(CATEGORIES[section.type].icon)}${esc(CATEGORIES[section.type].label)}</h3><button class="btn ghost sm" type="button" data-search-category="${section.type}" aria-label="See all ${esc(CATEGORIES[section.type].label.toLowerCase())}">See all</button></div>
-          <div class="search-preview-cards">${section.results.slice(0, 3).map(row => richResult(row, section.type, { compact: true })).join("")}</div>
-        </section>`).join("")}</div>`
-      : `<p class="search-preview-note">${preview.error ? "Category previews are temporarily unavailable. Try a category directly." : "No category previews matched this query. Try a category directly."}</p>`}`;
-  wireSearchLinks(explore); hideBrokenSearchImages(explore);
 }
 function searchEmpty(icon, title, message, button = "") {
   return `<div class="empty search-empty">${searchIcon(icon)}<b>${esc(title)}</b><span>${esc(message)}</span>${button}</div>`;
@@ -2546,7 +2520,6 @@ function renderSearch() {
   renderSearchTabs(t);
   renderSearchCorrection(t);
   renderAIAnswer(t);
-  renderSearchExplore(t);
   const results = $("searchResults"), more = $("searchMore"), stat = $("searchStat"), meta = $("searchMeta");
   const d = t.searchData;
   more.classList.add("hidden");
@@ -3180,7 +3153,7 @@ function teardownPopupLinks(tab) {
 function openProxiedPopup(sourceTab, d) {
   const target = canonicalPopupUrl(d.url);
   const popupId = typeof d.popupId === "string" ? d.popupId : "";
-  if (!target || !/^[\w-]{1,80}$/.test(popupId)) return null;
+  if (!target || !/^[\w-]{1,80}$/.test(popupId) || blockPlaybackPopup(sourceTab.url, target)) return null;
   const existing = state.tabs.find(x => x.popupOf === sourceTab.id && x.popupId === popupId);
   if (existing) return existing;
   if (activeTab() !== sourceTab) return null;
@@ -3398,6 +3371,7 @@ async function handleMessage(e) {
 
     const tgt = String(d.target || "_blank").toLowerCase();
     if ((tgt === "_top" || tgt === "_parent") && t.view === "page" && !isRemote(t)) { void loadInTab(t, u, { loadFrame: true }); return; }
+    if (blockPlaybackPopup(t.url, u, true)) return;
     newTab({ url: u, index: state.tabs.indexOf(t) + 1 }); return;
   }
   if (d.type === "veyra:form" && d.url) { submitForm(t, d); return; }
@@ -3447,7 +3421,7 @@ async function handleMessage(e) {
     const target = canonicalPopupUrl(d.url);
     const popup = state.tabs.find(x => x.popupOf === t.id && x.popupId === String(d.popupId));
     if (!target || !popup) return;
-    if (interceptAccount(target, t.url)) { closeTab(popup.id, { silent: true }); return; }
+    if (blockPlaybackPopup(t.url, target) || interceptAccount(target, t.url)) { closeTab(popup.id, { silent: true }); return; }
     void loadInTab(popup, target, { loadFrame: true });
     return;
   }
@@ -3467,6 +3441,8 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:navigate" && d.url) {
     const target = canonical(d.url); if (!target) return;
+    const opener = t.popupOf && state.tabs.find(tab => tab.id === t.popupOf);
+    if (opener && frameFor(t)?.contentWindow === e.source && blockPlaybackPopup(opener.url, target)) { closeTab(t.id, { silent: true }); return; }
     const watchChanged = t.browserMode === "FAST_PROXY" && inlineYouTubeAllowed() && !!youtubeWatchId(target)
       && youtubeWatchId(target) !== youtubeWatchId(t.url);
     if (target !== t.url && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source && (localPageKind(target) || watchChanged)) {
@@ -3598,10 +3574,6 @@ function wire() {
     e.preventDefault();
     const next = tabs[e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
     next.focus(); next.click();
-  });
-  $("searchExplore").addEventListener("click", e => {
-    const button = e.target.closest("[data-search-category]");
-    if (button) { selectSearchCategory(button.dataset.searchCategory); $(`search-tab-${button.dataset.searchCategory}`)?.focus(); }
   });
   $("downloadsFilter").oninput = renderDownloads; $("clearDownloadsBtn").onclick = () => { for (const c of state.downloadControllers.values()) c.abort(); state.downloads = []; saveDownloads(); renderDownloads(); };
   $("historyFilter").oninput = renderHistory; $("clearHistoryBtn").onclick = () => hooks.openClearData?.();

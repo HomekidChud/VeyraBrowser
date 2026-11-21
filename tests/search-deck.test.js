@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice } from "../web/src/search-deck.js";
+import { blockPlaybackPopup } from "../web/src/playback-popups.js";
 
 test("category routing preserves the query and upgrades legacy history", () => {
   assert.equal(Object.keys(CATEGORIES).length, 8);
@@ -17,6 +18,8 @@ test("pagination carries category adapter and does not repeat results", () => {
   const first = { url: "https://example.com/article", title: "first" };
   const later = { url: "https://example.com/other", title: "next" };
   assert.deepEqual(mergeResults([first], [{ ...first, title: "duplicate" }, later]), [first, later]);
+  const image = { ...first, imageUrl: "https://science.nasa.gov/example.jpg" };
+  assert.deepEqual(mergeResults([image], [{ ...image, url: "https://example.com/another-source" }, later]), [image, later]);
 });
 
 test("result URLs, thumbnail allowlist, source labels, and optional prices", () => {
@@ -25,8 +28,22 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(posterUrl("https://thumb.wikimedia.org/example.jpg"), "https://thumb.wikimedia.org/example.jpg");
   assert.equal(posterUrl("https://thumb.wikimedia.org.example.com/example.jpg"), "");
   assert.equal(posterUrl("http://thumb.wikimedia.org/example.jpg"), "");
+  assert.equal(posterUrl("https://science.nasa.gov/example.jpg"), "https://science.nasa.gov/example.jpg");
+  assert.equal(posterUrl("https://science.nasa.gov.example.com/example.jpg"), "");
   assert.equal(providerLabel("peertube"), "PeerTube via Sepia Search");
   assert.equal(displayPrice(null), "");
   assert.equal(displayPrice({ value: "-1", currency: "GBP" }), "");
   assert.equal(displayPrice({ value: "4.50", currency: "GBP" }), new Intl.NumberFormat(undefined, { style: "currency", currency: "GBP" }).format(4.5));
+});
+
+test("watch pages reject duplicate and unsolicited popups without blocking explicit links", () => {
+  const watch = "https://www.xhamster.com/videos/fixture-xhA123";
+  assert.equal(blockPlaybackPopup(watch, `${watch}?utm_source=popup#player`), true);
+  assert.equal(blockPlaybackPopup(watch, "https://m.xhamster.com/videos/new-slug-xha123/"), true);
+  assert.equal(blockPlaybackPopup(watch, "https://example.com/offer"), true);
+  assert.equal(blockPlaybackPopup(watch, "https://example.com/details", true), false);
+  assert.equal(blockPlaybackPopup(watch, "/videos/another-xhB456", true), false);
+  assert.equal(blockPlaybackPopup(watch, watch, true), true);
+  assert.equal(blockPlaybackPopup("https://example.com/videos/fixture", "https://example.com/details"), false);
+  assert.equal(blockPlaybackPopup("https://xhamster.com.example.org/videos/fixture", "https://example.com/details"), false);
 });

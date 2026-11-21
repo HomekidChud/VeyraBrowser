@@ -33,9 +33,9 @@ The override is accepted only when the page itself is served from `localhost`, `
 
 ### Veyra Search
 
-Search fills the active browser tab. Web combines ordinary links with a category preview panel; Images, Videos, News, Shopping, Research, Discussions, and Veyra index can each be opened directly. Shopping links open the merchant in Veyra; the browser does not process purchases. Without an eBay connection, product discovery depends on the configured web providers and does not show prices or stock.
+Search fills the active browser tab. Web shows text results and the AI overview when available. Images, Videos, News, Shopping, Research, Discussions, and Veyra index can each be opened directly. Shopping links open the merchant in Veyra; the browser does not process purchases. Without an eBay connection, product discovery depends on the configured web providers and does not show prices or stock.
 
-Signed-in users can request a cited summary of the source pages behind a category. This is text retrieval, not analysis of image pixels, video playback, or retailer inventory. Incognito does not automatically request category previews or load result thumbnails, and guest and incognito sessions cannot request AI summaries.
+Signed-in users can request a cited summary of the source pages behind a category. This is text retrieval, not analysis of image pixels, video playback, or retailer inventory. Incognito does not load result thumbnails, and guest and incognito sessions cannot request AI summaries.
 
 Deploy the matching VeyraServer category endpoint first, then ship the Pages and Capacitor client. An older API still supports Web and Veyra index. See [Search smoke checks](FLOWS.md) for browser QA.
 
