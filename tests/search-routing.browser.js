@@ -15,6 +15,7 @@ const web = fileURLToPath(new URL("../web/", import.meta.url));
 const prefix = "/VeyraBrowser/web";
 const api = express();
 const calls = [];
+const fixtureUser = { id: "fixture", email: "fixture@example.test" };
 let vpnMode = "off";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
@@ -23,6 +24,7 @@ api.use((req, res, next) => {
   next();
 });
 api.get("/api/gate/status", (_req, res) => res.json({ ok: true, gated: false }));
+api.get("/api/auth/me", (_req, res) => res.json({ ok: true, user: fixtureUser }));
 api.get("/api/health", (_req, res) => {
   if (calls.filter(call => call.path === "/api/health").length === 1) return res.type("html").send("<h1>Starting</h1>");
   res.json({ ok: true });
@@ -31,14 +33,48 @@ api.post("/api/session", (_req, res) => res.json({ ok: true, sessionId: "browser
 api.get("/api/vpn/session", (_req, res) => vpnMode === "unknown"
   ? res.status(503).json({ ok: false }) : res.json({ ok: true, connected: vpnMode === "on" }));
 api.get("/api/view", (_req, res) => res.type("html").send("<h1>Fixture website</h1>"));
+api.post("/api/search/answer", express.json(), (req, res) => {
+  assert.equal(req.headers.authorization, "Bearer preview-test-token");
+  assert.equal(req.body.region, "IN");
+  assert.equal(req.body.vertical, "research");
+  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]", sources: [
+    { id: "S1", url: "https://example.test/fixture", title: "Research fixture" }
+  ] });
+});
 api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) => {
   if (req.query.q === "recover" && calls.filter(call => call.query.q === "recover" && call.path === "/api/search/web").length === 1)
     return res.type("html").send("<h1>Veyra server page</h1>");
   if (req.query.q === "denied") return res.status(403).json({ ok: false, code: "GATE_REQUIRED", error: "Access is required." });
-  const type = req.query.type || "web";
-  res.json({ ok: true, status: "ok", provider: "fixture", more: false, results: [
-    { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet." }
-  ] });
+  const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
+  const next = Number(req.query.offset || req.query.page || 0);
+  const paged = req.query.q === "India rail";
+  if (paged && type === "images" && req.query.provider === "wikimedia") {
+    return res.json({ provider: "wikimedia", nextPage: null,
+      results: [{ title: "Commons continuation", url: "https://example.in/commons" }] });
+  }
+  if (req.query.q === "scroll fixture") {
+    if (!next) return res.json({ provider: "fixture", nextOffset: 10, results: Array.from({ length: 14 }, (_, i) => ({
+      title: `Scroll result ${i + 1}`, url: `https://example.in/scroll/${i + 1}`, snippet: "This is a long results feed."
+    })) });
+    if (next === 20 && calls.filter(call => call.query.q === "scroll fixture" && call.query.offset === "20").length === 1) {
+      return res.status(503).json({ ok: false, error: "Provider temporarily unavailable." });
+    }
+    if (next === 10) return res.json({ provider: "fixture", nextOffset: 20, results: [
+      { title: "Duplicate first result", url: "https://example.in/scroll/1?utm_campaign=test#section" },
+      ...Array.from({ length: 14 }, (_, i) => ({ title: `Scroll result ${i + 15}`, url: `https://example.in/scroll/${i + 15}` }))
+    ] });
+    return res.json({ provider: "veyra-index", nextOffset: null, results: [{ title: "Final indexed result", url: "https://example.in/archive" }] });
+  }
+  const row = { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet." };
+  const second = { title: `More ${type} results`, url: "https://example.in/more", snippet: "Another snippet." };
+  const results = next ? [row, second] : type === "shopping" ? [
+    { ...row, price: { value: "123456.00", currency: "INR" } },
+    { ...second, price: { value: "19.99", currency: "USD" } }
+  ] : paged && type === "images" ? [row, { ...second, title: "Second image", url: "https://example.in/gallery" }] : [row];
+  if (type === "images") results[0].thumbnail = "https://upload.wikimedia.org/fixture.jpg";
+  res.json({ ok: true, status: "ok", provider: "fixture", nextOffset: paged && type === "web" && !next ? 20 : null,
+    nextPage: paged && type === "images" ? 1 : null,
+    nextProvider: paged && type === "images" && next ? "wikimedia" : undefined, more: false, results });
 });
 api.use((_req, res) => res.json({ ok: true }));
 
@@ -62,7 +98,9 @@ const origin = `http://127.0.0.1:${siteServer.address().port}`;
 
 try {
   for (const engine of (process.argv[3] || "chromium,firefox,webkit").split(",")) {
-    const browser = await playwright[engine].launch();
+    const browser = await playwright[engine].launch(engine === "chromium" ? {
+      channel: "chromium", executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+    } : {});
     try {
       calls.length = 0;
       const mobile = engine === "webkit";
@@ -71,6 +109,7 @@ try {
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
+        if (url.hostname === "www.google.co.in") return route.fulfill({ contentType: "text/html", body: "<h1>External search fixture</h1>" });
         if (url.href === "https://www.tiktok.com/player/v1/6718335390845095173?autoplay=0") {
           tiktokRequests++;
           return route.fulfill({ contentType: "text/html", body: `<h1>TikTok fixture</h1><script>
@@ -98,6 +137,75 @@ try {
       assert.equal(calls.filter(call => call.path === "/api/session").length, 0);
       assert.ok(calls.filter(call => call.path === "/api/search/vertical").every(call => call.query.private === "1"));
 
+      await page.goto(`${origin}${prefix}/search/?q=India+rail&type=deep`);
+      await result("web result for India rail").waitFor();
+      assert.equal(new URL(page.url()).searchParams.has("type"), false);
+      assert.equal(await page.locator("#searchTabs").getByRole("tab").count(), 8);
+      assert.equal(await page.getByRole("tab", { name: "Web" }).getAttribute("aria-selected"), "true");
+      assert.equal(await page.getByRole("button", { name: "Summarize sources with AI" }).isVisible(), false);
+      const [google] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Open Google in a new tab outside Veyra" }).click()]);
+      await google.waitForURL("https://www.google.co.in/search?**");
+      assert.equal(new URL(google.url()).searchParams.get("gl"), "in");
+      assert.equal(new URL(google.url()).searchParams.get("q"), "India rail");
+      await google.close();
+      await page.getByRole("button", { name: "More results" }).click();
+      await result("More web results").waitFor();
+      assert.equal(await result("web result for India rail").count(), 1);
+      assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.offset === "20" && call.query.region === "IN"));
+      await page.getByRole("tab", { name: "Web" }).press("ArrowRight");
+      await result("images result for India rail").waitFor();
+      await page.setViewportSize({ width: 375, height: 812 });
+      assert.equal(await page.locator("#searchResults").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 2);
+      assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      assert.equal(await page.locator("#searchTabs").evaluate(el => el.scrollWidth > el.clientWidth &&
+        new Set([...el.children].map(child => Math.round(child.getBoundingClientRect().top))).size === 1), true);
+      await page.locator("#searchTabs").hover();
+      await page.mouse.wheel(260, 0);
+      await page.waitForFunction(() => document.querySelector("#searchTabs").scrollLeft > 0);
+      await page.getByRole("tab", { name: "Images" }).press("End");
+      await result("index result for India rail").waitFor();
+      assert.ok(await page.locator("#searchTabs").evaluate(el => el.scrollLeft > 0));
+      await page.getByRole("tab", { name: "Veyra index" }).press("Home");
+      await result("web result for India rail").waitFor();
+      await page.getByRole("tab", { name: "Web" }).press("ArrowRight");
+      await result("images result for India rail").waitFor();
+      assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
+      await page.getByRole("button", { name: "More results" }).click();
+      await result("More images results").waitFor();
+      assert.ok(calls.some(call => call.query.type === "images" && call.query.page === "1" && call.query.region === "IN"));
+      await page.getByRole("button", { name: "More results" }).click();
+      await result("Commons continuation").waitFor();
+      assert.ok(calls.some(call => call.query.provider === "wikimedia" && call.query.page === "1" && call.query.region === "IN"));
+      assert.equal(await result("More images results").count(), 1);
+      for (const [label, type] of [["Videos", "videos"], ["News", "news"], ["Shopping", "shopping"], ["Research", "research"], ["Discussions", "discussions"], ["Veyra index", "index"]]) {
+        await page.getByRole("tab", { name: label }).click();
+        await result(`${type} result for India rail`).waitFor();
+        assert.ok(calls.some(call => call.query.q === "India rail" && call.query.region === "IN"
+          && (type === "index" ? call.path === "/api/search" : call.query.type === type)));
+        if (type === "shopping") assert.deepEqual(await page.locator(".search-price").allTextContents(), ["₹1,23,456.00"]);
+      }
+      assert.ok(!calls.some(call => call.path === "/api/search/deep" || call.path === "/api/search/answer"));
+      await page.getByRole("tab", { name: "Web" }).click();
+      await result("web result for India rail").waitFor();
+      await page.goto(`${origin}${prefix}/search/?q=scroll+fixture`);
+      await result("Scroll result 14").waitFor();
+      const firstNode = await result("Scroll result 1").elementHandle();
+      await firstNode.focus();
+      assert.ok(!calls.some(call => call.query.q === "scroll fixture" && call.query.offset === "10"));
+      await page.mouse.move(210, 570);
+      await page.mouse.wheel(0, 5000);
+      await result("Scroll result 28").waitFor();
+      assert.equal(await firstNode.evaluate(el => el.isConnected), true, "appending must preserve existing result elements");
+      assert.equal(await firstNode.evaluate(el => el === document.activeElement), true, "appending must preserve keyboard focus");
+      assert.equal(await result("Duplicate first result").count(), 0);
+      assert.ok(calls.some(call => call.query.q === "scroll fixture" && call.query.feed === "1" && call.query.offset === "10"));
+      await page.mouse.wheel(0, 5000);
+      await page.getByRole("button", { name: "Retry more results" }).waitFor();
+      await page.getByRole("button", { name: "Retry more results" }).click();
+      await result("Final indexed result").waitFor();
+      await page.getByText("End of available results").waitFor();
+      assert.equal(await page.getByRole("button", { name: "More results" }).count(), 0);
+      if (!mobile) await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(`${origin}${prefix}/browse/`);
       await page.locator("#ntpInput").fill("recover");
       await page.locator("#ntpInput").press("Enter");
@@ -127,6 +235,8 @@ try {
       assert.equal(new URL(page.url()).searchParams.has("q"), false);
       assert.equal(new URL(page.url()).searchParams.get("incognito"), "1");
       assert.ok(calls.some(call => call.path === "/api/search/vertical" && call.query.q === "private moon" && call.query.private === "1"));
+      assert.equal(await page.locator("#searchResults img").count(), 0);
+      assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
 
       const post = "https://www.tiktok.com/@scout2015/video/6718335390845095173";
@@ -159,8 +269,20 @@ try {
         assert.equal(tiktokRequests, 1);
       }
 
+      await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
+      await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);
+      await result("research result for railway").waitFor();
+      assert.ok(!calls.some(call => call.path === "/api/search/answer"));
+      const summary = page.getByRole("button", { name: "Summarize sources with AI" });
+      assert.equal(await summary.evaluate(el => Boolean(document.querySelector("#searchResults").compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+      await summary.click();
+      await page.getByText("This is a cited fixture summary.", { exact: true }).waitFor();
+      const cited = page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`));
+      await page.getByRole("link", { name: "Source Research fixture" }).click();
+      assert.match(await (await cited).text(), /Fixture website/);
+
       assert.deepEqual(errors, []);
-      console.log(`${engine}: search routing and recovery, sessions, incognito, and opt-in TikTok player with VPN and Fast Proxy fallback`);
+      console.log(`${engine}: India category requests and pagination, legacy routing, INR, responsive Images, recovery, private search, opt-in summaries, and TikTok regression`);
     } finally { await browser.close(); }
   }
 } finally {

@@ -1,6 +1,5 @@
 export const CATEGORIES = Object.freeze({
   web: { label: "Web", icon: "i-globe", description: "Pages from across the web" },
-  deep: { label: "Deep Search", icon: "i-layers", description: "Results from web providers and the Veyra index, with sources shown" },
   images: { label: "Images", icon: "i-search-image", description: "Photos, illustrations and visual references" },
   videos: { label: "Videos", icon: "i-search-video", description: "Watch pages and clips from video publishers" },
   news: { label: "News", icon: "i-search-news", description: "Reporting from news publishers" },
@@ -9,7 +8,9 @@ export const CATEGORIES = Object.freeze({
   discussions: { label: "Discussions", icon: "i-search-discussions", description: "Community threads from Hacker News" },
   index: { label: "Veyra index", icon: "i-layers", description: "Pages indexed by Veyra" }
 });
-export const isVertical = key => Object.hasOwn(CATEGORIES, key) && !["web", "deep", "index"].includes(key);
+export const SEARCH_REGION = "IN";
+export const SEARCH_LOCALE = "en-IN";
+export const isVertical = key => Object.hasOwn(CATEGORIES, key) && !["web", "index"].includes(key);
 export const searchCategory = value => Object.hasOwn(CATEGORIES, value) ? value : "web";
 export const searchStateKey = (query, category) => `veyra:search-v2:${JSON.stringify([query, searchCategory(category)])}`;
 export function readSearchState(value) {
@@ -22,7 +23,7 @@ export function readSearchState(value) {
   return null;
 }
 export function searchParams(query, category, lang, page = 0, provider = "") {
-  const params = new URLSearchParams({ q: query, type: category, lang });
+  const params = new URLSearchParams({ q: query, type: category, lang, region: SEARCH_REGION });
   if (page) { params.set("page", page); params.set("provider", provider); }
   return params;
 }
@@ -39,14 +40,23 @@ export function posterUrl(value) {
     "images-assets.nasa.gov", "science.nasa.gov", "assets.science.nasa.gov", "www.esa.int", "media.esa.int"].includes(new URL(url).hostname) ? url : "";
 }
 export function mergeResults(previous, next) {
-  const key = row => row.imageUrl || row.canonicalUrl || row.url;
+  const key = row => {
+    try {
+      const u = new URL(row.imageUrl || row.canonicalUrl || row.url);
+      u.hash = "";
+      for (const name of [...u.searchParams.keys()]) if (/^utm_|^(?:fbclid|gclid|mc_cid|mc_eid)$/i.test(name)) u.searchParams.delete(name);
+      if (["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"].includes(u.hostname)) {
+        const videoId = u.hostname === "youtu.be" ? /^\/([\w-]{11})\/?$/.exec(u.pathname)?.[1] :
+          u.pathname === "/watch" ? u.searchParams.get("v") : /^\/shorts\/([\w-]{11})\/?$/.exec(u.pathname)?.[1];
+        if (/^[\w-]{11}$/.test(videoId || "")) return `youtube:${videoId}`;
+      }
+      return u.href;
+    } catch { return row.url; }
+  };
   const merged = new Map(previous.map(row => [key(row), row]));
   for (const row of next) {
     const id = key(row), existing = merged.get(id);
     if (!existing) merged.set(id, row);
-    else if (Array.isArray(row.providers) && row.providers.length) {
-      merged.set(id, { ...existing, providers: [...new Set([...(existing.providers || []), ...row.providers])] });
-    }
   }
   return [...merged.values()];
 }
@@ -54,17 +64,12 @@ export function icon(name) { return `<svg aria-hidden="true"><use href="#${name}
 export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
-    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
+    "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search"
   };
   return Object.hasOwn(labels, provider) ? labels[provider] : "";
 }
-export function deepSourceLabel(provider) {
-  const labels = { google: "Google API", bing: "Bing", duckduckgo: "DuckDuckGo", mojeek: "Mojeek",
-    ecosia: "Ecosia", yahoo: "Yahoo", startpage: "Startpage", wikipedia: "Wikipedia", "veyra-index": "Veyra index" };
-  return Object.hasOwn(labels, provider) ? labels[provider] : providerLabel(provider) || "";
-}
 export function displayPrice(price) {
-  if (!price || !/^[A-Z]{3}$/.test(price.currency) || !/^\d{1,12}(?:\.\d{1,4})?$/.test(price.value)) return "";
-  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: price.currency }).format(Number(price.value)); }
+  if (price?.currency !== "INR" || !/^\d{1,12}(?:\.\d{1,2})?$/.test(price.value) || !(Number(price.value) > 0)) return "";
+  try { return new Intl.NumberFormat(SEARCH_LOCALE, { style: "currency", currency: "INR" }).format(Number(price.value)); }
   catch { return ""; }
 }
