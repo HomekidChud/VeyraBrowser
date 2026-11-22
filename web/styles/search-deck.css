@@ -102,7 +102,17 @@ body.incognito .search-deck {
 .search-deck .search-results:not(.search-rich-results), .search-deck .ai-answer { max-width: var(--search-column); }
 .search-deck .search-results:not(.search-rich-results) { grid-template-columns: minmax(0, 1fr); }
 .search-deck .result { padding: 1.125rem 0; border-bottom: 1px solid var(--search-line); }
-.search-deck .result .r-url { margin: 0 0 .375rem; color: var(--search-muted); font-size: var(--search-caption); }
+.search-deck .result .r-url { display: flex; align-items: center; gap: .5rem; margin: 0 0 .375rem; color: var(--search-muted); font-size: var(--search-caption); }
+.search-deck .result .r-url > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.search-site-icon {
+  position: relative; display: inline-grid; flex: none; place-items: center; vertical-align: middle;
+  inline-size: 1.125rem; block-size: 1.125rem; color: var(--search-muted); background: var(--search-paper, var(--search-field));
+  border: 1px solid var(--search-line); border-radius: .25rem; overflow: hidden; line-height: 1; font-size: .64rem; font-weight: 700;
+}
+.search-site-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--search-field); }
+.search-site-icon img[hidden], .search-card-art img[hidden] { display: none; }
+.search-card-source > .search-site-icon { margin-inline-end: .375rem; }
+.search-deck .ai-source-cite .search-site-icon { inline-size: 100%; block-size: 100%; border: 0; }
 .search-deck .result h2 { margin: 0 0 .375rem; font: 650 var(--search-title)/1.26 var(--font-ui); overflow-wrap: anywhere; }
 .search-deck .result .r-title { color: var(--search-link); font: inherit; text-decoration-thickness: 1px; text-underline-offset: .18em; }
 .search-deck .result p { max-width: 70ch; color: var(--search-muted); font-size: var(--search-copy); line-height: 1.55; overflow-wrap: anywhere; }
@@ -155,6 +165,26 @@ body.incognito .search-deck {
 .search-skeleton span + span { width: 52%; }
 .search-deck .ai-answer { margin-block: 1rem; color: var(--search-muted); }
 .search-deck .ai-answer-card { border-radius: .375rem; background: var(--search-field); border-color: var(--search-line); }
+.search-deck .ai-chat { display: grid; gap: .75rem; padding: clamp(.75rem, 2vw, 1.125rem); border-top: 2px solid var(--search-link); }
+.ai-chat-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.ai-chat-head h2 { color: var(--search-ink); margin: 0; font: 700 var(--search-title)/1.25 var(--font-display); }
+.ai-chat-note { color: var(--search-muted); font-size: var(--search-caption); margin: 0; overflow-wrap: anywhere; }
+.ai-chat-note:empty { display: none; }
+.ai-chat > #searchSummarize { justify-self: start; }
+.search-deck .ai-chat .btn { white-space: normal; }
+.ai-chat-turns { display: grid; }
+.ai-chat-turn { min-width: 0; padding-block: .75rem; border-block-start: 1px solid var(--search-line); }
+.ai-chat-turn h3 { color: var(--search-ink); font: 650 var(--search-copy)/1.4 var(--font-ui); margin: 0 0 .25rem; overflow-wrap: anywhere; }
+.search-deck .ai-chat-turn :is(.ai-answer-body, .ai-answer-sources, .ai-answer-feedback) { padding: 0; margin-top: .625rem; }
+.ai-chat-turn .ai-answer-body > p { margin: .375rem 0; }
+.ai-chat-turn > button { margin-top: .5rem; }
+.ai-chat-prompts { display: flex; flex-wrap: wrap; gap: .375rem; }
+.ai-chat-form { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+.ai-chat-form input { min-width: 0; padding: .5rem .625rem; border: 1px solid var(--search-line); border-radius: .375rem; background: var(--search-paper); color: var(--search-ink); font: inherit; }
+.ai-chat-form input::placeholder { color: var(--search-muted); }
+.ai-chat :is(button, input):focus-visible { outline: 2px solid var(--search-link); outline-offset: 2px; }
+.search-deck .ai-chat-form button { color: var(--search-action-ink); background: var(--search-action); }
+.search-deck .ai-chat-form button:disabled { opacity: .5; }
 .search-deck .ai-answer-body { color: var(--search-ink); }
 .search-deck .ai-badge { color: var(--search-link); }
 .search-deck .ai-badge svg { display: none; }

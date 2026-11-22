@@ -31,7 +31,7 @@ export function tiktokTarget(raw) {
 }
 
 export function tiktokPlayerPage() {
-  return new URL("../media/tiktok.html?v=2", import.meta.url).href;
+  return new URL("../media/tiktok.html?v=3", import.meta.url).href;
 }
 
 const mounted = new WeakSet();
@@ -46,12 +46,13 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   const view = doc.defaultView;
   if (!post || !button || !stop || !proxy || !original || !container || !status || !view || mounted.has(doc)) return;
   mounted.add(doc);
-  let frame, timer, receivedState, timedOut, buffering;
+  const photo = new URL(post.url).pathname.includes("/photo/");
+  let frame, timer, phase = "idle", proxyPending = false;
   const clearPlayer = () => {
     view.clearTimeout(timer);
     frame?.remove();
     frame = null;
-    receivedState = timedOut = buffering = false;
+    phase = "idle";
     stop.hidden = true;
     button.disabled = false;
   };
@@ -64,7 +65,15 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   original.href = post.url;
   original.hidden = false;
   proxy.disabled = false;
-  proxy.addEventListener("click", openProxy, { once: true });
+  proxy.addEventListener("click", () => {
+    if (proxyPending) return;
+    proxyPending = true;
+    clearPlayer();
+    proxy.disabled = button.disabled = true;
+    original.hidden = true;
+    status.textContent = "Opening this link in Fast Proxy…";
+    openProxy();
+  });
   original.addEventListener("click", event => { if (!directAllowed()) { event.preventDefault(); blockDirect(); } });
   if (!directAllowed()) { blockDirect(); return; }
   if (!post.player) {
@@ -75,9 +84,10 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   }
   button.hidden = false;
   button.disabled = false;
+  if (photo) button.textContent = "Load TikTok photo post";
   stop.addEventListener("click", () => {
     clearPlayer();
-    button.textContent = "Load TikTok player";
+    button.textContent = photo ? "Load TikTok photo post" : "Load TikTok player";
     status.textContent = "TikTok player closed.";
     button.focus();
   });
@@ -85,7 +95,7 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     view.clearTimeout(timer);
     timer = view.setTimeout(() => {
       if (!directAllowed()) { blockDirect(); return; }
-      timedOut = true;
+      phase = "timeout";
       button.disabled = false;
       status.textContent = message;
     }, 12000);
@@ -93,53 +103,54 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   view.addEventListener("message", event => {
     if (!frame || event.origin !== PLAYER_ORIGIN || event.source !== frame.contentWindow || event.data?.["x-tiktok-player"] !== true) return;
     const { type, value } = event.data;
-    if (!["onPlayerReady", "onPlayerError", "onError", "onStateChange"].includes(type)) return;
+    if (!["onPlayerReady", "onPlayerError", "onError", "onStateChange", "onImageChange"].includes(type)) return;
     if (!directAllowed()) { blockDirect(); return; }
+    if (phase === "failed") return;
     if (type === "onStateChange" && !PLAYER_STATES.has(value)) return;
-    if (type === "onPlayerReady" && receivedState) return;
+    if (type === "onImageChange" && (!photo || !Number.isSafeInteger(value) || value < 0)) return;
+    const code = type === "onPlayerError" ? value?.errorCode : type === "onError" ? value : null;
+    if (["onPlayerError", "onError"].includes(type) && !Number.isInteger(code)) return;
+    if (type === "onPlayerReady" && !["connecting", "initializing", "timeout"].includes(phase)) return;
     if (type === "onStateChange" && [-1, 3].includes(value)) {
-      receivedState = true;
-      if (!timedOut) {
+      if (value === -1 && !["connecting", "initializing"].includes(phase)) return;
+      if (phase !== "timeout") {
         status.textContent = PLAYER_STATES.get(value);
-        if (!buffering) watchdog("TikTok is taking longer than expected. Try its controls, retry, or open the original post.");
-        buffering = true;
+        if (value === 3 && phase !== "buffering") watchdog("TikTok is taking longer than expected. Try its controls, retry, or open the original post.");
+        phase = value === -1 ? "initializing" : "buffering";
       }
       return;
     }
     view.clearTimeout(timer);
-    buffering = false;
-    receivedState = true;
     if (type === "onPlayerError" || type === "onError") {
-      const code = value?.errorCode;
+      phase = code === 3002 ? "autoplay-blocked" : "failed";
       status.textContent = code === 1001 ? "TikTok says this post isn’t available in its embedded player."
+        : code === 2001 ? "TikTok couldn’t serve this post. You can retry or open the original post."
         : code === 3002 ? "Automatic playback was blocked. Try pressing Play in the TikTok player."
         : "TikTok reported a playback problem. You can retry or open the original post.";
       button.disabled = false;
     } else {
-      timedOut = false;
-      status.textContent = type !== "onStateChange" ? "TikTok player ready. Use its controls to start."
-        : PLAYER_STATES.get(value);
+      phase = "active";
+      status.textContent = type === "onImageChange" ? `Showing photo ${value + 1} in the TikTok player.`
+        : type === "onPlayerReady" ? (photo ? "TikTok photo post ready. Use its controls to browse the photos." : "TikTok player ready. Use its controls to start.")
+        : photo && value === 1 ? "Playing audio in the TikTok photo post." : PLAYER_STATES.get(value);
       button.disabled = true;
     }
   });
   view.addEventListener("pagehide", clearPlayer);
   button.addEventListener("click", () => {
+    if (proxyPending) return;
     if (!directAllowed()) { blockDirect(); return; }
     clearPlayer();
     button.disabled = true;
     button.textContent = "Retry TikTok player";
     stop.hidden = false;
-    const opened = frame = doc.createElement("iframe");
-    frame.title = "Official TikTok player";
+    frame = doc.createElement("iframe");
+    frame.title = photo ? "Official TikTok photo post" : "Official TikTok player";
     frame.referrerPolicy = "strict-origin-when-cross-origin";
     frame.allow = "fullscreen";
     frame.src = post.player;
-    status.textContent = "Connecting directly to TikTok…";
-    opened.addEventListener("load", () => {
-      if (frame === opened && status.textContent === "Connecting directly to TikTok…") {
-        status.textContent = "If you can see the player, use its controls to start.";
-      }
-    }, { once: true });
+    phase = "connecting";
+    status.textContent = "Waiting for TikTok to confirm the player is ready…";
     watchdog("TikTok didn’t send a status update. If you can see the player, try its controls, or retry the player.");
     container.replaceChildren(frame);
   });

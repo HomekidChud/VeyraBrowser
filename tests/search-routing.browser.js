@@ -45,9 +45,17 @@ api.post("/api/search/answer", express.json(), (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   assert.equal(req.body.region, "IN");
   assert.equal(req.body.vertical, "research");
-  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]\n\nThis is a second cited paragraph. [S1]", sources: [
-    { id: "S1", url: "https://example.test/fixture", title: "Research fixture" }
-  ] });
+  const sources = [{ id: "S1", url: "https://example.test/fixture", title: "Research fixture" }];
+  calls.at(-1).body = req.body;
+  if (req.body.followUp) {
+    assert.equal(req.body.query, "railway");
+    assert.equal(req.body.results, undefined);
+    const { question } = req.body.followUp;
+    const reply = () => res.json({ hasAnswer: true, followUp: true, answer: `Follow-up fixture: ${question} [S1]`, sources });
+    if (question === "Slow fixture?") return setTimeout(reply, 500);
+    return reply();
+  }
+  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]\n\nThis is a second cited paragraph. [S1]", sources });
 });
 api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) => {
   if (req.query.q === "recover" && calls.filter(call => call.query.q === "recover" && call.path === "/api/search/web").length === 1)
@@ -56,6 +64,13 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (req.query.q === "dense photos" && type === "images") {
+    const indices = Array.from({ length: next ? 25 : 24 }, (_, i) => i + (next ? 23 : 0));
+    return res.json({ provider: "wikimedia", status: "ok", nextPage: next ? null : 1, results: indices.map(i => ({
+      title: `Dense photos ${i}`, url: `https://commons.wikimedia.org/photo/${i}`,
+      imageUrl: `https://upload.wikimedia.org/full-${i}.jpg`, thumbnail: `https://upload.wikimedia.org/preview-${i}.jpg`
+    })) });
+  }
   if (/missing listing/.test(req.query.q)) return res.json({ provider: "none", status: "empty", results: [] });
   if (req.query.q === "repeat fixture" && next === 20 &&
       calls.filter(call => call.query.q === "repeat fixture" && call.query.offset === "20").length === 1) {
@@ -120,12 +135,16 @@ try {
     } : {});
     try {
       calls.length = 0;
-      const mobile = engine === "webkit";
+      const mobile = engine === "webkit" || process.env.VEYRA_TEST_MOBILE === "1";
       const context = await browser.newContext(mobile ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true } : {});
       let tiktokRequests = 0, tiktokMode = "error";
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
+        if ((url.hostname === "icons.duckduckgo.com" && url.pathname === "/ip3/example.in.ico") ||
+            (url.hostname === "upload.wikimedia.org" && url.pathname !== "/preview-0.jpg")) {
+          return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#6b7e91"/></svg>' });
+        }
         if (url.hostname === "www.google.co.in") return route.fulfill({ contentType: "text/html", body: "<h1>External search fixture</h1>" });
         if (url.hostname === "www.amazon.in") return route.fulfill({ contentType: "text/html", body: "<h1>External retailer fixture</h1>" });
         if (url.href === shortLink) return route.fulfill({ contentType: "text/html", body: "<h1>Official share link fixture</h1>" });
@@ -175,6 +194,9 @@ try {
       await page.getByRole("button", { name: "More results" }).click();
       await result("More web results").waitFor();
       assert.equal(await result("web result for India rail").count(), 1);
+      await page.locator('#searchResults .search-site-icon img[src*="example.in.ico"]').waitFor();
+      assert.equal(await page.locator("#searchResults .search-site-icon").count(), 2);
+      assert.equal(await page.locator("#searchResults .search-site-icon img").count(), 1);
       assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.offset === "20" && call.query.region === "IN"));
       await page.getByRole("tab", { name: "Web" }).press("ArrowRight");
       await result("images result for India rail").waitFor();
@@ -285,6 +307,8 @@ try {
       await page.goto(`${origin}${prefix}/search/?q=private+web&incognito=1`);
       await result("web result for private web").waitFor();
       assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "private web" && call.query.incognito === "1" && call.query.private === "1"));
+      assert.equal(await page.locator("#searchResults .search-site-icon img").count(), 0);
+      assert.equal(await page.locator("#searchResults .search-site-icon").count(), 1);
       await page.goto(`${origin}${prefix}/search/?q=missing+listing&type=videos&incognito=1`);
       await page.getByText("No matching watch pages from Veyra’s sources.").waitFor();
       assert.equal(await page.getByRole("link", { name: "Search YouTube" }).count(), 0);
@@ -377,25 +401,65 @@ try {
       await blankNotice.waitFor({ state: "hidden" });
       if (!mobile) await page.setViewportSize({ width: 1280, height: 900 });
 
+      await page.goto(`${origin}${prefix}/search/?q=dense+photos&type=images`);
+      await result("Dense photos 0").waitFor();
+      const tiles = page.locator("#searchResults .search-card-images"), imageNodes = tiles.locator("img");
+      assert.equal(await tiles.count(), 24);
+      assert.equal(await imageNodes.count(), 24);
+      await page.waitForFunction(() => document.querySelector('img[src$="/preview-0.jpg"]')?.hidden);
+      assert.equal(await imageNodes.evaluateAll(images => images.every(img => img.loading === "lazy" && !img.hasAttribute("onerror"))), true);
+      await page.locator("#view-search").evaluate(el => { el.scrollTop = el.scrollHeight; });
+      await result("Dense photos 47").waitFor();
+      assert.equal(await tiles.count(), 48, "pagination appends 24 unique image tiles");
+      assert.equal(await result("Dense photos 23").count(), 1);
+
       await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
       await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);
       await result("research result for railway").waitFor();
       assert.ok(!calls.some(call => call.path === "/api/search/answer"));
       const summary = page.getByRole("button", { name: "Summarize sources with AI" });
-      assert.equal(await summary.evaluate(el => Boolean(document.querySelector("#searchResults").compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+      assert.equal(await summary.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector("#searchResults")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+      assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
       await summary.click();
-      await page.getByText("This is a cited fixture summary.", { exact: true }).waitFor();
-      await page.getByText("This is a second cited paragraph.", { exact: true }).waitFor();
+      await page.locator(".ai-answer-body").getByText(/^This is a cited fixture summary\./).waitFor();
+      await page.locator(".ai-answer-body").getByText(/^This is a second cited paragraph\./).waitFor();
       assert.equal(await page.locator("#aiAnswer .ai-answer-body > p").count(), 2);
       assert.equal(await page.locator("#aiAnswer .ai-answer-body .ai-source-cite").count(), 2);
+      const ask = page.getByRole("textbox", { name: "Ask Veyra AI" });
+      await page.getByRole("button", { name: "What are the key facts?" }).click();
+      await page.locator(".ai-answer-body").getByText(/Follow-up fixture:/).waitFor();
+      await ask.fill("What evidence is strongest?");
+      await ask.press("Enter");
+      await page.getByRole("heading", { name: "You: What evidence is strongest?" }).waitFor();
+      await page.locator(".ai-answer-body").getByText(/evidence is strongest/).waitFor();
+      assert.deepEqual(calls.filter(call => call.body?.followUp).at(-1).body.followUp, {
+        question: "What evidence is strongest?", previousQuestion: "What are the key facts?"
+      });
+      const slow = page.waitForRequest(request => request.url().endsWith("/api/search/answer") && request.postData()?.includes("Slow fixture?"));
+      await ask.fill("Slow fixture?");
+      await ask.press("Enter");
+      await slow;
+      await page.getByRole("button", { name: "Start over" }).click();
+      await summary.waitFor();
+      assert.equal(await page.locator(".ai-chat-turn").count(), 0);
+      await summary.click();
+      await page.locator(".ai-answer-body").getByText(/^This is a cited fixture summary\./).waitFor();
       const [cited] = await Promise.all([
         page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`)),
         page.getByRole("link", { name: "Source Research fixture" }).first().click()
       ]);
       assert.match(await cited.text(), /Fixture website/);
+      await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);
+      await summary.waitFor();
+      await page.evaluate(async base => {
+        const { setAuth } = await import(`${base}/src/core.js?v=8.36.0-workbench`);
+        setAuth("", null);
+      }, prefix);
+      assert.equal(await page.locator("#aiAnswer").isVisible(), false);
+      assert.equal(await page.locator("#aiAnswer").textContent(), "");
 
       assert.deepEqual(errors, []);
-      console.log(`${engine}: India category requests and pagination, legacy routing, INR, responsive Images, recovery, private search, opt-in summaries, and TikTok regression`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: category pagination, responsive image batches, icons, private search, cited chat, and TikTok recovery`);
     } finally { await browser.close(); }
   }
 } finally {

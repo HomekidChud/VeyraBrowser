@@ -13,8 +13,9 @@
 - Open a result in Veyra or Ctrl/Cmd-click to open a background tab. Videos continue through the existing YouTube watch flow where applicable.
 
 ## Ask Veyra AI
-- Signed-in users can request a cited summary below their results. Confirm it stays out of the way until requested, and verify source links, unavailable state and retry with a fixture.
-- Guest and incognito browsing cannot request AI summaries. Incognito disables mixed-result previews and external thumbnails.
+- Signed-in users have a Veyra AI panel above the result list. It must not send a request until the user asks for a summary, picks a suggested follow-up, or types a question. Verify that citations open in Veyra and that each follow-up retrieves evidence for the current query, category and site filter.
+- Start over, change the category or search, open another tab, or sign out during a reply. Follow-ups must not bleed into a different search or account. The current chat shows at most five turns and does not restore after reload.
+- Guest and incognito browsing cannot request AI summaries or follow-ups. Incognito disables external thumbnails and uses local initials instead of requesting favicons. Check the favicon fallback and image pagination when the provider repeats a result or a thumbnail fails.
 
 ## Surrounding browser shell
 - Open and close a new tab; return to the search with its data intact. Check Calculator, History, and Settings navigation, browser resize at 375px, and the console for regressions.
@@ -26,7 +27,7 @@
 - Check the dialog at 375 px, including a long destination and keyboard focus on dismissal. Device Cast must still generate its own pairing code; the public-link scanner is not a replacement for the device-pairing flow.
 
 ## TikTok and proxy recovery
-- In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Click **Load TikTok player**, use the official player, close it, and check that it loads again only on request. Check reported errors, silence, a late player event, and the retry on desktop and at 375px.
+- In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Load it, use its official controls, and close it. Check that a silent iframe does not imply readiness, an unavailable post stays unavailable despite late events, and photo navigation identifies the visible slide.
 - Paste a TikTok share link. It should offer **Open on TikTok** and **Use Fast Proxy**, with no player or automatic third-party request. Check the official link opens a separate tab without a referrer, and that **Use Fast Proxy** replaces the panel in the same Veyra tab.
 - In incognito, with a VPN, or when VPN status is unknown, a TikTok post must not instantiate a direct player. A profile, unrelated site, and unrelated lookalike URLs should continue to use normal browsing.
 - Open a Fast Proxy site that stays blank. If Chromium is disabled, Veyra should keep the page and offer site options with a retry and explicit direct link. A populated site, a different tab, and a stale message after navigation should not get that notice.

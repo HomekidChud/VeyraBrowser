@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.41.0-qr-links";
+import { initSettings } from "./settings.js?v=8.42.0-search-chat";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
@@ -340,6 +340,7 @@ export async function signOut({ everywhere = false, forgetLocal = false } = {}) 
 }
 function onAuthChanged() {
   B.syncAdminAccess();
+  B.syncSearchAuth();
   updateAuthPolicy();
   const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user && !INCOGNITO); a.classList.toggle("incog", INCOGNITO);
   $("avatarText").innerHTML = INCOGNITO ? `<svg><use href="#i-incognito"/></svg><span class="incog-label">Incognito</span>` : auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
