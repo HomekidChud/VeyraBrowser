@@ -1,7 +1,9 @@
 Veyra Browser Launcher
 
-The launcher opens official sites in new tabs. It is not a sign-in provider or
-proxy engine, and it never reads credentials, website data, or cookies.
+The launcher opens official sites in new tabs. To sign in to MSN Play, choose
+"Open MSN Play directly", then use MSN's own sign-in controls in that tab.
+The launcher never reads credentials, website data, or cookies. Signing in to
+MSN in a regular tab does not sign you in inside Veyra's proxy.
 
 To install locally on desktop:
 
@@ -10,6 +12,10 @@ To install locally on desktop:
 3. Enable Developer mode and choose Load unpacked.
 4. Select the extracted folder that contains manifest.json.
 5. Open Veyra Browser Launcher from your browser's extensions menu.
+
+Already installed? Extract the new files over the old unpacked folder, then
+select Reload on the extension's card. If you extracted to a new folder, remove
+the old extension and use Load unpacked to select the new folder instead.
 
 This is an unpacked developer build, not a Chrome Web Store or Edge Add-ons
 release. Chrome and Edge may disallow unpacked extensions on managed devices.
