@@ -1,7 +1,20 @@
 Veyra Browser Launcher
 
-The launcher opens official sites in new tabs. It is not a sign-in provider or
-proxy engine, and it never reads credentials, website data, or cookies.
+The launcher opens official sites in new tabs and can send a site's session
+cookies to your open Veyra Browser tab — including HttpOnly cookies a
+bookmarklet cannot read. The transfer only happens when you click "Send
+session to Veyra", only sends to the Veyra server you configure, and only
+targets the Veyra session running in your own open Veyra Browser tab. It is
+not a sign-in provider or proxy engine, and it never reads page content or
+credentials.
+
+What the permissions are for:
+- cookies + host permissions: read the current site's cookies when you click
+  Send. Nothing is read automatically.
+- activeTab: see the address of the tab you clicked the extension on.
+- scripting: ask your open Veyra Browser tab which Veyra session is running
+  there, so the transfer lands in your own session.
+- storage: remember your Veyra server origin.
 
 To install locally on desktop:
 
@@ -10,6 +23,13 @@ To install locally on desktop:
 3. Enable Developer mode and choose Load unpacked.
 4. Select the extracted folder that contains manifest.json.
 5. Open Veyra Browser Launcher from your browser's extensions menu.
+
+To send a site's session to Veyra:
+
+1. Sign in to the site in this browser (for example msn.com).
+2. Keep your Veyra Browser tab open with a session running.
+3. Click the extension on the site's tab and choose "Send session to Veyra".
+4. Reload the Veyra tab if it does not refresh itself.
 
 This is an unpacked developer build, not a Chrome Web Store or Edge Add-ons
 release. Chrome and Edge may disallow unpacked extensions on managed devices.

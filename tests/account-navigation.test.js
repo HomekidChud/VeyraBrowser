@@ -28,10 +28,27 @@ assert.equal(withGitHubSignupBookmark(legacy), legacy);
 
 const launcher = JSON.parse(readFileSync(new URL("../launcher-extension/manifest.json", import.meta.url), "utf8"));
 assert.equal(launcher.manifest_version, 3);
-for (const field of ["permissions", "optional_permissions", "host_permissions", "optional_host_permissions", "content_scripts", "background"]) {
+// Cookie transfer: exactly these permissions, nothing broader. activeTab
+// (the clicked tab's url), cookies (read on Send), scripting (ask the open
+// Veyra tab for its session id), storage (remember the API origin).
+assert.deepEqual(launcher.permissions, ["activeTab", "cookies", "storage", "scripting"]);
+assert.deepEqual(launcher.host_permissions, ["<all_urls>"]);
+for (const field of ["optional_permissions", "optional_host_permissions", "content_scripts", "background"]) {
   assert.equal(launcher[field], undefined, `${field} must not be present`);
 }
 const popup = readFileSync(new URL("../launcher-extension/popup.html", import.meta.url), "utf8");
-assert.doesNotMatch(popup, /<script|javascript:|<form/i);
+// No inline script (MV3 CSP), no javascript: URIs, no form; the only script
+// is the local popup.js.
+assert.doesNotMatch(popup, /<script(?![^>]*src="popup\.js")/i);
+assert.doesNotMatch(popup, /javascript:|<form/i);
 assert.match(popup, /https:\/\/accounts\.google\.com\/signup/);
-console.log("Official account destination and permission-free launcher checks passed");
+const popupJs = readFileSync(new URL("../launcher-extension/popup.js", import.meta.url), "utf8");
+// Cookie transfer contract: reads cookies only via chrome.cookies, targets
+// the user's own session found in their open Veyra tab, and posts only to
+// the /api/handoff/cookies import. No eval, no remote code.
+assert.match(popupJs, /chrome\.cookies\.getAll/);
+assert.match(popupJs, /veyra:request-session/);
+assert.match(popupJs, /\/api\/handoff\/cookies/);
+assert.doesNotMatch(popupJs, /eval\(|new Function|innerHTML\s*=/);
+assert.match(popupJs, /https:\/\/veyraserver-xscy\.onrender\.com/);
+console.log("Official account destination and launcher cookie-transfer checks passed");
