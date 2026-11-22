@@ -3,6 +3,27 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
+import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
+
+test("full-query suggestions handle prefixes, trailing spaces and the old one-word API", () => {
+  assert.deepEqual(querySuggestions(["moon", "NASA moon", "NASA mission", "<img>", "mo\non"], "NASA mo", 8), ["NASA moon"]);
+  assert.deepEqual(querySuggestions(["NASA ", "NASA missions", "NASA moon", "moon"], "NASA ", 1), ["NASA missions"]);
+  assert.deepEqual(querySuggestions(["café locations", "Cafe locations"], "  CAFÉ", 8), ["café locations"]);
+});
+
+test("every visible result has a bounded estimate, and API scores take precedence", () => {
+  const rows = [
+    { title: " unrelated", url: "https://example.test/unrelated" },
+    { title: "月面 地図", url: "https://example.test/maps" },
+    { title: "Low authored title", url: "https://example.test/other", matchPercent: 100 },
+    { title: "月面", url: "https://example.test/partial", matchPercent: 120 }
+  ];
+  const ranked = rankResultBatch(rows, "site:example.test 月面 地図", "images");
+  assert.deepEqual(ranked.map(row => row.url), [rows[2].url, rows[1].url, rows[3].url, rows[0].url]);
+  assert.equal(ranked[3].matchPercent, 1);
+  assert.ok(ranked.every(row => Number.isInteger(row.matchPercent) && row.matchPercent >= 1 && row.matchPercent <= 100));
+  assert.equal(rows[3].matchPercent, 120);
+});
 
 test("category routing preserves the query and upgrades legacy history", () => {
   assert.equal(Object.keys(CATEGORIES).length, 8);

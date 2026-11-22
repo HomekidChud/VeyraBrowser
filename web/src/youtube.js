@@ -39,10 +39,10 @@ export function youtubeEmbedUrl(raw, origin = globalThis.location?.origin || "")
     const url = new URL(safeUrl);
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
     let id = "";
-    if (host === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0] || "";
+    if (host === "youtu.be") id = /^\/([\w-]{11})\/?$/.exec(url.pathname)?.[1] || "";
     else if (["youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
       if (url.pathname === "/watch") id = url.searchParams.get("v") || "";
-      else if (/^\/(shorts|live|embed)\//.test(url.pathname)) id = url.pathname.split("/").filter(Boolean)[1] || "";
+      else id = /^\/(?:shorts|live|embed)\/([\w-]{11})\/?$/.exec(url.pathname)?.[1] || "";
     }
     if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
 
@@ -90,8 +90,9 @@ export function youtubeDeskVideo(raw) {
   // The desk plays one explicitly selected and checked video at a time.
   frame.searchParams.delete("list");
   frame.searchParams.delete("index");
-  const watch = new URL("https://www.youtube.com/watch");
-  watch.searchParams.set("v", id);
+  const kind = /^\/(shorts|live)\//.exec(new URL(safeYouTubeUrl(raw)).pathname)?.[1];
+  const watch = new URL(kind ? `https://www.youtube.com/${kind}/${id}` : "https://www.youtube.com/watch");
+  if (!kind) watch.searchParams.set("v", id);
   if (frame.searchParams.has("start")) watch.searchParams.set("t", frame.searchParams.get("start"));
   return { id, embed: frame.href, url: watch.href };
 }
@@ -115,7 +116,7 @@ h1,h2{margin:0;line-height:1.15}h1{font-size:clamp(1.4rem,3vw,2rem)}h2{font-size
 .watch-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0 1rem;padding:.3rem 0}.watch-footer p{flex:1 1 16rem}
 .queue form{display:grid;gap:.45rem;margin:.85rem 0}.queue label{font-size:.83rem;font-weight:650}input,button{font:inherit;border:1px solid var(--line);border-radius:.4rem;min-height:44px}input{min-width:0;padding:.5rem .6rem;background:#10141a;color:inherit}button{padding:.45rem .75rem;font-size:.83rem;font-weight:700;background:#242f40;color:inherit;cursor:pointer}
 form button{background:var(--accent);color:#142131;border-color:transparent;justify-self:start}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent);font-weight:650;font-size:.84rem;text-underline-offset:.18em}
+a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent);font-weight:650;font-size:.84rem;text-underline-offset:.18em}[hidden]{display:none!important}.player-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.65rem 0}
 ol{margin:.6rem 0 0;padding:0;list-style:none;display:grid;gap:.35rem}li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.4rem}li button:first-child{text-align:left;overflow-wrap:anywhere}li [aria-current="true"]{border-color:var(--accent)}.notice:empty{display:none}
 @media(max-width:760px){main{grid-template-columns:minmax(0,1fr)}}
 </style>
@@ -123,7 +124,8 @@ ol{margin:.6rem 0 0;padding:0;list-style:none;display:grid;gap:.35rem}li{display
 <body><main aria-label="YouTube Watch Desk">
 <section class="watch" aria-labelledby="watchTitle"><header><span class="eyebrow">Veyra · Media</span><h1 id="watchTitle">YouTube Watch Desk</h1></header>
 <div class="player" data-player><p role="status" data-player-status>Checking whether this video can play here…</p></div>
-<footer class="watch-footer"><p>The official player connects directly to YouTube, outside the Veyra proxy.</p><a href="${escapeHtml(video.url)}" target="_blank" rel="noopener noreferrer">Open on YouTube</a></footer></section>
+<footer class="watch-footer"><p>The official player and Open on YouTube connect directly, outside the Veyra proxy and VPN.</p><a data-open-original href="${escapeHtml(video.url)}" target="_blank" rel="noopener noreferrer">Open on YouTube</a></footer>
+<div class="player-actions"><button type="button" data-player-action hidden></button><button type="button" data-proxy-action>Use Fast Proxy</button></div></section>
 <aside class="queue" aria-labelledby="queueTitle"><span class="eyebrow">This tab only</span><h2 id="queueTitle">Watch queue</h2>
 <p>Keep a short list of video links and switch without leaving the tab.</p>
 <form data-queue-form novalidate><label for="videoLink">YouTube video link</label><input id="videoLink" type="url" maxlength="2048" placeholder="https://youtu.be/…" autocomplete="off"><button type="submit">Add to queue</button></form>
@@ -132,7 +134,7 @@ ol{margin:.6rem 0 0;padding:0;list-style:none;display:grid;gap:.35rem}li{display
 </html>`;
 }
 
-export function wireYouTubeDesk(doc, raw, queue, { open, check, current }) {
+export function wireYouTubeDesk(doc, raw, queue, { open, check, current, directAllowed, openProxy }) {
   const target = youtubeDeskVideo(raw);
   const player = doc?.querySelector("[data-player]");
   if (!target || !player || player.dataset.ready) return;
@@ -167,38 +169,59 @@ export function wireYouTubeDesk(doc, raw, queue, { open, check, current }) {
     if (queue.length >= 12) { note.textContent = "Remove a video before adding another. The queue holds 12."; return; }
     queue.push(next); input.value = ""; render(); note.textContent = "Video added to this tab’s queue.";
   });
-  const status = player.querySelector("[data-player-status]");
-  void Promise.resolve().then(() => check(target.id)).catch(() => null).then(result => {
+  const status = player.querySelector("[data-player-status]"), action = doc.querySelector("[data-player-action]");
+  const original = doc.querySelector("[data-open-original]"), proxy = doc.querySelector("[data-proxy-action]");
+  function blocked() {
+    action.hidden = true;
+    original.hidden = true;
+    player.replaceChildren(status);
+    status.textContent = "Direct playback is unavailable in this session. You can still use Fast Proxy.";
+  }
+  original.addEventListener("click", event => { if (!directAllowed()) { event.preventDefault(); blocked(); } });
+  proxy.addEventListener("click", () => { if (current()) openProxy(); }, { once: true });
+  function loadPlayer() {
     if (!current()) return;
-    if (result?.state !== "ready") {
-      status.textContent = result?.state === "external" ? "This video needs to be watched on YouTube."
-        : "Veyra couldn’t verify whether this video can be embedded. You can still open it on YouTube.";
+    if (!directAllowed()) return blocked();
+    if (player.clientWidth < 200) {
+      status.textContent = "Widen this pane, then select Load YouTube player again.";
       return;
     }
-    let frame;
-    const syncPlayer = () => {
-      if (!current()) return;
-      if (player.clientWidth < 200) {
-        frame = null;
-        status.textContent = "Widen this pane to show the embedded player.";
-        if (!status.isConnected) player.replaceChildren(status);
-        return;
-      }
-      if (frame) return;
-      frame = doc.createElement("iframe");
-      frame.title = "Official YouTube video player";
-      frame.referrerPolicy = "strict-origin-when-cross-origin";
-      frame.allow = "encrypted-media; fullscreen; picture-in-picture";
-      frame.allowFullscreen = true;
-      frame.src = target.embed;
-      player.replaceChildren(frame);
+    const frame = doc.createElement("iframe");
+    frame.title = "Official YouTube video player";
+    frame.referrerPolicy = "strict-origin-when-cross-origin";
+    frame.allow = "encrypted-media; fullscreen; picture-in-picture";
+    frame.allowFullscreen = true;
+    frame.src = target.embed;
+    player.replaceChildren(frame);
+    action.textContent = "Close YouTube player";
+    action.onclick = () => {
+      player.replaceChildren(status);
+      offerPlayer();
     };
-    const view = doc.defaultView;
-    if (view?.ResizeObserver) {
-      const observer = new view.ResizeObserver(syncPlayer);
-      observer.observe(player);
-      view.addEventListener("pagehide", () => observer.disconnect(), { once: true });
+  }
+  function offerPlayer() {
+    status.textContent = "YouTube allows this video to be embedded. Load its official player when you’re ready.";
+    action.textContent = "Load YouTube player";
+    action.hidden = false;
+    action.onclick = loadPlayer;
+  }
+  async function verify() {
+    if (!current()) return;
+    if (!directAllowed()) return blocked();
+    action.hidden = true;
+    status.textContent = "Checking whether this video can play here…";
+    const result = await Promise.resolve().then(() => check(target.id)).catch(() => null);
+    if (!current()) return;
+    if (!directAllowed()) return blocked();
+    if (result?.state === "ready") return offerPlayer();
+    if (result?.state === "external") {
+      status.textContent = "YouTube doesn’t allow this video in the embedded player. Open it on YouTube.";
+      return;
     }
-    syncPlayer();
-  });
+    status.textContent = "Veyra couldn’t verify this video. Retry the check, use Fast Proxy, or open it on YouTube.";
+    action.textContent = "Retry eligibility check";
+    action.hidden = false;
+    action.onclick = verify;
+  }
+  void verify();
 }

@@ -14,6 +14,7 @@ import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=9";
+import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -35,10 +36,10 @@ function ensureAdminModule() {
   });
   return adminModulePromise;
 }
-import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=4";
+import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=2";
-import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=3";
+import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -561,7 +562,8 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
 }
 function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
 function teardownTab(t) {
-  t.pageLoad = null; t.localPage = ""; t.youtubeEmbed = false; t.youtubeInlineWatch = false;
+  t.pageLoad = null; t.localPage = ""; t.youtubeEmbed = false;
+  clearTimeout(t.proxySlowTimer);
   if (t.poll) clearInterval(t.poll); t.poll = null; clearTimeout(t.browserPoll); clearTimeout(t.loadGuard); clearTimeout(t.combinedGraceTimer); clearTimeout(t.crawlerStartTimer); t.crawlerStartTimer = null;
   if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
   if (t.jobId && !t.done) stopJob(t.jobId).catch(() => {});
@@ -860,6 +862,8 @@ function renderConsoleLabEntry() {
 
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
+  if (renderedTab !== t || t.view !== "search") resetSearchSuggestions();
+  renderedTab = t;
   if (siteRecoveryFor && (t.view !== "page" || siteRecoveryFor.tab !== t || siteRecoveryFor.load !== t.pageLoad)) {
     dismissSiteRecovery?.(true);
     siteRecoveryFor = null;
@@ -868,7 +872,13 @@ export function renderActive({ push = true, replace = false } = {}) {
   const ss = state.splitScreen;
   if (ss.active && (t.view !== "page" || isRemote(t) || (t.id !== ss.leftTabId && t.id !== ss.rightTabId))) teardownSplitScreen();
   qsa(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + t.view));
-  if (t.view === "page") showFrameForTab(t); else { clearRemoteSurface(); setLoading(false); }
+  if (t.view === "page") {
+    showFrameForTab(t);
+    if (!isRemote(t) && t.pendingProxyNotice?.load === t.pageLoad) {
+      showSiteRecovery(t, t.pendingProxyNotice.reason);
+      t.pendingProxyNotice = null;
+    }
+  } else { clearRemoteSurface(); setLoading(false); }
   updateAddress(); updateNavButtons(); updateIdentity();
   const r = {
     newtab: () => hooks.renderNewTab?.(), search: () => renderSearch(), calculator: () => renderCalculator(),
@@ -1043,16 +1053,22 @@ function onFrameLoad(t) {
   if (t.localPage === "youtube" && state.tabs.includes(t) && t.view === "page") {
     const frame = frameFor(t), url = t.url, load = t.pageLoad, doc = localFrameDocument(frame);
     const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "youtube"
-      && t.url === url && t.pageLoad === load && frameFor(t) === frame && !!doc && localFrameDocument(frame) === doc
-      && !INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false;
+      && t.url === url && t.pageLoad === load && frameFor(t) === frame && !!doc && localFrameDocument(frame) === doc;
     if (current()) wireYouTubeDesk(doc, url, t.youtubeQueue ||= [], {
-      current, check: id => api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 6500 }),
+      current, directAllowed: () => current() && inlineYouTubeAllowed() && t.mediaSession === state.session,
+      check: id => api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 6500 }),
+      openProxy: () => { if (current()) void loadInTab(t, url, { trackHistory: false, useMediaProxy: true }); },
       open: url => navigate(url, { tab: t, activate: false, push: activeTab() === t })
     });
     return;
   }
   if (!state.tabs.includes(t) || t.view !== "page" || t.localPage) return;
   if (frameFor(t)?.hasAttribute("data-site-error")) return;
+  if (frameFor(t)?.src && frameFor(t).src !== "about:blank") {
+    clearTimeout(t.proxySlowTimer);
+    if (t.pendingProxyNotice?.reason === SLOW_PROXY_NOTICE) t.pendingProxyNotice = null;
+    if (siteRecoveryFor?.tab === t && siteRecoveryFor.load === t.pageLoad && siteRecoveryFor.slow) dismissSiteRecovery?.(true);
+  }
   probeFrameForEscape(t);
 
   try {
@@ -1639,28 +1655,20 @@ function hostNeedsRealBrowser(url) {
   return false;
 }
 function inlineYouTubeAllowed() {
-  return !INCOGNITO && !state.vpn.connected && settings.youtubeInline !== false;
+  return mediaDirectAllowed() && settings.youtubeInline !== false;
 }
 hooks.disableInlineYouTube = () => {
   for (const t of state.tabs) {
-    if (t.view === "page" && (t.localPage === "youtube" || t.youtubeInlineWatch)) {
+    if (t.view === "page" && t.localPage === "youtube") {
       void loadInTab(t, t.url, { trackHistory: false });
     }
   }
 };
-async function serverAllowsInlineWatch(id) {
-  try {
-    const status = await api(`/api/media/youtube/${encodeURIComponent(id)}`, { timeoutMs: 5500 });
-    return status?.inlineWatch === true && status.state === "ready";
-  } catch { return false; }
-}
 let pendingVpnConnections = 0;
-function directTikTokAllowed() {
-  return !INCOGNITO && !state.vpn.connected && !pendingVpnConnections && !settings.vpnAutoProfile
-    && (settings.runtime || "auto") === "auto";
-}
-function localPageKind(url, watchInline = false, tiktokAllowed = false) {
-  if (inlineYouTubeAllowed() && !watchInline && youtubeEmbedUrl(url)) return "youtube";
+const mediaDirectAllowed = () => !INCOGNITO && !state.vpn.connected && !pendingVpnConnections && !settings.vpnAutoProfile;
+const directTikTokAllowed = () => mediaDirectAllowed() && (settings.runtime || "auto") === "auto";
+function localPageKind(url, youtubeAllowed = true, tiktokAllowed = false) {
+  if (youtubeAllowed && inlineYouTubeAllowed() && youtubeEmbedUrl(url)) return "youtube";
   if (tiktokAllowed) return "tiktok";
   return nowGameUrl(url) ? "now" : "";
 }
@@ -1734,7 +1742,7 @@ function openCrawl(t, url, session, enabled = true) {
     return null;
   }).finally(() => { if (t.crawlToken === token) t.crawlToken = null; });
 }
-async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "", trackHistory = true, skipTikTokPlayer = false } = {}) {
+async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser = false, displayUrl = "", trackHistory = true, skipTikTokPlayer = false, useMediaProxy = false } = {}) {
   t.needsInitialLoad = false;
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
@@ -1745,12 +1753,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   }
   resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
+  t.pendingProxyNotice = null;
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
   const tiktokProxy = skipTikTokPlayer;
   t.tiktokProxyUrl = tiktokProxy ? url : "";
+  t.youtubeProxyUrl = useMediaProxy ? url : "";
   if (previousUrl !== url) t.escapeRecoveries = 0;
-  if (t.localPage || t.youtubeInlineWatch || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
+  if (t.localPage || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
+  clearTimeout(t.proxySlowTimer);
   t.sourceDisplayAliases ||= new Map();
   const suppliedDisplayUrl = isYouTubeUrl(url) ? "" : validateSourceDisplayUrl(displayUrl, url, API_ORIGIN);
   if (suppliedDisplayUrl) t.sourceDisplayAliases.set(url, suppliedDisplayUrl);
@@ -1761,21 +1772,18 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   if (!settings.preserveLog) { t.console = []; t.network = []; }
   rejectTab(t.id); hooks.dt?.onNavigate(t);
   const active = activeTab() === t;
-  const watchId = loadFrame ? youtubeWatchId(url) : "";
-  const watchInline = !!(watchId && !forceBrowser && inlineYouTubeAllowed()
-    && await serverAllowsInlineWatch(watchId) && inlineYouTubeAllowed());
-  if (!current()) return;
-  t.youtubeInlineWatch = watchInline;
-  if (watchInline && t.browserSessionId) void stopBrowserSession(t);
-  const tiktokSession = state.session;
+  const mediaSession = state.session;
+  let youtubeAllowed = !!(loadFrame && !useMediaProxy && !forceBrowser && youtubeEmbedUrl(url) && inlineYouTubeAllowed());
   let tiktokAllowed = !!(loadFrame && !tiktokProxy && !forceBrowser && tiktokTarget(url) && directTikTokAllowed());
-  if (tiktokAllowed && tiktokSession) {
+  if ((tiktokAllowed || youtubeAllowed) && mediaSession) {
     // Resumed sessions can already be protected before the VPN panel has refreshed.
-    const vpn = await api(`/api/vpn/session?sid=${encodeURIComponent(tiktokSession.id)}`, { timeoutMs: 4500 }).catch(() => null);
-    tiktokAllowed = vpn?.connected === false && state.session === tiktokSession && directTikTokAllowed();
+    const vpn = await api(`/api/vpn/session?sid=${encodeURIComponent(mediaSession.id)}`, { timeoutMs: 4500 }).catch(() => null);
+    const directVerified = vpn?.connected === false && state.session === mediaSession;
+    tiktokAllowed &&= directVerified && directTikTokAllowed();
+    youtubeAllowed &&= directVerified && inlineYouTubeAllowed();
     if (!current()) return;
   }
-  const direct = loadFrame && !(forceBrowser && watchId) && localPageKind(url, watchInline, tiktokAllowed);
+  const direct = loadFrame && !forceBrowser && localPageKind(url, youtubeAllowed, tiktokAllowed);
   if (direct) {
     frameFor(t)?.remove();
     if (t.browserSessionId) void stopBrowserSession(t);
@@ -1788,8 +1796,9 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     if (direct === "youtube") frame.setAttribute("allow", "encrypted-media; fullscreen; picture-in-picture");
     else if (direct === "tiktok") frame.setAttribute("allow", "fullscreen");
     else frame.removeAttribute("allow");
-    if (direct === "tiktok") { t.tiktokSession = tiktokSession; frame.src = tiktokPlayerPage(); }
-    else frame.srcdoc = direct === "youtube" ? youtubeFallbackHtml(url) : nowGameMarkup(url);
+    if (direct === "tiktok") { t.tiktokSession = mediaSession; frame.src = tiktokPlayerPage(); }
+    else if (direct === "youtube") { t.mediaSession = mediaSession; frame.srcdoc = youtubeFallbackHtml(url); }
+    else frame.srcdoc = nowGameMarkup(url);
     if (trackHistory) recordHistory(record?.kind || "page", url, t.title, null);
     if (active) renderActive({ push: false });
     renderTabsSoon();
@@ -1804,7 +1813,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.sessionId = session.id;
   if (trackHistory) recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
   let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false }
-    : (watchInline || tiktokProxy) ? { key: "proxy", proxy: true, crawler: false, browser: false, race: false } : resolveStrategy(url);
+    : (useMediaProxy || tiktokProxy) ? { key: "proxy", proxy: true, crawler: false, browser: false, race: false } : resolveStrategy(url);
   if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
     strategy = { ...strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false, auto: false, forceBrowserHost: false };
     addLog("info", `${hostOf(url)} will use the full FAST_PROXY page because this server has Chromium disabled.`);
@@ -1814,6 +1823,15 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.done = true;
   if (activeTab() === t) setLoading(true, 24, strategy.race ? "Starting fast page pipeline…" : strategy.browser ? "Starting Chromium…" : strategy.crawler ? "Loading page + warming required assets…" : "Loading through the fast proxy…");
 
+  const setProxyFrame = (frame, src) => {
+    clearTimeout(t.proxySlowTimer);
+    t.proxySlowTimer = setTimeout(() => {
+      if (!current() || frameFor(t) !== frame || isRemote(t) || t.proxyStatusLoad === load) return;
+      if (activeTab() === t) showSiteRecovery(t, SLOW_PROXY_NOTICE);
+      else t.pendingProxyNotice = { load, reason: SLOW_PROXY_NOTICE };
+    }, 18_000);
+    setFrameSrc(frame, src, t);
+  };
   const switchToFastProxy = (tab, targetUrl, sess, reason) => {
     if (!current()) return;
     tab.browserMode = "FAST_PROXY";
@@ -1826,7 +1844,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
       f.removeAttribute("srcdoc");
       f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
       f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      setFrameSrc(f, proxyUrl(targetUrl, "view", sess.id, state.tabs.find(tt => tt === tab)?.previousUrl), tab);
+      setProxyFrame(f, proxyUrl(targetUrl, "view", sess.id, tab.previousUrl));
       if (activeTab() === tab) showFrameForTab(tab);
     }
     tab.loading = false; clearTimeout(tab.loadGuard);
@@ -1843,8 +1861,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     t.youtubeEmbed = false;
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-    const src = proxyUrl(url, "view", session.id, previousUrl);
-    setFrameSrc(f, watchInline && inlineYouTubeAllowed() ? `${src}&__veyra_youtube_inline=1` : src, t);
+    setProxyFrame(f, proxyUrl(url, "view", session.id, previousUrl));
     if (activeTab() === t) showFrameForTab(t);
 
     if (isYouTubeUrl(url)) setTimeout(() => {
@@ -1904,7 +1921,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
         f.removeAttribute("srcdoc");
         f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         f.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-        setFrameSrc(f, proxyUrl(url, "view", session.id, previousUrl), t);
+        setProxyFrame(f, proxyUrl(url, "view", session.id, previousUrl));
         if (activeTab() === t) showFrameForTab(t);
       }
       void raceChromium();
@@ -2037,7 +2054,7 @@ function showSiteRecovery(t = activeTab(), reason = "") {
   const target = new URL(url);
   const directUrl = t.localPage === "tiktok" ? tiktokTarget(url)?.url || url : url;
   dismissSiteRecovery?.(true);
-  siteRecoveryFor = { tab: t, load: t.pageLoad };
+  siteRecoveryFor = { tab: t, load: t.pageLoad, slow: reason === SLOW_PROXY_NOTICE };
   dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
     title: `Site options: ${target.host}`, ms: 0,
     actions: [
@@ -2306,7 +2323,7 @@ export async function reload({ hard = false } = {}) {
     }
     if (isRemote(t)) { if (await remoteHistory(t, "reload")) return; }
     if (hard) state.capabilityCache.delete(hostOf(t.url));
-    return loadInTab(t, t.url, { loadFrame: true, skipTikTokPlayer: t.tiktokProxyUrl === t.url });
+    return loadInTab(t, t.url, { loadFrame: true, skipTikTokPlayer: t.tiktokProxyUrl === t.url, useMediaProxy: t.youtubeProxyUrl === t.url });
   }
   if (t.view === "search") return runSearch(t.searchQuery);
   if (t.view === "console-lab") { $("view-console-lab")?.replaceChildren(); return renderConsoleLabEntry(); }
@@ -2416,7 +2433,7 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
+    b.results = rankResultBatch(rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), query, source);
     if (scope.active) {
       b.siteFilter ||= scope;
     }
@@ -2549,6 +2566,7 @@ function wireSearchLinks(container, { learn = false } = {}) {
 }
 function submitSearch(query, { corrected = false } = {}) {
   const t = activeTab(); if (t?.view !== "search") return;
+  resetSearchSuggestions();
   const q = query.trim().slice(0, 600);
   pushTabHistory(t, searchStateKey(q, t.searchSource));
   t.searchQuery = q;
@@ -2589,6 +2607,9 @@ function searchDate(value) {
   const date = new Date(value || NaN);
   return Number.isFinite(date.valueOf()) ? new Intl.DateTimeFormat(SEARCH_LOCALE, { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(date) : "";
 }
+function matchBadge(score) {
+  return `<span class="search-match" title="Estimated relevance to this query, not a probability">${score}% match</span>`;
+}
 function richResult(r, source) {
   const url = resultUrl(r.url);
   if (!url) return "";
@@ -2603,7 +2624,7 @@ function richResult(r, source) {
     <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
       ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
       <div class="search-card-copy"><span class="search-card-source">${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
-        <h2>${esc(title)}</h2>${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
+        <h2>${esc(title)}</h2>${matchBadge(r.matchPercent)}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
         ${r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
       </div>
     </a>
@@ -2696,7 +2717,7 @@ function renderSearch() {
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
+      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;
@@ -2734,16 +2755,29 @@ async function loadIndexStats() {
   indexStatsAt = Date.now();
   try { const b = await api("/api/search/stats", { timeoutMs: 6000 }); $("searchCoverage").textContent = `Veyra Index: ${Number(b.documents || 0).toLocaleString()} pages · ${Number(b.domains || 0).toLocaleString()} domains`; } catch { $("searchCoverage").textContent = ""; }
 }
-let suggestTimer = 0;
-function loadSuggestions(q) {
+let suggestTimer = 0, suggestRequest, renderedTab;
+function resetSearchSuggestions() {
   clearTimeout(suggestTimer);
-  if (!settings.suggestions) { $("searchSuggestions").innerHTML = ""; return; }
+  suggestRequest?.abort();
+  $("searchSuggestions")?.replaceChildren();
+}
+function loadSuggestions(q) {
+  resetSearchSuggestions();
+  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || siteScope(q).active) return;
   const tab = activeTab();
-  suggestTimer = setTimeout(async () => { if (!settings.suggestions || !q.trim() || activeTab() !== tab) return; try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=8`, { timeoutMs: 4000 }); if (settings.suggestions && activeTab() === tab) $("searchSuggestions").innerHTML = (b.suggestions || []).map(s => `<option value="${esc(s)}">`).join(""); } catch {} }, 160);
+  const request = suggestRequest = new AbortController();
+  const current = () => !request.signal.aborted && settings.suggestions && activeTab() === tab && tab?.view === "search" && $("searchInput").value === q;
+  suggestTimer = setTimeout(async () => {
+    if (!current()) return;
+    try {
+      const b = await api(`/api/search/suggest?${new URLSearchParams({ q, limit: 8 })}`, { timeoutMs: 4000, signal: request.signal });
+      if (current()) $("searchSuggestions").replaceChildren(...querySuggestions(b.suggestions, q, 8).map(value => Object.assign(document.createElement("option"), { value })));
+    } catch {}
+  }, 160);
 }
 export async function omniSuggest(q) {
-  if (!settings.suggestions || classify(q)?.kind !== "search") return [];
-  try { const b = await api(`/api/search/suggest?q=${encodeURIComponent(q)}&limit=5`, { timeoutMs: 3000 }); return b.suggestions || []; } catch { return []; }
+  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || siteScope(q).active || classify(q)?.kind !== "search") return [];
+  try { const b = await api(`/api/search/suggest?${new URLSearchParams({ q, limit: 5 })}`, { timeoutMs: 3000 }); return querySuggestions(b.suggestions, q, 5); } catch { return []; }
 }
 
 function tokenize(s) {
@@ -3166,7 +3200,7 @@ function reloadPagesAfterVpn() {
       void stopBrowserSession(t).then(() => {
         if (state.tabs.includes(t) && t.view === "page" && t.url === url && t.pageLoad === pageLoad) void loadInTab(t, url);
       });
-    } else if (activeTab() === t || ["youtube", "tiktok"].includes(t.localPage) || t.youtubeInlineWatch) void loadInTab(t, t.url);
+    } else if (activeTab() === t || ["youtube", "tiktok"].includes(t.localPage)) void loadInTab(t, t.url);
     else t.needsReload = true;
   }
 }
@@ -3498,6 +3532,18 @@ async function handleMessage(e) {
     if (activeTab() === t && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source) hooks.handleForwardedShortcut?.(d);
     return;
   }
+  if (d.type === "veyra:proxy-status") {
+    const notice = proxyStatusNotice(d.status);
+    if (notice && e.origin === API_ORIGIN && e.source === frameFor(t)?.contentWindow && t.view === "page"
+        && !t.localPage && !isRemote(t) && t.sessionId && d.sessionId === t.sessionId
+        && originalSiteUrl(d.pageUrl) === originalSiteUrl(t.url) && t.proxyStatusLoad !== t.pageLoad) {
+      t.proxyStatusLoad = t.pageLoad;
+      clearTimeout(t.proxySlowTimer);
+      if (activeTab() === t) showSiteRecovery(t, notice);
+      else t.pendingProxyNotice = { load: t.pageLoad, reason: notice };
+    }
+    return;
+  }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
     if (d.reason === "empty-spa-shell" && (e.origin !== API_ORIGIN || e.source !== frameFor(t)?.contentWindow)) return;
@@ -3626,9 +3672,10 @@ async function handleMessage(e) {
     const target = canonical(d.url); if (!target) return;
     const opener = t.popupOf && state.tabs.find(tab => tab.id === t.popupOf);
     if (opener && frameFor(t)?.contentWindow === e.source && blockPlaybackPopup(opener.url, target)) { closeTab(t.id, { silent: true }); return; }
-    const watchChanged = t.browserMode === "FAST_PROXY" && inlineYouTubeAllowed() && !!youtubeWatchId(target)
+    const keepYouTubeProxy = t.youtubeProxyUrl === t.url && isYouTubeUrl(target);
+    const watchChanged = !keepYouTubeProxy && t.browserMode === "FAST_PROXY" && inlineYouTubeAllowed() && !!youtubeWatchId(target)
       && youtubeWatchId(target) !== youtubeWatchId(t.url);
-    if (target !== t.url && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source && (localPageKind(target) || watchChanged)) {
+    if (target !== t.url && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source && (localPageKind(target, !keepYouTubeProxy) || watchChanged)) {
       const historyAction = String(d.source);
       if (watchChanged && historyAction === "history.popstate") {
         const i = t.history.lastIndexOf(target);
@@ -3656,6 +3703,7 @@ async function handleMessage(e) {
 
       const fromRootFrame = (() => { try { return frameFor(t)?.contentWindow === e.source; } catch { return false; } })();
       if (!fromRootFrame) return;
+      if (e.origin === API_ORIGIN && keepYouTubeProxy) t.youtubeProxyUrl = target;
       t.url = target; t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN); if (d.source === "history.pushState") pushTabHistory(t, target); else if (t.history.length) t.history[t.histIndex] = target;
     }
     else if (d.source === "document-navigation") {
@@ -3665,6 +3713,7 @@ async function handleMessage(e) {
       if (!same && fromRootFrame) {
 
         t.url = target;
+        if (e.origin === API_ORIGIN && keepYouTubeProxy) t.youtubeProxyUrl = target;
         if (e.origin === API_ORIGIN) resetPlaybackHandoff(t, target);
         t.displayUrl = sourceDisplayUrl || validateSourceDisplayUrl(t.displayUrl, target, API_ORIGIN);
         pushTabHistory(t, target);

@@ -1,4 +1,16 @@
 /* A search surface, not a stack of browser-chrome panels. */
+.search-deck .search-match {
+  display: inline-block;
+  justify-self: start;
+  width: max-content;
+  margin-block: .2rem .3rem;
+  padding: .1rem .45rem;
+  border: 1px solid var(--search-line);
+  border-radius: .35rem;
+  color: var(--search-muted);
+  font: 650 var(--search-caption)/1.4 var(--font-body, system-ui);
+  white-space: nowrap;
+}
 .search-deck {
   --search-paper: #161715;
   --search-field: #1d1f1b;
