@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.36.1-inline-watch";
+import { initSettings } from "./settings.js?v=8.39.7-site-info";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
@@ -628,7 +628,9 @@ async function openSiteInfo() {
   const t = B.activeTab(); const anchor = $("siteChip");
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
   if (t.localPage) {
-    const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN." : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
+    const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN."
+      : t.localPage === "tiktok" ? "The TikTok panel is local. If you choose to connect to TikTok, it connects directly outside Veyra’s proxy and VPN."
+      : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
     pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p><button class="btn ghost sm" id="popDirect">Site options</button>`, anchor, p => {
       p.querySelector("#popDirect").onclick = () => { closeFloating(); B.showSiteRecovery(t); };
     });

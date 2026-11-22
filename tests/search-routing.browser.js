@@ -351,6 +351,11 @@ try {
       await openPost(`${shortLink}?ignored=yes`);
       await frame.getByRole("heading", { name: "TikTok share link" }).waitFor();
       assert.equal(await frame.getByRole("button", { name: "Load TikTok player" }).count(), 0);
+      await page.locator("#siteChip").click();
+      await page.locator("#popover").getByText("The TikTok panel is local.", { exact: false }).waitFor();
+      await page.locator("#popover").getByRole("button", { name: "Site options" }).click();
+      assert.equal(await page.getByRole("link", { name: "Open original site" }).getAttribute("href"), shortLink);
+      await page.getByRole("button", { name: "Dismiss Site options: vm.tiktok.com" }).click();
       const [original] = await Promise.all([context.waitForEvent("page"), frame.getByRole("link", { name: "Open on TikTok" }).click()]);
       await original.getByRole("heading", { name: "Official share link fixture" }).waitFor();
       assert.equal(original.url(), shortLink);
