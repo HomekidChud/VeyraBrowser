@@ -11,6 +11,14 @@ const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
 })[char]);
 
 export const DIRECT_SITE_NOTICE = "Opens a separate browser tab outside Veyra’s proxy, VPN and private window. Veyra’s session cookies do not carry over.";
+export const SLOW_PROXY_NOTICE = "This site is taking longer than expected in Fast Proxy.";
+export function proxyStatusNotice(status) {
+  if (status === 401) return "This site requires sign-in or authorization.";
+  if (status === 403 || status === 451) return "This site refused the Fast Proxy request.";
+  if (status === 429) return "This site is rate-limiting requests. Wait before trying again.";
+  if ([500, 502, 503, 504].includes(status)) return "This site returned a server error. You can retry when it’s responding again.";
+  return "";
+}
 
 export function siteLoadErrorMarkup(title, error, raw) {
   const target = originalSiteUrl(raw);

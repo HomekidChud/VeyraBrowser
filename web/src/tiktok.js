@@ -1,6 +1,10 @@
 const PLAYER_ORIGIN = "https://www.tiktok.com";
 const MAIN_HOSTS = ["www.tiktok.com", "tiktok.com", "m.tiktok.com"];
 const SHARE_HOSTS = ["vm.tiktok.com", "vt.tiktok.com"];
+const PLAYER_STATES = new Map([
+  [-1, "TikTok is initializing the player…"], [0, "TikTok playback ended."],
+  [1, "Playing in the TikTok player."], [2, "TikTok playback paused."], [3, "TikTok is buffering…"]
+]);
 
 export function publicTikTokPost(raw) {
   try {
@@ -42,12 +46,12 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   const view = doc.defaultView;
   if (!post || !button || !stop || !proxy || !original || !container || !status || !view || mounted.has(doc)) return;
   mounted.add(doc);
-  let frame, timer, playbackState;
+  let frame, timer, receivedState, timedOut, buffering;
   const clearPlayer = () => {
     view.clearTimeout(timer);
     frame?.remove();
     frame = null;
-    playbackState = undefined;
+    receivedState = timedOut = buffering = false;
     stop.hidden = true;
     button.disabled = false;
   };
@@ -77,14 +81,34 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     status.textContent = "TikTok player closed.";
     button.focus();
   });
+  function watchdog(message) {
+    view.clearTimeout(timer);
+    timer = view.setTimeout(() => {
+      if (!directAllowed()) { blockDirect(); return; }
+      timedOut = true;
+      button.disabled = false;
+      status.textContent = message;
+    }, 12000);
+  }
   view.addEventListener("message", event => {
     if (!frame || event.origin !== PLAYER_ORIGIN || event.source !== frame.contentWindow || event.data?.["x-tiktok-player"] !== true) return;
     const { type, value } = event.data;
     if (!["onPlayerReady", "onPlayerError", "onError", "onStateChange"].includes(type)) return;
     if (!directAllowed()) { blockDirect(); return; }
-    if (type === "onStateChange" && ![0, 1, 2].includes(value)) return;
-    if (type === "onPlayerReady" && playbackState !== undefined) return;
+    if (type === "onStateChange" && !PLAYER_STATES.has(value)) return;
+    if (type === "onPlayerReady" && receivedState) return;
+    if (type === "onStateChange" && [-1, 3].includes(value)) {
+      receivedState = true;
+      if (!timedOut) {
+        status.textContent = PLAYER_STATES.get(value);
+        if (!buffering) watchdog("TikTok is taking longer than expected. Try its controls, retry, or open the original post.");
+        buffering = true;
+      }
+      return;
+    }
     view.clearTimeout(timer);
+    buffering = false;
+    receivedState = true;
     if (type === "onPlayerError" || type === "onError") {
       const code = value?.errorCode;
       status.textContent = code === 1001 ? "TikTok says this post isn’t available in its embedded player."
@@ -92,10 +116,9 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
         : "TikTok reported a playback problem. You can retry or open the original post.";
       button.disabled = false;
     } else {
-      if (type === "onStateChange") playbackState = value;
+      timedOut = false;
       status.textContent = type !== "onStateChange" ? "TikTok player ready. Use its controls to start."
-        : value === 1 ? "Playing in the TikTok player."
-        : value === 2 ? "TikTok playback paused." : "TikTok playback ended.";
+        : PLAYER_STATES.get(value);
       button.disabled = true;
     }
   });
@@ -117,11 +140,7 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
         status.textContent = "If you can see the player, use its controls to start.";
       }
     }, { once: true });
-    timer = view.setTimeout(() => {
-      if (!directAllowed()) { blockDirect(); return; }
-      button.disabled = false;
-      status.textContent = "TikTok didn’t send a status update. If you can see the player, try its controls, or retry the player.";
-    }, 12000);
+    watchdog("TikTok didn’t send a status update. If you can see the player, try its controls, or retry the player.");
     container.replaceChildren(frame);
   });
 }

@@ -25,5 +25,11 @@
 - In incognito, with a VPN, or when VPN status is unknown, a TikTok post must not instantiate a direct player. A profile, unrelated site, and unrelated lookalike URLs should continue to use normal browsing.
 - Open a Fast Proxy site that stays blank. If Chromium is disabled, Veyra should keep the page and offer site options with a retry and explicit direct link. A populated site, a different tab, and a stale message after navigation should not get that notice.
 
+## Match scores and social smoke checks
+- On deployed GitHub Pages, search Web, Images, Videos and Veyra index. Each result in a batch has an estimated 1–100% match. Open More results and check existing cards stay in place. At 375px, check the score, title, and category rail still fit.
+- Type a multiword prefix, clear it while a request is running, and switch tabs. Suggestions should complete the entire query, never replace it with a single word, and never arrive for a stale input or private window.
+- Try a public YouTube watch, timed share, and Shorts link. Only a verified eligible video exposes **Load YouTube player**; an unavailable check exposes **Retry eligibility check**. **Use Fast Proxy** stays in the Veyra tab, and **Open on YouTube** preserves Shorts, Live, and timestamp intent.
+- Try TikTok load, close, initialization, buffering, error, and retry. On Reddit, X, Instagram and Twitch, try a normal page and a blocked or slow fixture. Recovery should explain the failure, preserve the frame, and never open an outside tab automatically.
+
 ## Playback popup regression
 - In a fixture for an xHamster watch page, click Play repeatedly. Same-video popups (including alternate slugs for the same ID and tracking parameters) and off-site scripted popups must not create tabs. The player remains in the original tab. Links to other videos and ordinary sign-in popups on unrelated sites still work.
