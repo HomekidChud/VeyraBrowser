@@ -93,7 +93,7 @@ test("TikTok buffering can time out, retry, and recover without autoplay", () =>
   const [second] = player.children;
   message(first.contentWindow, "onStateChange", 1);
   message(second.contentWindow, "onStateChange", 1, "https://tiktok.com.example.test");
-  assert.match(status.textContent, /Connecting/);
+  assert.match(status.textContent, /Waiting for TikTok to confirm/);
   message(second.contentWindow, "onStateChange", 2);
   assert.match(status.textContent, /paused/);
   stop.click();
@@ -104,4 +104,41 @@ test("TikTok buffering can time out, retry, and recover without autoplay", () =>
   assert.equal(player.children.length, 0);
   assert.equal(load.hidden, true);
   assert.match(status.textContent, /unavailable in this session/);
+});
+
+test("TikTok photo status requires an official signal and terminal errors survive late events", () => {
+  const { el, doc, advance, message } = fixture();
+  const load = el("#loadPlayer"), player = el("#player"), status = el("#playerStatus");
+  const proxy = el("#tryProxy"); proxy.hidden = false;
+  let proxyCalls = 0;
+  mountTikTokPlayer(doc, "https://www.tiktok.com/@sample/photo/6718335390845095173", {
+    directAllowed: () => true, openProxy: () => proxyCalls++
+  });
+  assert.equal(load.textContent, "Load TikTok photo post");
+  load.click();
+  const [first] = player.children;
+  first.dispatchEvent(new Event("load"));
+  message(first.contentWindow, "onPlayerError", {});
+  assert.match(status.textContent, /Waiting for TikTok to confirm/);
+  advance();
+  assert.match(status.textContent, /didn’t send a status/);
+  message(first.contentWindow, "onImageChange", 2);
+  assert.match(status.textContent, /Showing photo 3/);
+  message(first.contentWindow, "onPlayerError", { errorCode: 1001 });
+  message(first.contentWindow, "onPlayerReady");
+  message(first.contentWindow, "onImageChange", 3);
+  assert.match(status.textContent, /post isn’t available/);
+  assert.equal(load.disabled, false);
+  load.click();
+  const [second] = player.children;
+  message(second.contentWindow, "onStateChange", -1);
+  message(second.contentWindow, "onPlayerReady");
+  assert.match(status.textContent, /photo post ready/);
+  message(second.contentWindow, "onPlayerError", { errorCode: 3002 });
+  message(second.contentWindow, "onStateChange", 1);
+  assert.match(status.textContent, /Playing audio/);
+  proxy.click(); proxy.click(); load.click();
+  assert.equal(proxyCalls, 1);
+  assert.equal(player.children.length, 0);
+  assert.match(status.textContent, /Opening this link in Fast Proxy/);
 });

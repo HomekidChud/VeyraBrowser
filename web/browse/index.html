@@ -14,7 +14,7 @@
   <link rel="manifest" href="../manifest.webmanifest">
   <meta name="description" content="Veyra is a private, server-side web browser. Open any site through a fresh 2-minute session with its own cookies, VPN exit and real developer tools.">
   <title>/web</title>
-  <script src="../src/bootstrap.js?v=8.41.0-qr-links"></script>
+  <script src="../src/bootstrap.js?v=8.42.0-search-chat"></script>
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" width="0" height="0">
@@ -305,11 +305,11 @@
               <div id="searchCorrection" class="search-correction hidden" role="status"></div>
               <div class="search-layout">
                 <div class="search-main">
+                  <section id="aiAnswer" class="ai-answer hidden" aria-label="Veyra AI"></section>
                   <div id="searchResults" class="search-results"></div>
                   <button type="button" class="btn ghost hidden" id="searchMore">More results</button>
                   <p class="search-feed-status" id="searchFeedStatus" role="status"></p>
                   <p class="muted small" id="searchCoverage"></p>
-                  <div id="aiAnswer" class="ai-answer hidden" aria-live="polite"></div>
                 </div>
               </div>
             </div>

@@ -6,7 +6,7 @@ import {
 import { createApiReadiness, recoverableApiError } from "./api-readiness.js?v=1";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
-import { initUI } from "./ui.js?v=8.41.0-qr-links";
+import { initUI } from "./ui.js?v=8.42.0-search-chat";
 import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
 import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
@@ -38,7 +38,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=3";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=4";
 import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -696,6 +696,7 @@ function applyRoute() {
     const fallback = routeUrl("/browse");
     try { history.replaceState({ veyra: true }, "", fallback); } catch {}
     if (t.view === "page") teardownTab(t);
+    else if (t.view === "search") resetSearchChat(t);
     t.view = "newtab"; t.section = ""; t.url = ""; t.favicon = ""; t.loading = false;
     t.browserSessionId = ""; t.jobId = null; t.done = true; t.browserMode = "FAST_PROXY";
     renderTabs(); renderActive({ push: false });
@@ -745,6 +746,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
   }
   if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
   if (t.view === "page") teardownTab(t);
+  else if (t.view === "search") resetSearchChat(t);
   else if (t.view === "cast" && view !== "cast") hooks.cleanupCast?.();
   t.view = view; t.section = view === "settings" ? String(section || "") : section || ""; t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
   if (view === "calculator" && calc) t.calcExpression = calc;
@@ -1606,7 +1608,7 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
   if (interceptAccount(url, (tab || activeTab())?.url)) { updateAddress(); return; }
   url = normalizeYouTubeUrl(url);
   let t = tab || activeTab(); if (!t) return;
-  if (t.view !== "page") { t.view = "page"; t.title = hostOf(url) || "Loading"; }
+  if (t.view !== "page") { if (t.view === "search") resetSearchChat(t); t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
   if (pushHist) pushTabHistory(t, url);
   if (!activate && t !== activeTab() && !frameFor(t) && !t.popupOf && t.browserMode === "FAST_PROXY"
@@ -2335,7 +2337,7 @@ export async function stopLoad() {
   try { frameFor(t)?.contentWindow?.stop?.(); } catch {}
   setLoading(false); toast("Stopped loading");
 }
-export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
+export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); else if (t.view === "search") resetSearchChat(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
 export function pageCommand(type, payload = {}, t = activeTab()) {
   const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false;
   const targetOrigin = f.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
@@ -2395,8 +2397,8 @@ async function runSearch(query, offset = 0, opts = {}) {
   t.searchError = "";
   t.searchFeedError = false;
   if (!offset) {
-    t.searchAnswerRequest?.abort();
-    Object.assign(t, { searchData: null, searchAnswer: null, searchCorrection: null });
+    resetSearchChat(t);
+    Object.assign(t, { searchData: null, searchCorrection: null });
     if (visible()) $("view-search").scrollTop = 0;
   }
   if (visible()) renderSearch();
@@ -2451,7 +2453,9 @@ async function runSearch(query, offset = 0, opts = {}) {
       const previous = t.searchData;
       const results = mergeResults(previous.results, b.results);
       t.searchData = { ...b, results, noNew: results.length === previous.results.length };
-    } else t.searchData = b;
+    } else {
+      t.searchData = { ...b, results: mergeResults([], b.results) };
+    }
     t.searchLoading = false;
     const next = vertical ? b.nextPage : b.nextOffset;
     const skipBudget = opts.skipBudget ?? 2;
@@ -2469,79 +2473,147 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (visible()) renderSearch();
   }
 }
-async function fetchAIAnswer(t) {
-  if (ephemeralSession() || t.searchAnswer?.status === "loading") return;
+const CHAT_MAX_TURNS = 5;
+const CHAT_QUESTION_LIMIT = 200;
+let paintedAI = null, searchAIIdentity = "";
+function resetSearchChat(t) {
+  t.searchAnswerRequest?.abort();
+  t.searchAnswerRequest = null;
+  t.searchAnswer = null;
+  t.searchChatDraft = "";
+}
+function syncSearchAuth() {
+  const identity = ephemeralSession() ? "" : auth.token;
+  if (identity !== searchAIIdentity || !identity) {
+    searchAIIdentity = identity;
+    for (const tab of state.tabs) resetSearchChat(tab);
+  }
+  if (activeTab()?.view === "search") renderAIAnswer(activeTab());
+  else if (!identity) { paintedAI = null; $("aiAnswer").replaceChildren(); }
+}
+async function fetchAIAnswer(t, input = "", { retry = false } = {}) {
+  if (ephemeralSession() || activeTab() !== t || !t.searchData?.results?.length || t.searchAnswer?.pending) return;
+  const question = input.trim();
+  if (question && (question.length > CHAT_QUESTION_LIMIT || siteScope(question).active)) {
+    $("searchAIStatus").textContent = "Ask up to 200 characters. Use the main search bar to change the site filter.";
+    return;
+  }
   const { searchQuery: query, searchSource: source, searchData } = t;
   const vertical = isVertical(source) ? source : "";
-  const request = t.searchAnswerRequest = new AbortController();
-  const current = () => t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchAnswerRequest === request && !request.signal.aborted && !ephemeralSession();
-  t.searchAnswer = { status: "loading" };
-  if (activeTab() === t) renderAIAnswer(t);
+  const past = t.searchAnswer?.turns || [];
+  const previous = retry ? past.slice(0, -1) : past;
+  const priorQuestion = [...previous].reverse().find(turn => turn.question && turn.response?.followUp && turn.response?.hasAnswer)?.question;
+  const request = t.searchAnswerRequest = new AbortController(), token = auth.token;
+  const turn = { question };
+  const turns = [...previous, turn].slice(-CHAT_MAX_TURNS);
+  const current = () => state.tabs.includes(t) && t.view === "search" && t.searchQuery === query && t.searchSource === source &&
+    t.searchAnswerRequest === request && !request.signal.aborted && !ephemeralSession() && auth.token === token;
+  t.searchChatDraft = "";
+  t.searchAnswer = { pending: true, turns };
+  renderAIAnswer(t);
+  if (question) $("searchAIQuestion")?.focus({ preventScroll: true });
+  const json = { query, source, ...(vertical ? { vertical } : {}), lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION };
+  if (question) json.followUp = { question, ...(priorQuestion ? { previousQuestion: priorQuestion } : {}) };
+  else if (!vertical) json.results = searchData.results.slice(0, 12).map(row => ({ url: row.url }));
   try {
-    const r = await api("/api/search/answer", { json: vertical ? { query, vertical, lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION } : { query, source, results: searchData.results.slice(0, 12).map(r => ({ url: r.url })) }, timeoutMs: vertical ? 35000 : 23000, signal: request.signal });
+    const response = (await api("/api/search/answer", { json, timeoutMs: 35000, signal: request.signal })) || {};
     if (!current()) return;
-    t.searchAnswer = { status: "done", response: r || {} };
+    // Older servers ignore followUp and return another summary of the seed query.
+    turn.response = question && response.followUp !== true && response.hasAnswer
+      ? { reason: "Follow-up questions are not available on the connected Veyra server yet." } : response;
   } catch (error) {
     if (!current()) return;
-    t.searchAnswer = { status: "error", error: String(error?.message || "Veyra could not contact the answer service.").slice(0, 220) };
+    turn.response = { reason: String(error?.message || "Veyra could not contact the answer service.").slice(0, 220) };
   }
-  if (activeTab() === t) renderAIAnswer(t);
+  const restoreFocus = activeTab() === t && $("searchAIQuestion") === document.activeElement;
+  t.searchAnswerRequest = null;
+  t.searchAnswer = { pending: false, turns };
+  if (activeTab() === t) {
+    renderAIAnswer(t);
+    if (restoreFocus) $("searchAIQuestion").focus({ preventScroll: true });
+  }
+}
+function searchSiteIcon(url) {
+  const host = hostOf(url);
+  const fallback = /^[a-z0-9]/i.test(host) ? host[0].toUpperCase() : "•";
+  const valid = /^(?=.{1,253}$)[a-z0-9.-]+\.[a-z][a-z0-9-]+$/i.test(host) && !/\.(?:local|internal|localhost|test|invalid|example|onion)$/i.test(host);
+  const img = !INCOGNITO && valid ? `<img src="https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : "";
+  return `<span class="search-site-icon" aria-hidden="true"><span>${esc(fallback)}</span>${img}</span>`;
+}
+function aiTurnHTML(turn, index, query, scope, latest) {
+  const r = turn.response;
+  const sources = Array.isArray(r?.sources) ? r.sources.slice(0, 24) : [];
+  const title = turn.question ? `You: ${turn.question}` : "Source summary";
+  const available = r?.hasAnswer && typeof r.answer === "string" && sources.length && !unsafeAiText(r.answer) &&
+    sources.every(row => resultUrl(row?.url) && scopedUrl(scope, row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
+  if (!available) {
+    const reason = r && !unsafeAiText(r.reason) ? r.reason : "";
+    const status = !r ? "Reading source pages…" : reason || "Veyra could not produce a grounded answer.";
+    return `<article class="ai-chat-turn"><h3>${esc(title)}</h3><p class="ai-chat-note">${esc(status)}</p>${latest && r ? '<button class="btn ghost sm" type="button" id="searchAIRetry">Try again</button>' : ""}</article>`;
+  }
+  const caveats = (Array.isArray(r.caveats) ? r.caveats : []).filter(p => typeof p === "string" && p && !unsafeAiText(p)).slice(0, 3);
+  const feedbackId = !turn.question && /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
+  return `<article class="ai-chat-turn" data-ai-turn="${index}">
+    <h3>${esc(title)}</h3><p class="ai-chat-note">${sources.length} ${sources.length === 1 ? "source" : "sources"} · ${esc(r.confidenceLabel || "Evidence quality")}</p>
+    <div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, turn.question || query, sources)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>
+    <div class="ai-answer-sources" aria-label="Sources">${sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}">${searchSiteIcon(s.url)}<span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>
+    ${feedbackId ? `<div class="ai-answer-feedback" data-observation="${esc(feedbackId)}"><span>Was this summary helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful"${turn.feedback ? " disabled" : ""}>Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful"${turn.feedback ? " disabled" : ""}>Not helpful</button><span class="ai-feedback-status" role="status">${turn.feedback ? "Feedback saved." : ""}</span></div>` : ""}
+    </article>`;
 }
 function renderAIAnswer(t) {
-  const ai = $("aiAnswer"), query = t.searchQuery, answer = t.searchAnswer;
-  if (ephemeralSession() || !t.searchData?.results?.length) { ai.classList.add("hidden"); ai.replaceChildren(); return; }
+  const ai = $("aiAnswer"), query = t.searchQuery, chat = t.searchAnswer;
+  if (ephemeralSession() || !t.searchData?.results?.length) {
+    ai.classList.add("hidden"); ai.replaceChildren(); paintedAI = null; return;
+  }
   ai.classList.remove("hidden");
-  if (!answer) {
-    ai.innerHTML = '<button class="btn ghost sm" type="button" id="searchSummarize">Summarize sources with AI</button>';
-    $("searchSummarize").onclick = () => void fetchAIAnswer(t);
-    return;
-  }
-  if (answer.status === "loading" || answer.status === "error") {
-    ai.innerHTML = answer.status === "loading" ? '<p>Reading source pages…</p>' : `<p>${esc(answer.error)}</p><button class="btn ghost sm" type="button" id="searchSummarize">Try summary again</button>`;
-    $("searchSummarize")?.addEventListener("click", () => void fetchAIAnswer(t));
-    return;
-  }
-    const r = answer.response;
-    const scope = siteScope(query);
-    if (r.hasAnswer && !unsafeAiText(r.answer) && !(r.sources || []).some(row => !resultUrl(row.url) || !scopedUrl(scope, row.url) || (row.canonicalUrl && !scopedUrl(scope, row.canonicalUrl)))) {
-      const caveats = (r.caveats || []).filter(p => p && !unsafeAiText(p)).slice(0, 3);
-      const feedbackId = /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-header"><span class="ai-badge"><svg width="16" height="16"><use href="#i-bolt"/></svg> Veyra AI</span><span class="muted small">${esc(r.intent || "answer")} · ${r.sourceCount || r.sources?.length || 0} sources · ${esc(r.confidenceLabel || "Evidence quality")}</span></div><div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, query, r.sources || [])}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>${r.sources?.length ? `<div class="ai-answer-sources" aria-label="Sources">${r.sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}"><img src="${esc(sourceFaviconUrl(s.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"><span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>` : ""}${feedbackId ? `<div class="ai-answer-feedback"><span>Was this summary helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful">Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful">Not helpful</button><span class="ai-feedback-status" data-ai-feedback-status aria-live="polite"></span></div>` : ""}</div>`;
-      wireSearchLinks(ai);
-      ai.querySelectorAll("[data-ai-feedback]").forEach(button => button.addEventListener("click", async () => {
-        const buttons = [...ai.querySelectorAll("[data-ai-feedback]")], status = ai.querySelector("[data-ai-feedback-status]");
-        buttons.forEach(item => { item.disabled = true; }); if (status) status.textContent = "Saving feedback…";
-        try {
-          await api("/api/search/answer/feedback", { json: { observationId: feedbackId, rating: button.dataset.aiFeedback }, timeoutMs: 8000 });
-          answer.feedback = true;
-          if (status) status.textContent = "Thanks. Your feedback helps tune answer quality.";
-        } catch (error) {
-          buttons.forEach(item => { item.disabled = false; });
-          if (status) status.textContent = `Feedback was not saved: ${String(error?.message || "please try again").slice(0, 120)}`;
-        }
-      }));
-      if (answer.feedback) {
-        ai.querySelectorAll("[data-ai-feedback]").forEach(button => { button.disabled = true; });
-        ai.querySelector("[data-ai-feedback-status]").textContent = "Feedback saved.";
-      }
-    } else {
-      const configured = r.code !== "AI_MODEL_NOT_CONFIGURED";
-      const title = configured ? "No supported summary for this search" : "AI summaries are not configured yet";
-      const reason = unsafeAiText(r.reason) ? "The server could not produce a verified summary." : (r.reason || "The server did not return a grounded summary.");
-      ai.innerHTML = `<div class="ai-answer-card"><div class="ai-answer-body ai-answer-unavailable"><b>${esc(title)}</b><p>${esc(reason)}</p></div></div>`;
+  if (paintedAI?.tab === t && paintedAI.chat === chat && paintedAI.query === query) return;
+  paintedAI = { tab: t, chat, query };
+  const turns = chat?.turns || [], scope = siteScope(query), last = turns.at(-1);
+  const prompts = ["What are the key facts?", "Where do the sources disagree?", "What details should I verify?"];
+  ai.innerHTML = `<div class="ai-answer-card ai-chat">
+    <div class="ai-chat-head"><h2>Veyra AI</h2>${turns.length ? '<button class="btn ghost sm" type="button" id="searchAIReset">Start over</button>' : ""}</div>
+    ${turns.length ? `<div class="ai-chat-turns">${turns.map((turn, i) => aiTurnHTML(turn, i, query, scope, turn === last)).join("")}</div>` : '<p class="ai-chat-note">Get a cited summary or ask a question about this search.</p><button class="btn ghost sm" type="button" id="searchSummarize">Summarize sources with AI</button>'}
+    ${last && !chat.pending ? `<div class="ai-chat-prompts" aria-label="Suggested follow-ups">${prompts.filter(question => question !== last.question).map(question => `<button class="btn ghost sm" type="button" data-ai-prompt="${esc(question)}">${esc(question)}</button>`).join("")}</div>` : ""}
+    <form id="searchAIForm" class="ai-chat-form">
+      <label class="sr-only" for="searchAIQuestion">Ask Veyra AI</label>
+      <input id="searchAIQuestion" type="text" maxlength="${CHAT_QUESTION_LIMIT}" autocomplete="off" placeholder="${turns.length ? "Ask a follow-up" : "Ask about these results"}" value="${esc(t.searchChatDraft || "")}" ${chat?.pending ? "readonly" : ""} required>
+      <button class="btn ghost sm" type="submit"${chat?.pending ? " disabled" : ""}>Ask</button>
+    </form>
+    <p id="searchAIStatus" class="ai-chat-note" role="status">${chat?.pending ? "Veyra AI is reading source pages." : turns.length >= CHAT_MAX_TURNS ? "Showing the last five turns." : last ? "Veyra AI finished reading." : ""}</p>
+    </div>`;
+  $("searchSummarize")?.addEventListener("click", () => void fetchAIAnswer(t));
+  $("searchAIRetry")?.addEventListener("click", () => void fetchAIAnswer(t, last.question, { retry: true }));
+  $("searchAIReset")?.addEventListener("click", () => { resetSearchChat(t); renderAIAnswer(t); $("searchSummarize")?.focus(); });
+  $("searchAIQuestion").addEventListener("input", event => { t.searchChatDraft = event.target.value; });
+  $("searchAIForm").addEventListener("submit", event => {
+    event.preventDefault(); const question = $("searchAIQuestion").value.trim();
+    if (question) void fetchAIAnswer(t, question);
+  });
+  ai.querySelectorAll("[data-ai-prompt]").forEach(button => button.onclick = () => void fetchAIAnswer(t, button.dataset.aiPrompt));
+  wireSearchLinks(ai);
+  wireSearchImages(ai);
+  ai.querySelectorAll("[data-ai-feedback]").forEach(button => button.addEventListener("click", async () => {
+    const block = button.closest("[data-observation]"), status = block.querySelector("[role=status]");
+    const turn = turns[Number(block.closest("[data-ai-turn]").dataset.aiTurn)];
+    const buttons = [...block.querySelectorAll("[data-ai-feedback]")];
+    buttons.forEach(item => { item.disabled = true; }); status.textContent = "Saving feedback…";
+    try {
+      await api("/api/search/answer/feedback", { json: { observationId: block.dataset.observation, rating: button.dataset.aiFeedback }, timeoutMs: 8000 });
+      turn.feedback = true; status.textContent = "Feedback saved.";
+    } catch (error) {
+      buttons.forEach(item => { item.disabled = false; });
+      status.textContent = `Feedback was not saved: ${String(error?.message || "please try again").slice(0, 120)}`;
     }
-}
-function sourceFaviconUrl(url) {
-  try { return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(new URL(url).hostname)}.ico`; } catch { return ""; }
+  }));
 }
 function renderAnswerWithSourceLogos(answer, query, sources) {
-  const byId = new Map((sources || []).map(s => [String(s.id), s]));
-  return String(answer).split(/\n{2,}/).filter(Boolean).map(paragraph => `<p>${highlightTerms(paragraph, query).replace(/\[S(\d+)\]/g, (match, n) => {
-    const source = byId.get(`S${n}`);
-    if (!source) return match;
+  const byId = new Map(sources.map(s => [`[${s.id}]`, s]));
+  return String(answer).split(/\n{2,}/).filter(Boolean).map(paragraph => `<p>${paragraph.split(/(\[S\d+\])/g).map(part => {
+    const source = byId.get(part);
+    if (!source) return highlightTerms(part, query);
     const label = source.title || displayUrl(source.url);
-    return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}"><img src="${esc(sourceFaviconUrl(source.url))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'"></a>`;
-  })}</p>`).join("");
+    return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}">${searchSiteIcon(source.url)}</a>`;
+  }).join("")}</p>`).join("");
 }
 function unsafeAiText(value) {
   const text = String(value || "");
@@ -2623,7 +2695,7 @@ function richResult(r, source) {
   return `<article class="search-card search-card-${source}">
     <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
       ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
-      <div class="search-card-copy"><span class="search-card-source">${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
+      <div class="search-card-copy"><span class="search-card-source">${source === "images" ? "" : searchSiteIcon(url)}${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
         <h2>${esc(title)}</h2>${matchBadge(r.matchPercent)}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
         ${r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
       </div>
@@ -2631,8 +2703,8 @@ function richResult(r, source) {
     ${sourcePage && sourcePage !== url ? `<a class="search-image-source" href="${esc(sourcePage)}" data-open="${esc(sourcePage)}">Source page<span class="sr-only"> for ${esc(title)}</span></a>` : ""}
   </article>`;
 }
-function hideBrokenSearchImages(container) {
-  container.querySelectorAll(".search-card-art img").forEach(img => {
+function wireSearchImages(container) {
+  container.querySelectorAll(".search-card-art img, .search-site-icon img").forEach(img => {
     const hide = () => { img.hidden = true; };
     if (img.complete && !img.naturalWidth) hide();
     else img.addEventListener("error", hide, { once: true });
@@ -2717,7 +2789,7 @@ function renderSearch() {
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
+      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;
@@ -2725,7 +2797,7 @@ function renderSearch() {
       results.insertAdjacentHTML("beforeend", renderRows(d.results.slice(previous.rows.length)));
       for (let row = oldTail?.nextElementSibling; row; row = row.nextElementSibling) {
         wireSearchLinks(row, { learn: !vertical });
-        hideBrokenSearchImages(row);
+        wireSearchImages(row);
       }
     }
   } else {
@@ -2736,7 +2808,7 @@ function renderSearch() {
       web ? "Try another query or retry with the available providers." : "Try different keywords or switch to Web.",
       (web ? retry : '<button class="btn ghost sm" type="button" id="searchWeb">Search the web</button>') + searchAlternatives(t, source));
     wireSearchLinks(results, { learn: !vertical });
-    hideBrokenSearchImages(results);
+    wireSearchImages(results);
   }
   paintedSearch = { tab: t, query: t.searchQuery, source, rows: d.results };
   $("searchWeb")?.addEventListener("click", () => selectSearchCategory("web"));
@@ -3811,7 +3883,8 @@ function wire() {
   });
   $("view-search").addEventListener("scroll", e => {
     const view = e.currentTarget, more = $("searchMore");
-    if (view.scrollTop > 0 && !more.classList.contains("hidden") && more.getBoundingClientRect().top <= view.getBoundingClientRect().bottom + 180) {
+    const lead = activeTab()?.searchSource === "images" ? 520 : 180;
+    if (view.scrollTop > 0 && !more.classList.contains("hidden") && more.getBoundingClientRect().top <= view.getBoundingClientRect().bottom + lead) {
       loadNextSearchPage({ auto: true });
     }
   }, { passive: true });
@@ -3838,7 +3911,7 @@ export const B = {
   renderActive, renderTabs, updateIdentity, showSearch, back, forward, reload, stopLoad, goHome, toggleBookmark, openFind, closeFind, printPage, setZoom, zoomStep,
   ensureSession, endSession, sessionRemaining, updateSessionPreferences, startDownload, clearBrowsingData, recordHistory, refreshVpnStatus, connectVpn, disconnectVpn, renderVpnPanel, clearLocalAccountData,
   omniSuggest, classify, goRoute, showLanding, pageCommand, evaluate, prettyPrint, highlightCode, saveBookmarks, saveHistory, getOrCreateFrame, setLoading, toggleSplitScreen, showAccountOptions, showSiteRecovery,
-  syncAdminAccess, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab()),
+  syncAdminAccess, syncSearchAuth, canOpenAdminPanel, groupActiveTab: () => groupTab(activeTab()),
   performanceTabs, parkTab, setPerformanceMode, syncBackgroundDiagnostics, shiftActiveTab, toggleTabPin
 };
 hooks.B = B;
