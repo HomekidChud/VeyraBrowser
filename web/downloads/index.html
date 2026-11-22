@@ -98,8 +98,8 @@
 
     <section class="notice" id="browser-extension" aria-labelledby="launcher-title">
       <h2 id="launcher-title">Veyra Browser Launcher</h2>
-      <p>Launcher v1.2.0 opens Veyra, MSN Play and official account pages in regular Chrome and Edge tabs. Sign in to MSN on its own site. That session stays in your browser and is not transferred to Veyra.</p>
-      <p><a class="download" href="./veyra-launcher.zip?v=1.2.0" download="veyra-launcher.zip">Download extension ZIP <span aria-hidden="true">↓</span></a></p>
+      <p>Launcher v1.3.0 opens any HTTPS website in a regular Chrome or Edge tab so you can sign in directly. MSN Play, Google and GitHub still have one-click shortcuts.</p>
+      <p><a class="download" href="./veyra-launcher.zip?v=1.3.0" download="veyra-launcher.zip">Download extension ZIP <span aria-hidden="true">↓</span></a></p>
       <h3>Install in Microsoft Edge</h3>
       <ol class="install-steps">
         <li>Extract <code>veyra-launcher.zip</code> to a folder you can keep.</li>
@@ -114,6 +114,13 @@
         <summary>Install in Chrome instead</summary>
         <p>Extract the ZIP, open <code>chrome://extensions</code>, enable Developer mode, select <strong>Load unpacked</strong>, and pick the folder containing <code>manifest.json</code>.</p>
       </details>
+      <h3 id="launcher-sign-in">Sign in to any HTTPS website</h3>
+      <ol class="install-steps">
+        <li>Copy the site’s usual HTTPS address. If it’s already open in Veyra, select <strong>Site information</strong> next to Veyra’s address bar, then <strong>Copy URL</strong>.</li>
+        <li>Open the launcher, paste the link in <strong>Website address</strong>, and select <strong>Open site directly</strong>.</li>
+        <li>Sign in on the website in the new tab. The launcher does not copy cookies or sign you in inside Veyra’s proxy.</li>
+      </ol>
+      <p>You can also choose <strong>Site information</strong> → <strong>Site options</strong> → <strong>Open original site</strong> from a regular Veyra page, without installing the extension.</p>
     </section>
     <aside class="notice">
       <strong>About these builds:</strong> these are debug APKs, signed with the standard Android debug key. Android may ask you to allow installs from your browser or file manager. If you already installed a build signed with a different key, uninstall that copy before installing this one.

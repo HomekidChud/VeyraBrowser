@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { accountDestination, GOOGLE_SIGN_IN, GOOGLE_SIGN_UP, GITHUB_SIGN_UP, withGitHubSignupBookmark } from "../web/src/account-navigation.js";
+import { directSiteUrl } from "../launcher-extension/direct-url.js";
 
 assert.deepEqual(accountDestination("https://accounts.google.com/v3/signin/identifier?continue=secret&sid=abc"),
   { provider: "Google", url: GOOGLE_SIGN_IN, signup: false });
@@ -32,7 +33,23 @@ for (const field of ["permissions", "optional_permissions", "host_permissions", 
   assert.equal(launcher[field], undefined, `${field} must not be present`);
 }
 const popup = readFileSync(new URL("../launcher-extension/popup.html", import.meta.url), "utf8");
-assert.doesNotMatch(popup, /<script|javascript:|<form/i);
+assert.match(popup, /script-src 'self'.*form-action 'none'/);
+assert.match(popup, /<script type="module" src="popup\.js"><\/script>/);
+assert.match(popup, /<form class="open-site" id="open-site" novalidate>/);
+assert.match(popup, /Open site directly/);
+assert.doesNotMatch(popup, /javascript:/i);
+assert.equal(directSiteUrl("  HTTPS://example.org/login?next=%2Fdocs#account  "), "https://example.org/login?next=%2Fdocs#account");
+assert.equal(directSiteUrl("https://example.org:8443"), "https://example.org:8443/");
+assert.equal(directSiteUrl("https://xn--bcher-kva.example/login"), "https://xn--bcher-kva.example/login");
+for (const address of [
+  "", "example.org", "//example.org", "https:///example.org", "https://", "https://example.org:99999/",
+  "http://example.org/login", "javascript:alert(1)", "data:text/html,<p>test</p>", "chrome://extensions",
+  "file:///tmp/example", "https://alice:secret@example.org", "https://example.org@other.example",
+  "https://exam\nple.org/", "https://example.org\\@other.example", "https://example.org/login page"
+]) assert.equal(directSiteUrl(address), "", address);
+const popupScript = readFileSync(new URL("../launcher-extension/popup.js", import.meta.url), "utf8");
+assert.match(popupScript, /window\.open\(target, "_blank", "noopener,noreferrer"\)/);
+assert.doesNotMatch(popupScript, /\b(?:fetch|document\.cookie|chrome\.|XMLHttpRequest|localStorage|sessionStorage|navigator\.clipboard)\b/);
 assert.match(popup, /https:\/\/accounts\.google\.com\/signup/);
 assert.match(popup, /href="https:\/\/www\.msn\.com\/play" target="_blank" rel="noopener noreferrer"/);
 assert.match(popup, /href="https:\/\/homekidchud\.github\.io\/VeyraBrowser\/web\/downloads\/#browser-extension"/);
@@ -41,6 +58,9 @@ const downloads = readFileSync(new URL("../web/downloads/index.html", import.met
 assert.ok(downloads.includes(`Launcher v${launcher.version}`), "download page should match the launcher version");
 assert.ok(downloads.includes(`./veyra-launcher.zip?v=${launcher.version}`), "download link should bypass old cached ZIPs");
 assert.match(downloads, /id="browser-extension"/);
+assert.match(downloads, /id="launcher-sign-in"/);
+const install = readFileSync(new URL("../launcher-extension/INSTALL.txt", import.meta.url), "utf8");
+assert.match(install, /Website address and choose Open site directly/);
 const appSource = readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 assert.match(appSource, /function launcherDownloadAction\(\) \{\s*return \{ label: "Get extension", href: `\$\{APP_BASE\}\/downloads\/#browser-extension` \};/);
 assert.doesNotMatch(appSource, /veyra-launcher\.zip/, "sign-in notifications should not initiate a raw ZIP download");
