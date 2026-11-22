@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Veyra Browser Launcher",
-  "version": "1.2.0",
-  "description": "Open Veyra, MSN Play, and official account pages in regular tabs. The launcher does not read or transfer cookies.",
+  "version": "1.3.0",
+  "description": "Open any HTTPS website in a regular browser tab to sign in directly. The launcher does not read or transfer cookies.",
   "action": {
     "default_title": "Veyra Browser Launcher",
     "default_popup": "popup.html"
