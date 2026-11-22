@@ -3567,6 +3567,15 @@ async function handleMessage(e) {
   }
 
   if (d.type === "veyra:embed-ping") { if (e.origin !== API_ORIGIN) return; ackEmbedPing(e); return; }
+  // Launcher extension bridge: the Veyra Launcher extension's injected script
+  // asks this page for the current session id so its cookie transfer can
+  // target the user's own session. Only the session id is shared — and the
+  // proxied frame already receives the same id in its injected runtime, so
+  // this reveals nothing new. Replies to the asking window only.
+  if (d.type === "veyra:request-session") {
+    try { e.source?.postMessage({ type: "veyra:session", sid: state.session?.id || "" }, e.origin || location.origin); } catch {}
+    return;
+  }
   if (d.type === "veyra:console-lab:open-proxy") {
     const frame = $("consoleLabFrame");
     if (frame && e.source === frame.contentWindow && e.origin === location.origin &&

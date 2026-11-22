@@ -1,11 +1,26 @@
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0f1319;color:#e8ecf2}
 body{width:296px;margin:0}
 main{padding:18px}
+main + main{border-top:1px solid #232b38}
 .eyebrow{color:#a7c2fa;font-size:10px;font-weight:750;letter-spacing:.12em;margin:0}
 h1{font-size:18px;line-height:1.2;margin:6px 0}
 p{color:#a9b2c1;font-size:12px;line-height:1.5;margin:0}
+p.hint{color:#77808e;font-size:11px;line-height:1.45;margin-top:8px}
 nav{display:grid;gap:6px;margin-top:14px}
 a{display:flex;justify-content:space-between;gap:10px;border:1px solid #344052;border-radius:7px;padding:8px 10px;color:inherit;background:#191f29;text-decoration:none;font-size:12px;font-weight:625}
 a:hover{background:#232b38}
 a:focus-visible{outline:2px solid #a7c2fa;outline-offset:2px}
 a.primary{background:#a7c2fa;color:#0d1320}
+#site-line{font-weight:625}
+button{margin-top:12px;width:100%;border:0;border-radius:7px;padding:9px 12px;background:#a7c2fa;color:#0d1320;font-size:13px;font-weight:700;cursor:pointer}
+button:hover{filter:brightness(1.08)}
+button:disabled{background:#2a3240;color:#77808e;cursor:not-allowed}
+button.ghost{background:#191f29;color:#dce5ef;border:1px solid #344052;font-weight:625}
+#xfer-status,#api-status{margin-top:8px;color:#86a9d5;min-height:1em}
+#xfer-status.ok{color:#7fd6a4}
+#xfer-status.err{color:#e2a2a2}
+details{padding:12px 18px 16px;border-top:1px solid #232b38}
+summary{cursor:pointer;color:#86a9d5;font-size:12px}
+details label{display:block;margin:10px 0 6px;color:#a9b2c1;font-size:11px}
+details input{width:100%;box-sizing:border-box;background:#10151d;color:#eaf0f6;border:1px solid #303a48;border-radius:7px;padding:7px 9px;font:12px/1.4 ui-monospace,monospace}
+details input:focus-visible{outline:2px solid #a7c2fa;outline-offset:1px}

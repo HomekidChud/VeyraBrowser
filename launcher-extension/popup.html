@@ -9,8 +9,16 @@
 <body>
   <main>
     <p class="eyebrow">VEYRA BROWSER</p>
+    <h1>Send this site to Veyra</h1>
+    <p id="site-line">Reading this tab…</p>
+    <button id="send" disabled>Send session to Veyra</button>
+    <p id="xfer-status" role="status"></p>
+    <p class="hint">Transfers every cookie this site has set in this browser — including HttpOnly cookies a bookmarklet cannot read — into your open Veyra tab's session. Nothing is sent anywhere else, and only when you click.</p>
+  </main>
+  <main>
+    <p class="eyebrow">VEYRA BROWSER</p>
     <h1>Open a direct tab</h1>
-    <p>Sign in on the official site. This launcher never reads page content or credentials.</p>
+    <p>Sign in on the official site. The launcher never reads page content or credentials.</p>
     <nav aria-label="Launch a direct tab">
       <a class="primary" href="https://accounts.google.com/" target="_blank" rel="noopener noreferrer">Sign in to Google <span aria-hidden="true">↗</span></a>
       <a href="https://accounts.google.com/signup" target="_blank" rel="noopener noreferrer">Create a Google account <span aria-hidden="true">↗</span></a>
@@ -18,5 +26,13 @@
       <a href="https://homekidchud.github.io/VeyraBrowser/web/browse/" target="_blank" rel="noopener noreferrer">Open Veyra Browser <span aria-hidden="true">↗</span></a>
     </nav>
   </main>
+  <details>
+    <summary>Veyra server</summary>
+    <label for="api-input">API origin</label>
+    <input id="api-input" type="url" spellcheck="false" autocomplete="off">
+    <button id="api-save" class="ghost">Save</button>
+    <p id="api-status" role="status"></p>
+  </details>
+  <script src="popup.js"></script>
 </body>
 </html>
