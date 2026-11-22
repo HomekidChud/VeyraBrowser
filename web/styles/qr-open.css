@@ -1,0 +1,9 @@
+#qrOpenDialog .modal-card { width: min(460px, calc(100vw - 32px)); }
+#qrOpenDialog .qr-open-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin: .8rem 0; }
+#qrOpenDialog .modal-actions { flex-wrap: wrap; }
+#qrOpenDialog .btn { min-height: 44px; }
+#qrOpenDialog .qr-open-status { min-height: 1.5em; margin: .75rem 0; }
+#qrOpenDialog .qr-open-preview { border: 1px solid var(--line-2); border-radius: .6rem; padding: .7rem .8rem; }
+#qrOpenDialog .qr-open-host, #qrOpenDialog .qr-open-url { overflow-wrap: anywhere; }
+#qrOpenDialog .qr-open-url { max-height: 7em; overflow: auto; margin: .25rem 0 0; font-size: .82rem; }
+#qrOpenDialog [hidden] { display: none !important; }

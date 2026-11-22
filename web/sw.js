@@ -1,5 +1,5 @@
-const CACHE = "veyra-browser-shell-v8.40.0-search-media";
-const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=8", "./src/bootstrap.js?v=8.40.0-search-media"];
+const CACHE = "veyra-browser-shell-v8.41.0-qr-links";
+const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./styles/style.css?v=8.36.0-workbench", "./styles/studio.css?v=3", "./styles/settings-deck.css?v=3", "./styles/velocity.css?v=2", "./styles/search-deck.css?v=8", "./styles/qr-open.css?v=1", "./src/bootstrap.js?v=8.41.0-qr-links"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

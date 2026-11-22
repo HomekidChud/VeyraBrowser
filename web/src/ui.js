@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.39.7-site-info";
+import { initSettings } from "./settings.js?v=8.41.0-qr-links";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
@@ -12,6 +12,7 @@ import { applyStudioVisuals, playStudioSound } from "./studio.js?v=5";
 import { openLauncher, openQuickTools } from "./velocity.js?v=2";
 import { performanceMode } from "./velocity-model.js?v=2";
 import { assignableBinding, shortcutKeys, shortcutMap } from "./shortcuts-model.js?v=2";
+import { openQrScanner } from "./qr-open.js?v=1";
 
 let B;
 
@@ -572,6 +573,7 @@ function openMainMenu() {
     ...(onPage && originalSiteUrl(t.url) ? [menuItem("i-external", "Site not working?", "", () => B.showSiteRecovery(t))] : []),
     ...(INCOGNITO ? [menuItem("i-shield", "Hide incognito screen", "", () => hooks.lockPrivacyCover?.()), menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
+    menuItem("i-qr", "Scan QR code", "", () => openQrScanner({ openLink: url => B.go(url), returnFocus: $("menuBtn") })),
     menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
     menuItem("i-grid", "Create tab group…", "", () => B.groupActiveTab()),
     menuItem("i-sliders", "Customization Studio", "", () => B.openInternal("settings", { section: "appearance" })),

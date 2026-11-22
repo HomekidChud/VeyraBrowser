@@ -19,6 +19,12 @@
 ## Surrounding browser shell
 - Open and close a new tab; return to the search with its data intact. Check Calculator, History, and Settings navigation, browser resize at 375px, and the console for regressions.
 
+## Open a QR link
+- From the main menu choose **Scan QR code**. Test **Take photo** on a phone and **Choose image** with a JPEG, PNG or WebP. Confirm the scan stays on the device and no destination request occurs during the preview.
+- Use a code containing `https://example.com/path?value=hello%20world#section`. Check the preview shows the host and full URL, and only **Open in Veyra** navigates the active tab, preserving the path, query and fragment. Plain HTTP displays a warning.
+- Scan an image without a QR code, a text or Wi-Fi code, a malformed or local-network URL, and a file over 12 MB. Confirm none can navigate. Cancel or press Escape while reading, then reopen and scan again; no previous link should remain.
+- Check the dialog at 375 px, including a long destination and keyboard focus on dismissal. Device Cast must still generate its own pairing code; the public-link scanner is not a replacement for the device-pairing flow.
+
 ## TikTok and proxy recovery
 - In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Click **Load TikTok player**, use the official player, close it, and check that it loads again only on request. Check reported errors, silence, a late player event, and the retry on desktop and at 375px.
 - Paste a TikTok share link. It should offer **Open on TikTok** and **Use Fast Proxy**, with no player or automatic third-party request. Check the official link opens a separate tab without a referrer, and that **Use Fast Proxy** replaces the panel in the same Veyra tab.
