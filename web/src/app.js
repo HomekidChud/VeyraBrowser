@@ -6,7 +6,7 @@ import {
 import { createApiReadiness, recoverableApiError } from "./api-readiness.js?v=1";
 import { parseSourceUri, resolveSourceUri, validateSourceDisplayUrl } from "./source-address.js?v=8.28.31-in-app-popups";
 import { dtCall, frameFor, isRemote, handleBridgeMessage, rejectTab } from "./bridge.js?v=8.36.0-workbench";
-import { initUI } from "./ui.js?v=8.36.1-inline-watch";
+import { initUI } from "./ui.js?v=8.39.7-site-info";
 import { initDevtools } from "./devtools.js?v=8.36.0-workbench";
 import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
@@ -2035,6 +2035,7 @@ function showSiteRecovery(t = activeTab(), reason = "") {
   if (!url || activeTab() !== t) return;
   if (showAccountOptions(url)) return;
   const target = new URL(url);
+  const directUrl = t.localPage === "tiktok" ? tiktokTarget(url)?.url || url : url;
   dismissSiteRecovery?.(true);
   siteRecoveryFor = { tab: t, load: t.pageLoad };
   dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
@@ -2047,7 +2048,7 @@ function showSiteRecovery(t = activeTab(), reason = "") {
         t.compatFallbackTried?.delete(`${t.url}|blank-shell`);
         void reload({ hard: true });
       } },
-      { label: "Open original site", href: url, primary: true }
+      { label: "Open original site", href: directUrl, primary: true }
     ]
   });
   if (!reason && dismissSiteRecovery) $("toasts")?.querySelector("section:last-child .toast-action")?.focus({ preventScroll: true });

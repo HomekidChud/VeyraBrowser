@@ -1,5 +1,5 @@
 import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, isMac, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
-import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.36.1-inline-watch";
+import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.39.7-site-info";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
