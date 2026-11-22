@@ -97,8 +97,13 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
     return res.json({ provider: "veyra-index", nextOffset: null, results: [{ title: "Final indexed result", url: "https://example.in/archive" }] });
   }
   const row = { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet.",
-    ...(type === "web" && paged ? { source: "mdn", providers: ["mdn", "bing"] } : {}) };
-  const second = { title: `More ${type} results`, url: "https://example.in/more", snippet: "Another snippet." };
+    ...(type === "web" && paged ? { source: "mdn", providers: ["mdn", "bing"] } : {}),
+    ...(type === "web" && (paged || req.query.incognito === "1") ? {
+      snippet: "India rail publisher excerpt.",
+      evidence: { level: "strong", basis: "catalog-passage" }
+    } : {}) };
+  const second = { title: `More ${type} results`, url: "https://example.in/more", snippet: "Another snippet.",
+    ...(type === "web" && paged ? { evidence: { level: "unverified", basis: "not-checked" } } : {}) };
   const results = next ? [row, second] : type === "shopping" ? [
     { ...row, price: { value: "123456.00", currency: "INR" } },
     { ...second, price: { value: "19.99", currency: "USD" } }
@@ -181,6 +186,12 @@ try {
 
       await page.goto(`${origin}${prefix}/search/?q=India+rail&type=deep`);
       await result("web result for India rail").waitFor();
+      const evidence = page.locator(".search-evidence summary").getByText("Source evidence: Strong", { exact: true });
+      await evidence.focus();
+      await evidence.press("Enter");
+      await page.getByText(/This rating is not a fact-check or an accuracy percentage/).waitFor();
+      await page.locator("#searchResults").getByText(/India rail publisher excerpt/).waitFor();
+      assert(await page.locator(".search-evidence").first().evaluate(el => el.scrollWidth <= el.clientWidth + 1));
       assert.match(await page.locator("#searchResults .r-url").first().textContent(), /MDN Web Docs/);
       assert.equal(new URL(page.url()).searchParams.has("type"), false);
       assert.equal(await page.locator("#searchTabs").getByRole("tab").count(), 8);
@@ -193,6 +204,8 @@ try {
       await google.close();
       await page.getByRole("button", { name: "More results" }).click();
       await result("More web results").waitFor();
+      await page.getByText("Source evidence: Not checked", { exact: true }).waitFor();
+      assert.equal(await page.getByText("Source evidence: Strong", { exact: true }).count(), 1);
       assert.equal(await result("web result for India rail").count(), 1);
       await page.locator('#searchResults .search-site-icon img[src*="example.in.ico"]').waitFor();
       assert.equal(await page.locator("#searchResults .search-site-icon").count(), 2);
@@ -200,6 +213,7 @@ try {
       assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.offset === "20" && call.query.region === "IN"));
       await page.getByRole("tab", { name: "Web" }).press("ArrowRight");
       await result("images result for India rail").waitFor();
+      assert.equal(await page.locator(".search-evidence").count(), 0);
       await page.setViewportSize({ width: 375, height: 812 });
       assert.equal(await page.locator("#searchResults").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length), 2);
       assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
@@ -306,6 +320,7 @@ try {
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
       await page.goto(`${origin}${prefix}/search/?q=private+web&incognito=1`);
       await result("web result for private web").waitFor();
+      assert.equal(await page.locator(".search-evidence").count(), 0, "incognito ignores any evidence metadata returned by the API");
       assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "private web" && call.query.incognito === "1" && call.query.private === "1"));
       assert.equal(await page.locator("#searchResults .search-site-icon img").count(), 0);
       assert.equal(await page.locator("#searchResults .search-site-icon").count(), 1);
@@ -459,7 +474,7 @@ try {
       assert.equal(await page.locator("#aiAnswer").textContent(), "");
 
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: category pagination, responsive image batches, icons, private search, cited chat, and TikTok recovery`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: source evidence, category pagination, responsive image batches, icons, private search, cited chat, and TikTok recovery`);
     } finally { await browser.close(); }
   }
 } finally {

@@ -11,6 +11,27 @@
   font: 650 var(--search-caption)/1.4 var(--font-body, system-ui);
   white-space: nowrap;
 }
+.search-deck .search-evidence {
+  margin-block-start: .4rem;
+  font: 550 var(--search-caption)/1.5 var(--font-body, system-ui);
+}
+.search-deck .search-evidence summary {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--search-muted);
+  cursor: pointer;
+}
+.search-deck .search-evidence summary:focus-visible {
+  outline: 2px solid var(--search-link);
+  outline-offset: 3px;
+}
+.search-deck .search-evidence p {
+  margin: .35rem 0 0;
+  padding-inline-start: .65rem;
+  border-inline-start: 1px solid var(--search-line);
+  color: var(--search-muted);
+  font: inherit;
+}
 .search-deck {
   --search-paper: #161715;
   --search-field: #1d1f1b;
