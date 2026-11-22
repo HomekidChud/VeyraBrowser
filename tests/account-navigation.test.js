@@ -35,6 +35,13 @@ const popup = readFileSync(new URL("../launcher-extension/popup.html", import.me
 assert.doesNotMatch(popup, /<script|javascript:|<form/i);
 assert.match(popup, /https:\/\/accounts\.google\.com\/signup/);
 assert.match(popup, /href="https:\/\/www\.msn\.com\/play" target="_blank" rel="noopener noreferrer"/);
+assert.match(popup, /href="https:\/\/homekidchud\.github\.io\/VeyraBrowser\/web\/downloads\/#browser-extension"/);
+assert.ok(popup.includes(`v${launcher.version}`), "popup should display the current launcher version");
 const downloads = readFileSync(new URL("../web/downloads/index.html", import.meta.url), "utf8");
 assert.ok(downloads.includes(`Launcher v${launcher.version}`), "download page should match the launcher version");
+assert.ok(downloads.includes(`./veyra-launcher.zip?v=${launcher.version}`), "download link should bypass old cached ZIPs");
+assert.match(downloads, /id="browser-extension"/);
+const appSource = readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
+assert.match(appSource, /function launcherDownloadAction\(\) \{\s*return \{ label: "Get extension", href: `\$\{APP_BASE\}\/downloads\/#browser-extension` \};/);
+assert.doesNotMatch(appSource, /veyra-launcher\.zip/, "sign-in notifications should not initiate a raw ZIP download");
 console.log("Official account destination and permission-free launcher checks passed");

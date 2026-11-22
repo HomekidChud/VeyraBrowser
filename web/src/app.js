@@ -3459,11 +3459,17 @@ function ackEmbedPing(e) {
 function chooseSignin(t, url) {
   if (interceptAccount(url, t.url)) return;
   addLog("info", `Sign-in on ${hostOf(url)} loading through the fast proxy.`);
-  toast(`Signing in to ${hostOf(url)} inside Veyra`, { ms: 4000 });
+  toast(`Signing in to ${hostOf(url)} inside Veyra`, {
+    ms: 4000, actions: activeTab() === t ? [launcherDownloadAction()] : []
+  });
   void loadInTab(t, url, { loadFrame: true });
 }
 
-function accountRow(parent, { icon, title, description, label, href, download, action, primary = false }) {
+function launcherDownloadAction() {
+  return { label: "Get extension", href: `${APP_BASE}/downloads/#browser-extension` };
+}
+
+function accountRow(parent, { icon, title, description, label, href, action, primary = false }) {
   const row = document.createElement("li"); row.className = "account-option";
   const marker = document.createElement("span"); marker.className = "account-option-icon"; marker.textContent = icon; marker.setAttribute("aria-hidden", "true");
   const copy = document.createElement("div"); copy.className = "account-option-copy";
@@ -3474,8 +3480,7 @@ function accountRow(parent, { icon, title, description, label, href, download, a
   control.className = `toast-action${primary ? " toast-action-primary" : ""}`; control.textContent = label;
   if (href) {
     control.href = href;
-    if (download) control.download = download;
-    else { control.target = "_blank"; control.rel = "noopener noreferrer"; }
+    control.target = "_blank"; control.rel = "noopener noreferrer";
   } else { control.type = "button"; control.addEventListener("click", action); }
   row.append(marker, copy, control); parent.append(row);
 }
@@ -3513,7 +3518,8 @@ export function showAccountOptions(url = GOOGLE_SIGN_IN, from = "") {
       title: target.signup ? "Create a GitHub account" : "Sign in to GitHub",
       actions: [
         { label: "Continue on GitHub", href: target.url, primary: true },
-        { label: "Add bookmark", onClick: () => directAccountBookmark(target) }
+        { label: "Add bookmark", onClick: () => directAccountBookmark(target) },
+        launcherDownloadAction()
       ]
     });
     return true;
@@ -3534,12 +3540,12 @@ export function showAccountOptions(url = GOOGLE_SIGN_IN, from = "") {
     title, node: options
   });
   if (!options.isConnected) return true;
-  accountRow(options, { icon: "↗", title: "Fast Veyra Browser", description: "Open a direct tab in your current browser, with no proxy in between.",
+  accountRow(options, { icon: "↗", title: "Continue in your browser", description: "Open a direct tab in your current browser, with no proxy in between.",
     label: original ? `Open ${hostOf(original)}` : target.signup ? "Create on Google" : "Continue on Google", href: original || target.url, primary: true });
   accountRow(options, { icon: "☆", title: "Bookmark Google", description: "Save the official page to open directly next time.",
     label: "Add bookmark", action: () => { directAccountBookmark(target); dismiss?.(); } });
-  accountRow(options, { icon: "↓", title: "Veyra Browser extension", description: "Manual install for Chrome and Edge. No site permissions.",
-    label: "Download ZIP", href: `${APP_BASE}/downloads/veyra-launcher.zip`, download: "veyra-launcher.zip" });
+  accountRow(options, { icon: "↓", title: "Veyra Browser extension", description: "Open the download and install guide for Chrome and Edge.",
+    ...launcherDownloadAction() });
   accountRow(options, { icon: "◇", title: "Veyra VPN", description: "Set routing for Fast Proxy. Google verification stays direct.",
     label: "VPN settings", action: () => { dismiss?.(); openInternal("vpn"); } });
   if (!from || navigator.userActivation?.isActive) options.querySelector("a").focus({ preventScroll: true });
