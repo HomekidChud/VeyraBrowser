@@ -37,7 +37,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=4";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, publicTikTokPost, tiktokPlayerPage } from "./tiktok.js?v=1";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=2";
 import { DIRECT_SITE_NOTICE, originalSiteUrl, siteLoadErrorMarkup } from "./site-recovery.js?v=1";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -860,6 +860,10 @@ function renderConsoleLabEntry() {
 
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
+  if (siteRecoveryFor && (t.view !== "page" || siteRecoveryFor.tab !== t || siteRecoveryFor.load !== t.pageLoad)) {
+    dismissSiteRecovery?.(true);
+    siteRecoveryFor = null;
+  }
 
   const ss = state.splitScreen;
   if (ss.active && (t.view !== "page" || isRemote(t) || (t.id !== ss.leftTabId && t.id !== ss.rightTabId))) teardownSplitScreen();
@@ -930,7 +934,8 @@ export function updateIdentity() {
   const bm = t.url && state.bookmarks.some(b => b.url === t.url);
   $("starBtn").classList.toggle("on", !!bm); $("starBtn").disabled = !(t.view === "page" && t.url);
   $("zoomChip").classList.toggle("hidden", !(t.view === "page" && t.zoom !== 1)); $("zoomChip").textContent = Math.round(t.zoom * 100) + "%";
-  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${["youtube", "tiktok"].includes(t.localPage) ? "Direct player" : t.localPage ? "Direct launch" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
+  const directPlayer = t.localPage === "youtube" || (t.localPage === "tiktok" && tiktokTarget(t.url)?.player);
+  $("statusLeft").textContent = t.view === "page" ? (t.loading ? `Loading ${hostOf(t.url)}…` : t.url ? `${directPlayer ? "Direct player" : t.localPage ? "Direct launch" : t.browserMode === "BROWSER_ENGINE" ? "Chromium" : t.failoverReason ? "Fast mode (limited)" : "Fast proxy"} · ${hostOf(t.url)}` : "Ready") : INTERNAL[t.view]?.title || "Ready";
 
   document.title = t.view === "page" && t.title && t.title !== "New tab" ? `${t.title} — Veyra` : "Veyra";
 
@@ -1076,14 +1081,16 @@ function onFrameLoad(t) {
 
   renderTabsSoon(); updateIdentity();
 
-  const loadedFrame = frameFor(t);
+  const loadedFrame = frameFor(t), loadedPage = t.pageLoad;
   setTimeout(() => {
     if (!loadedFrame || frameFor(t) !== loadedFrame) return;
     if (t.zoom !== 1) dtCall(t, "ext.zoom", { zoom: t.zoom }, 4000).catch(() => {});
     hooks.applyExtensionsToTab?.(t); hooks.dt?.onPageLoaded(t); pushKeybindings(t);
   }, 120);
 
-  setTimeout(() => { if (loadedFrame && frameFor(t) === loadedFrame) detectBlankProxyPage(t); }, 2200);
+  setTimeout(() => {
+    if (loadedFrame && frameFor(t) === loadedFrame && t.pageLoad === loadedPage) detectBlankProxyPage(t);
+  }, 2200);
 }
 
 function proxyDocStats(t) {
@@ -1126,25 +1133,33 @@ async function serverChromiumAvailable() {
   }
 }
 async function routeBrowserRequired(t, url, key, reason) {
-  const frame = frameFor(t);
+  const frame = frameFor(t), load = t.pageLoad;
   const current = () => state.tabs.includes(t) && t.view === "page" && t.url === url
-    && !t.localPage && !t.needsInitialLoad && frameFor(t) === frame;
+    && t.pageLoad === load && !t.localPage && !t.needsInitialLoad && !isRemote(t) && frameFor(t) === frame;
   if (!current()) return;
   t.compatFallbackTried ||= new Set();
   if (t.compatFallbackTried.has(key)) return;
+  t.compatFallbackTried.add(key);
+  const offerRecovery = () => {
+    if (reason === "empty-spa-shell" && activeTab() === t && t.proxyRecoveryLoad !== load) {
+      t.proxyRecoveryLoad = load;
+      showSiteRecovery(t, "This page appears blank in Fast Proxy. Try reloading it or open it separately.");
+    }
+  };
   const explicitBrowser = String(settings.runtime || "auto") === "browser";
-  if (!explicitBrowser && !browserFallbackAllowed()) {
-    t.compatFallbackTried.add(key);
+  if (t.tiktokProxyUrl === url || (!explicitBrowser && !browserFallbackAllowed())) {
     addLog("debug", `${hostOf(url)} requested a browser feature; keeping the full FAST_PROXY page (${reason || "browser-required"}).`);
+    offerRecovery();
     return;
   }
   if (!(await serverChromiumAvailable())) {
     if (!current()) return;
-    t.compatFallbackTried.add(key);
     addLog("info", `${hostOf(url)} needs JavaScript rendering, but server Chromium is unavailable; keeping the FAST_PROXY page (${reason || "browser-required"}).`);
+    offerRecovery();
     return;
   }
   if (!current()) return;
+  t.compatFallbackTried.delete(key); // The escalation function records attempts that actually run.
   escalateBrowserRequired(t, url, key, reason);
 }
 function escalateBlankProxyPage(t, key) {
@@ -1154,7 +1169,7 @@ function detectBlankProxyPage(t) {
   if (!state.tabs.includes(t) || t.view !== "page" || isRemote(t) || !t.url) return;
   if (t.browserMode === "BROWSER_ENGINE") return;
   t.compatFallbackTried ||= new Set();
-  const checkedUrl = t.url, checkedFrame = frameFor(t);
+  const checkedUrl = t.url, checkedFrame = frameFor(t), checkedLoad = t.pageLoad;
   const key = `${checkedUrl}|blank-shell`;
   if (t.compatFallbackTried.has(key)) return;
 
@@ -1163,7 +1178,8 @@ function detectBlankProxyPage(t) {
 
   if (first.nodes >= 0 && !isYouTubeUrl(t.url) && browserFallbackAllowed()) {
     setTimeout(() => {
-      if (!state.tabs.includes(t) || t.view !== "page" || t.url !== checkedUrl || t.browserMode === "BROWSER_ENGINE" || frameFor(t) !== checkedFrame) return;
+      if (!state.tabs.includes(t) || t.view !== "page" || t.url !== checkedUrl || t.pageLoad !== checkedLoad
+          || t.browserMode === "BROWSER_ENGINE" || frameFor(t) !== checkedFrame) return;
       if (t.compatFallbackTried?.has(key)) return;
       const second = proxyDocLooksBlank(t);
       if (!second.blank) return;
@@ -1731,6 +1747,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const load = t.pageLoad = Symbol();
   const current = () => state.tabs.includes(t) && t.view === "page" && t.pageLoad === load && t.url === url;
   const previousUrl = t.url;
+  const tiktokProxy = skipTikTokPlayer;
+  t.tiktokProxyUrl = tiktokProxy ? url : "";
   if (previousUrl !== url) t.escapeRecoveries = 0;
   if (t.localPage || t.youtubeInlineWatch || frameFor(t)?.hasAttribute("data-site-error")) frameFor(t)?.remove();
   t.sourceDisplayAliases ||= new Map();
@@ -1750,7 +1768,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.youtubeInlineWatch = watchInline;
   if (watchInline && t.browserSessionId) void stopBrowserSession(t);
   const tiktokSession = state.session;
-  let tiktokAllowed = !!(loadFrame && !skipTikTokPlayer && !forceBrowser && publicTikTokPost(url) && directTikTokAllowed());
+  let tiktokAllowed = !!(loadFrame && !tiktokProxy && !forceBrowser && tiktokTarget(url) && directTikTokAllowed());
   if (tiktokAllowed && tiktokSession) {
     // Resumed sessions can already be protected before the VPN panel has refreshed.
     const vpn = await api(`/api/vpn/session?sid=${encodeURIComponent(tiktokSession.id)}`, { timeoutMs: 4500 }).catch(() => null);
@@ -1786,7 +1804,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.sessionId = session.id;
   if (trackHistory) recordHistory(record?.kind || "page", url, record?.title || hostOf(url), session.id);
   let strategy = forceBrowser ? { key: "browser", proxy: false, crawler: false, browser: true, race: false }
-    : watchInline ? { key: "proxy", proxy: true, crawler: false, browser: false, race: false } : resolveStrategy(url);
+    : (watchInline || tiktokProxy) ? { key: "proxy", proxy: true, crawler: false, browser: false, race: false } : resolveStrategy(url);
   if (strategy.forceBrowserHost && !(await serverChromiumAvailable())) {
     strategy = { ...strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false, auto: false, forceBrowserHost: false };
     addLog("info", `${hostOf(url)} will use the full FAST_PROXY page because this server has Chromium disabled.`);
@@ -2011,19 +2029,22 @@ export function recordHistory(kind, url, title, sid = state.session?.id) {
   if (state.history.length > (settings.historyMax || 1000)) state.history.length = settings.historyMax || 1000;
   saveHistory();
 }
-let dismissSiteRecovery;
+let dismissSiteRecovery, siteRecoveryFor;
 function showSiteRecovery(t = activeTab(), reason = "") {
   const url = t?.view === "page" ? originalSiteUrl(t.url) : "";
   if (!url || activeTab() !== t) return;
   if (showAccountOptions(url)) return;
   const target = new URL(url);
   dismissSiteRecovery?.(true);
+  siteRecoveryFor = { tab: t, load: t.pageLoad };
   dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
     title: `Site options: ${target.host}`, ms: 0,
     actions: [
-      { label: "Retry in Veyra", onClick: () => {
+      { label: "Retry in Veyra", dismiss: false, onClick: () => {
         if (activeTab() !== t || t.view !== "page" || originalSiteUrl(t.url) !== url) return;
         t.escapeRecoveries = 0;
+        t.compatFallbackTried?.delete(`${t.url}|empty-spa-shell`);
+        t.compatFallbackTried?.delete(`${t.url}|blank-shell`);
         void reload({ hard: true });
       } },
       { label: "Open original site", href: url, primary: true }
@@ -2284,7 +2305,7 @@ export async function reload({ hard = false } = {}) {
     }
     if (isRemote(t)) { if (await remoteHistory(t, "reload")) return; }
     if (hard) state.capabilityCache.delete(hostOf(t.url));
-    return loadInTab(t, t.url, { loadFrame: true });
+    return loadInTab(t, t.url, { loadFrame: true, skipTikTokPlayer: t.tiktokProxyUrl === t.url });
   }
   if (t.view === "search") return runSearch(t.searchQuery);
   if (t.view === "console-lab") { $("view-console-lab")?.replaceChildren(); return renderConsoleLabEntry(); }
@@ -3478,7 +3499,8 @@ async function handleMessage(e) {
   }
   if (d.type === "veyra:browser-required") {
     const u = canonical(d.pageUrl || t.url);
-    if (u && t.view === "page" && !isRemote(t)) {
+    if (d.reason === "empty-spa-shell" && (e.origin !== API_ORIGIN || e.source !== frameFor(t)?.contentWindow)) return;
+    if (u && t.view === "page" && !isRemote(t) && (!d.sessionId || d.sessionId === t.sessionId)) {
       t.compatFallbackTried ||= new Set();
       const key = `${u}|${String(d.reason || "browser-required")}`;
       if (!t.compatFallbackTried.has(key)) {

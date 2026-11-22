@@ -16,6 +16,8 @@ const prefix = "/VeyraBrowser/web";
 const api = express();
 const calls = [];
 const fixtureUser = { id: "fixture", email: "fixture@example.test" };
+const blankSite = "https://example.test/blank";
+const shortLink = "https://vm.tiktok.com/ZXy42/";
 let vpnMode = "off";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
@@ -32,7 +34,13 @@ api.get("/api/health", (_req, res) => {
 api.post("/api/session", (_req, res) => res.json({ ok: true, sessionId: "browser_fixture_session", timeLimitMs: 300000, guest: true }));
 api.get("/api/vpn/session", (_req, res) => vpnMode === "unknown"
   ? res.status(503).json({ ok: false }) : res.json({ ok: true, connected: vpnMode === "on" }));
-api.get("/api/view", (_req, res) => res.type("html").send("<h1>Fixture website</h1>"));
+api.get("/api/view", (req, res) => {
+  if (req.query.url === blankSite) return res.type("html").send(`<div id="app"></div><script>
+    setTimeout(() => parent.postMessage({type:"veyra:browser-required",reason:"empty-spa-shell",pageUrl:${JSON.stringify(blankSite)},sessionId:"browser_fixture_session"},"*"),250);
+  </script>`);
+  return res.type("html").send("<h1>Fixture website</h1>");
+});
+api.get("/api/acquisition/status", (_req, res) => res.json({ ok: true, chromiumEnabled: false }));
 api.post("/api/search/answer", express.json(), (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   assert.equal(req.body.region, "IN");
@@ -114,16 +122,21 @@ try {
       calls.length = 0;
       const mobile = engine === "webkit";
       const context = await browser.newContext(mobile ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true } : {});
-      let tiktokRequests = 0;
+      let tiktokRequests = 0, tiktokMode = "error";
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
         if (url.hostname === "www.google.co.in") return route.fulfill({ contentType: "text/html", body: "<h1>External search fixture</h1>" });
         if (url.hostname === "www.amazon.in") return route.fulfill({ contentType: "text/html", body: "<h1>External retailer fixture</h1>" });
+        if (url.href === shortLink) return route.fulfill({ contentType: "text/html", body: "<h1>Official share link fixture</h1>" });
         if (url.href === "https://www.tiktok.com/player/v1/6718335390845095173?autoplay=0") {
           tiktokRequests++;
+          if (tiktokMode === "silent") return route.fulfill({ contentType: "text/html", body: `<h1>Silent player fixture</h1>
+            <button onclick="parent.postMessage({'x-tiktok-player':true,type:'onStateChange',value:1},'*')">Play fixture</button>` });
+          const event = tiktokMode === "error" ? { type: "onPlayerError", value: { errorCode: 1001 } }
+            : { type: "onStateChange", value: 1 };
           return route.fulfill({ contentType: "text/html", body: `<h1>TikTok fixture</h1><script>
-            parent.postMessage({type:"onPlayerReady","x-tiktok-player":true}, "*");
+            parent.postMessage(${JSON.stringify({ ...event, "x-tiktok-player": true })}, "*");
           </script>` });
         }
         return route.abort();
@@ -277,8 +290,8 @@ try {
       assert.equal(await page.getByRole("link", { name: "Search YouTube" }).count(), 0);
 
       const post = "https://www.tiktok.com/@scout2015/video/6718335390845095173";
-      const openPost = async () => {
-        await page.locator("#address").fill(post);
+      const openPost = async (url = post) => {
+        await page.locator("#address").fill(url);
         await page.locator("#address").press("Enter");
       };
       const frame = page.frameLocator("#frame-t1");
@@ -294,17 +307,70 @@ try {
       assert.equal(tiktokRequests, 0, "the panel is local until the user clicks");
       assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).getAttribute("href"), post);
       await frame.getByRole("button", { name: "Load TikTok player" }).click();
-      await frame.getByRole("status").getByText("TikTok player ready.", { exact: false }).waitFor();
+      await frame.getByRole("status").getByText("TikTok says this post isn’t available", { exact: false }).waitFor();
       assert.equal(tiktokRequests, 1);
+      await frame.locator("#player iframe").evaluate(el => { el.ownerDocument.defaultView.previousPlayer = el.contentWindow; });
+      tiktokMode = "playing";
+      await frame.getByRole("button", { name: "Retry TikTok player" }).click();
+      await frame.getByText("Playing in the TikTok player.").waitFor();
+      assert.equal(await frame.locator("#playerStatus").evaluate(el => {
+        const w = el.ownerDocument.defaultView;
+        w.dispatchEvent(new w.MessageEvent("message", {
+          source: w.previousPlayer, origin: "https://www.tiktok.com",
+          data: { "x-tiktok-player": true, type: "onPlayerError", value: { errorCode: 1001 } }
+        }));
+        return el.textContent;
+      }), "Playing in the TikTok player.");
+      await frame.getByRole("button", { name: "Close TikTok player" }).click();
+      assert.equal(await frame.locator("#player iframe").count(), 0);
+      assert.equal(tiktokRequests, 2);
+      assert.equal(await frame.getByRole("button", { name: "Load TikTok player" }).evaluate(el => el === el.ownerDocument.activeElement), true);
+      await page.setViewportSize({ width: 375, height: 812 });
+      tiktokMode = "silent";
+      await frame.getByRole("button", { name: "Load TikTok player" }).click();
+      await frame.frameLocator("#player iframe").getByRole("heading", { name: "Silent player fixture" }).waitFor();
+      assert.equal(await frame.locator("body").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      await frame.getByText("TikTok didn’t send a status update.", { exact: false }).waitFor();
+      assert.equal(await frame.getByRole("button", { name: "Retry TikTok player" }).isEnabled(), true);
+      assert.equal(tiktokRequests, 3);
+      await frame.frameLocator("#player iframe").getByRole("button", { name: "Play fixture" }).click();
+      await frame.getByText("Playing in the TikTok player.").waitFor();
       await frame.getByRole("button", { name: "Use Fast Proxy" }).click();
+      await proxyPage.waitFor();
+      const proxyResponse = target => page.waitForResponse(res => res.url().startsWith(`${apiOrigin}/api/view?`) && new URL(res.url()).searchParams.get("url") === target);
+      const [reloaded] = await Promise.all([proxyResponse(post), page.locator('#reloadBtn:not([data-loading="1"])').click()]);
+      assert.equal(reloaded.status(), 200);
       await proxyPage.waitFor();
       for (const mode of ["on", "unknown", "off"]) {
         vpnMode = mode;
         await openPost();
         if (mode === "off") await tiktokPage.waitFor();
         else await proxyPage.waitFor();
-        assert.equal(tiktokRequests, 1);
+        assert.equal(tiktokRequests, 3);
       }
+      await openPost(`${shortLink}?ignored=yes`);
+      await frame.getByRole("heading", { name: "TikTok share link" }).waitFor();
+      assert.equal(await frame.getByRole("button", { name: "Load TikTok player" }).count(), 0);
+      const [original] = await Promise.all([context.waitForEvent("page"), frame.getByRole("link", { name: "Open on TikTok" }).click()]);
+      await original.getByRole("heading", { name: "Official share link fixture" }).waitFor();
+      assert.equal(original.url(), shortLink);
+      assert.equal(await original.evaluate(() => document.referrer), "");
+      await original.close();
+      await frame.getByRole("button", { name: "Use Fast Proxy" }).click();
+      await proxyPage.waitFor();
+      await openPost(blankSite);
+      const blankNotice = page.getByText("This page appears blank in Fast Proxy.", { exact: false });
+      await blankNotice.waitFor();
+      const [retry] = await Promise.all([
+        proxyResponse(blankSite),
+        page.getByRole("button", { name: "Retry in Veyra" }).click()
+      ]);
+      assert.equal(retry.status(), 200);
+      await blankNotice.waitFor();
+      await openPost("https://example.test/normal");
+      await proxyPage.waitFor();
+      await blankNotice.waitFor({ state: "hidden" });
+      if (!mobile) await page.setViewportSize({ width: 1280, height: 900 });
 
       await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
       await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);

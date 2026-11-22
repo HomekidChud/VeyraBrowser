@@ -19,5 +19,11 @@
 ## Surrounding browser shell
 - Open and close a new tab; return to the search with its data intact. Check Calculator, History, and Settings navigation, browser resize at 375px, and the console for regressions.
 
+## TikTok and proxy recovery
+- In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Click **Load TikTok player**, use the official player, close it, and check that it loads again only on request. Check reported errors, silence, a late player event, and the retry on desktop and at 375px.
+- Paste a TikTok share link. It should offer **Open on TikTok** and **Use Fast Proxy**, with no player or automatic third-party request. Check the official link opens a separate tab without a referrer, and that **Use Fast Proxy** replaces the panel in the same Veyra tab.
+- In incognito, with a VPN, or when VPN status is unknown, a TikTok post must not instantiate a direct player. A profile, unrelated site, and unrelated lookalike URLs should continue to use normal browsing.
+- Open a Fast Proxy site that stays blank. If Chromium is disabled, Veyra should keep the page and offer site options with a retry and explicit direct link. A populated site, a different tab, and a stale message after navigation should not get that notice.
+
 ## Playback popup regression
 - In a fixture for an xHamster watch page, click Play repeatedly. Same-video popups (including alternate slugs for the same ID and tracking parameters) and off-site scripted popups must not create tabs. The player remains in the original tab. Links to other videos and ordinary sign-in popups on unrelated sites still work.
