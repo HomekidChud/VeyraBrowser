@@ -4,8 +4,8 @@ export const CATEGORIES = Object.freeze({
   videos: { label: "Videos", icon: "i-search-video", description: "Watch pages and clips from video publishers" },
   news: { label: "News", icon: "i-search-news", description: "Reporting from news publishers" },
   shopping: { label: "Shopping", icon: "i-search-shopping", description: "Marketplace listings and product pages" },
-  research: { label: "Research", icon: "i-search-research", description: "Journal articles indexed by Crossref" },
-  discussions: { label: "Discussions", icon: "i-search-discussions", description: "Community threads from Hacker News" },
+  research: { label: "Research", icon: "i-search-research", description: "Papers and journal articles from scholarly indexes" },
+  discussions: { label: "Discussions", icon: "i-search-discussions", description: "Threads from Hacker News and topic-specific communities" },
   index: { label: "Veyra index", icon: "i-layers", description: "Pages indexed by Veyra" }
 });
 export const SEARCH_REGION = "IN";
@@ -45,6 +45,7 @@ export function posterUrl(value) {
 }
 export function mergeResults(previous, next) {
   const key = row => {
+    if (/^10\.\d{4,9}\/[^\s?#%]{1,500}$/i.test(row.doi || "")) return `doi:${row.doi.toLowerCase()}`;
     try {
       const u = new URL(row.imageUrl || row.canonicalUrl || row.url);
       u.hash = "";
@@ -69,7 +70,13 @@ export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
     "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search", openverse: "Openverse",
-    "verified-videos": "Verified YouTube watch links", "india-storefronts": "Indian retailer listings"
+    "verified-videos": "Verified YouTube watch links", "india-storefronts": "Indian retailer listings",
+    "space-images": "Space image archives", "nasa-library": "NASA Image and Video Library", "research-mix": "Scholarly indexes",
+    "europe-pmc": "Europe PMC", "discussion-mix": "Community search", "stack-exchange": "Stack Exchange",
+    google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", mojeek: "Mojeek", ecosia: "Ecosia", yahoo: "Yahoo",
+    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index",
+    wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", mdn: "MDN Web Docs", github: "GitHub", npm: "npm",
+    "crates-io": "crates.io", "open-library": "Open Library", wikivoyage: "Wikivoyage", wiktionary: "Wiktionary", wikibooks: "Wikibooks"
   };
   return Object.hasOwn(labels, provider) ? labels[provider] : "";
 }
