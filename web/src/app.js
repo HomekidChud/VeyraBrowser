@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=9";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=10";
 import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
@@ -2682,6 +2682,19 @@ function searchDate(value) {
 function matchBadge(score) {
   return `<span class="search-match" title="Estimated relevance to this query, not a probability">${score}% match</span>`;
 }
+const sourceEvidenceCopy = {
+  "catalog-passage": ["Strong", "Veyra found a relevant passage on a selected reference publisher’s site."],
+  "page-passage": ["Moderate", "Veyra opened the source page and found a passage matching this search."],
+  "no-passage": ["Limited", "Veyra opened the page but did not find a readable passage that matched this search."],
+  "indexed-copy": ["Limited", "The snippet comes from a previously crawled copy. Veyra did not recheck the live page."],
+  "excerpt-restricted": ["Not checked", "The publisher restricts search excerpts, so Veyra did not show or rate a passage."],
+  "not-checked": ["Not checked", "The snippet, if available, comes from discovery. Veyra did not verify it against the source page."]
+};
+function sourceEvidence(evidence) {
+  if (!evidence || !Object.hasOwn(sourceEvidenceCopy, evidence.basis)) return "";
+  const [level, explanation] = sourceEvidenceCopy[evidence.basis];
+  return `<details class="search-evidence"><summary>Source evidence: ${level}</summary><p>${explanation} This rating is not a fact-check or an accuracy percentage.</p></details>`;
+}
 function richResult(r, source) {
   const url = resultUrl(r.url);
   if (!url) return "";
@@ -2789,7 +2802,7 @@ function renderSearch() {
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
+      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;

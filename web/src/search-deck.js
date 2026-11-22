@@ -74,7 +74,7 @@ export function providerLabel(provider) {
     "space-images": "Space image archives", "nasa-library": "NASA Image and Video Library", "research-mix": "Scholarly indexes",
     "europe-pmc": "Europe PMC", "discussion-mix": "Community search", "stack-exchange": "Stack Exchange",
     google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", mojeek: "Mojeek", ecosia: "Ecosia", yahoo: "Yahoo",
-    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index",
+    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index", "veyra-crawl": "Veyra crawler",
     wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", mdn: "MDN Web Docs", github: "GitHub", npm: "npm",
     "crates-io": "crates.io", "open-library": "Open Library", wikivoyage: "Wikivoyage", wiktionary: "Wiktionary", wikibooks: "Wikibooks"
   };
