@@ -36,6 +36,7 @@ export function resultUrl(value) {
 }
 export function posterUrl(value) {
   const url = resultUrl(value);
+  if (url === "https://doc.qt.io/qtforpython-6/_images/coroutines.png") return url;
   if (url.startsWith("https://api.openverse.org/")) {
     const u = new URL(url);
     return /^\/v1\/images\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\/thumb\/$/i.test(u.pathname) && !u.search && !u.hash ? url : "";
@@ -70,11 +71,11 @@ export function providerLabel(provider) {
   const labels = {
     brave: "Brave Search", youtube: "YouTube", wikimedia: "Wikimedia Commons", ebay: "eBay", "image-mix": "Image providers and Veyra crawler",
     "google-news-rss": "Google News feed", "web-discovery": "Web discovery", "veyra-crawler": "Veyra crawler", crossref: "Crossref", "hacker-news": "Hacker News", peertube: "PeerTube via Sepia Search", openverse: "Openverse",
-    "verified-videos": "Verified YouTube watch links", "india-storefronts": "Indian retailer listings",
+    "verified-videos": "Verified YouTube watch links", "reference-images": "Publisher reference images", "india-storefronts": "Indian retailer listings",
     "space-images": "Space image archives", "nasa-library": "NASA Image and Video Library", "research-mix": "Scholarly indexes",
     "europe-pmc": "Europe PMC", "discussion-mix": "Community search", "stack-exchange": "Stack Exchange",
     google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", mojeek: "Mojeek", ecosia: "Ecosia", yahoo: "Yahoo",
-    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index", "veyra-crawl": "Veyra crawler",
+    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index", "veyra-crawl": "Veyra crawler", "veyra-reference": "Veyra reference catalog",
     wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", mdn: "MDN Web Docs", github: "GitHub", npm: "npm",
     "crates-io": "crates.io", "open-library": "Open Library", wikivoyage: "Wikivoyage", wiktionary: "Wiktionary", wikibooks: "Wikibooks"
   };

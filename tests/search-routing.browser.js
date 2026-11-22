@@ -18,6 +18,8 @@ const calls = [];
 const fixtureUser = { id: "fixture", email: "fixture@example.test" };
 const blankSite = "https://example.test/blank";
 const shortLink = "https://vm.tiktok.com/ZXy42/";
+const qtDiagram = "https://doc.qt.io/qtforpython-6/_images/coroutines.png";
+const qtSource = "https://doc.qt.io/qtforpython-6/PySide6/QtAsyncio/index.html";
 let vpnMode = "off";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
@@ -64,6 +66,12 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (type === "images" && /^(?:site:doc\.qt\.io )?Python asyncio$/.test(req.query.q)) {
+    return res.json({ provider: "reference-images", status: "ok", results: [{
+      url: qtDiagram, imageUrl: qtDiagram, thumbnail: qtDiagram, sourcePageUrl: qtSource,
+      title: "Python asyncio coroutine flow diagram", source: "The Qt Company", license: "GNU FDL 1.3"
+    }] });
+  }
   if (req.query.q === "dense photos" && type === "images") {
     const indices = Array.from({ length: next ? 25 : 24 }, (_, i) => i + (next ? 23 : 0));
     return res.json({ provider: "wikimedia", status: "ok", nextPage: next ? null : 1, results: indices.map(i => ({
@@ -146,7 +154,7 @@ try {
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
-        if ((url.hostname === "icons.duckduckgo.com" && url.pathname === "/ip3/example.in.ico") ||
+        if (url.href === qtDiagram || (url.hostname === "icons.duckduckgo.com" && url.pathname === "/ip3/example.in.ico") ||
             (url.hostname === "upload.wikimedia.org" && url.pathname !== "/preview-0.jpg")) {
           return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#6b7e91"/></svg>' });
         }
@@ -309,6 +317,15 @@ try {
       await page.locator("#address").fill("veyra://settings");
       await page.locator("#address").press("Enter");
       await page.locator("#view-settings").waitFor();
+
+      await page.goto(`${origin}${prefix}/search/?q=site%3Adoc.qt.io+Python+asyncio&type=images`);
+      await result("Python asyncio coroutine flow diagram").waitFor();
+      await page.waitForFunction(() => document.querySelector("#searchResults .search-card-art img")?.naturalWidth > 0);
+      assert.equal(await page.getByRole("link", { name: /Source page for Python asyncio/ }).getAttribute("href"), qtSource);
+      assert.equal(await result("GNU FDL 1.3").isVisible(), true);
+      await page.goto(`${origin}${prefix}/search/?q=Python+asyncio&type=images&incognito=1`);
+      await result("Python asyncio coroutine flow diagram").waitFor();
+      assert.equal(await page.locator("#searchResults .search-card-art img").count(), 0);
 
       await page.goto(`${origin}${prefix}/search/?q=private%20moon&type=images&incognito=1`);
       await result("images result for private moon").waitFor();

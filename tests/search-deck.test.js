@@ -67,6 +67,16 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(posterUrl(openverseThumb), openverseThumb);
   assert.equal(posterUrl(`${openverseThumb}?full_size=true`), "");
   assert.equal(posterUrl("https://api.openverse.org/v1/images/"), "");
+  const qtImage = "https://doc.qt.io/qtforpython-6/_images/coroutines.png";
+  assert.equal(posterUrl(qtImage), qtImage);
+  assert.equal(posterUrl(`${qtImage}?tracking=1`), "");
+  assert.equal(posterUrl("https://doc.qt.io/qtforpython-6/_images/other.png"), "");
+  for (const path of ["../web/index.html", "../web/browse/index.html"]) {
+    const csp = readFileSync(new URL(path, import.meta.url), "utf8").match(/img-src ([^;]+)/)?.[1].split(/\s+/) || [];
+    assert.ok(csp.includes(qtImage));
+    assert.ok(!csp.includes("https://doc.qt.io"));
+  }
+  assert.equal(providerLabel("veyra-reference"), "Veyra reference catalog");
   for (const host of ["assets.science.nasa.gov", "media.esa.int"]) {
     const image = `https://${host}/photo.jpg`;
     assert.equal(posterUrl(image), image);
