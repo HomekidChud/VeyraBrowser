@@ -28,10 +28,13 @@ assert.equal(withGitHubSignupBookmark(legacy), legacy);
 
 const launcher = JSON.parse(readFileSync(new URL("../launcher-extension/manifest.json", import.meta.url), "utf8"));
 assert.equal(launcher.manifest_version, 3);
-for (const field of ["permissions", "optional_permissions", "host_permissions", "optional_host_permissions", "content_scripts", "background"]) {
+for (const field of ["permissions", "optional_permissions", "host_permissions", "optional_host_permissions", "content_scripts", "background", "externally_connectable"]) {
   assert.equal(launcher[field], undefined, `${field} must not be present`);
 }
 const popup = readFileSync(new URL("../launcher-extension/popup.html", import.meta.url), "utf8");
 assert.doesNotMatch(popup, /<script|javascript:|<form/i);
 assert.match(popup, /https:\/\/accounts\.google\.com\/signup/);
+assert.match(popup, /href="https:\/\/www\.msn\.com\/play" target="_blank" rel="noopener noreferrer"/);
+const downloads = readFileSync(new URL("../web/downloads/index.html", import.meta.url), "utf8");
+assert.ok(downloads.includes(`Launcher v${launcher.version}`), "download page should match the launcher version");
 console.log("Official account destination and permission-free launcher checks passed");
