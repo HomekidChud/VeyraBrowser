@@ -73,7 +73,8 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
     ] });
     return res.json({ provider: "veyra-index", nextOffset: null, results: [{ title: "Final indexed result", url: "https://example.in/archive" }] });
   }
-  const row = { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet." };
+  const row = { title: `${type} result for ${req.query.q}`, url: "https://example.test/fixture", snippet: "Fixture snippet.",
+    ...(type === "web" && paged ? { source: "mdn", providers: ["mdn", "bing"] } : {}) };
   const second = { title: `More ${type} results`, url: "https://example.in/more", snippet: "Another snippet." };
   const results = next ? [row, second] : type === "shopping" ? [
     { ...row, price: { value: "123456.00", currency: "INR" } },
@@ -148,6 +149,7 @@ try {
 
       await page.goto(`${origin}${prefix}/search/?q=India+rail&type=deep`);
       await result("web result for India rail").waitFor();
+      assert.match(await page.locator("#searchResults .r-url").first().textContent(), /MDN Web Docs/);
       assert.equal(new URL(page.url()).searchParams.has("type"), false);
       assert.equal(await page.locator("#searchTabs").getByRole("tab").count(), 8);
       assert.equal(await page.getByRole("tab", { name: "Web" }).getAttribute("aria-selected"), "true");
@@ -267,6 +269,9 @@ try {
       assert.equal(await page.locator("#searchResults img").count(), 0);
       assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
+      await page.goto(`${origin}${prefix}/search/?q=private+web&incognito=1`);
+      await result("web result for private web").waitFor();
+      assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "private web" && call.query.incognito === "1" && call.query.private === "1"));
       await page.goto(`${origin}${prefix}/search/?q=missing+listing&type=videos&incognito=1`);
       await page.getByText("No matching watch pages from Veyra’s sources.").waitFor();
       assert.equal(await page.getByRole("link", { name: "Search YouTube" }).count(), 0);

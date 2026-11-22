@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=8";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=9";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -2339,7 +2339,6 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   renderTabs(); renderActive({ push });
   if (query) runSearch(query, 0, { tab: t });
 }
-const PROVIDER_LABEL = { google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", local: "Veyra index", "veyra-index": "Veyra index", brave: "Brave Search API", wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", none: "" };
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
   const source = searchCategory(t.searchSource), vertical = isVertical(source);
@@ -2375,7 +2374,7 @@ async function runSearch(query, offset = 0, opts = {}) {
       const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.nextProvider || t.searchData?.provider)}${INCOGNITO ? "&incognito=1" : ""}`, { timeoutMs: 11500, signal })
       : source === "web"
-      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(t.searchEngine ? { engine: t.searchEngine } : {}) })}`, { timeoutMs: 20000, signal })
+      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(t.searchEngine ? { engine: t.searchEngine } : {}), ...(INCOGNITO ? { incognito: "1" } : {}) })}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?${new URLSearchParams({ q: query, offset, limit: 10, region: SEARCH_REGION })}`, { signal });
       if (!Array.isArray(data?.results)) throw new ApiError("The server did not return search results.", 0, "API_INVALID_RESPONSE");
       return data;
@@ -2661,9 +2660,9 @@ function renderSearch() {
   }
   const shown = d.results.length, total = source === "index" && !d.siteFilter && d.total != null ? Number(d.total) : shown;
   stat.textContent = `${total.toLocaleString(SEARCH_LOCALE)} ${total === 1 ? "result" : "results"}`;
-  const providers = [...new Set(d.results.map(row => vertical ? providerLabel(row.provider) : PROVIDER_LABEL[row.source]).filter(Boolean))];
+  const providers = [...new Set(d.results.flatMap(row => (vertical ? [row.provider] : [row.source, ...(Array.isArray(row.providers) ? row.providers : [])]).map(providerLabel)).filter(Boolean))];
   const label = source === "index" ? "Veyra index" : providers.length > 1 ? providers.slice(0, 3).join(" + ") + (providers.length > 3 ? " + more" : "")
-    : providers[0] || (vertical ? providerLabel(d.provider) : PROVIDER_LABEL[d.provider] || "");
+    : providers[0] || providerLabel(d.provider);
   const note = source === "shopping" ? "Check the retailer for current prices and stock"
     : web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured" : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
   meta.textContent = [label, note].filter(Boolean).join(" · ");
@@ -2674,7 +2673,8 @@ function renderSearch() {
   const renderRows = rows => vertical ? rows.map(row => richResult(row, source)).join("")
     : rows.map(r => {
       const url = resultUrl(r.url);
-      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || url))}</div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
+      const via = web && providerLabel(r.source);
+      return `<article class="result"><div class="r-url">${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;

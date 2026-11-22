@@ -25,6 +25,8 @@ test("pagination carries category adapter and does not repeat results", () => {
   const canonical = { ...first, canonicalUrl: first.url, providers: ["bing"] };
   assert.deepEqual(mergeResults([canonical], [{ ...canonical, url: `${first.url}?utm_source=other` }]), [canonical]);
   assert.deepEqual(mergeResults([first], [{ url: `${first.url}?utm_source=other&fbclid=123#section` }]), [first]);
+  const paper = { url: "https://doi.org/10.1234/paper", doi: "10.1234/paper" };
+  assert.deepEqual(mergeResults([paper], [{ url: "https://europepmc.org/article/MED/1", doi: "10.1234/PAPER" }]), [paper]);
   const watch = { url: "https://www.youtube.com/watch?v=abcdefghijk&t=42" };
   const other = { url: "https://youtu.be/abcdefghijl" };
   const lookalike = { url: "https://youtube.com.example.org/watch?v=abcdefghijk" };
@@ -56,6 +58,9 @@ test("result URLs, thumbnail allowlist, source labels, and optional prices", () 
   assert.equal(providerLabel("peertube"), "PeerTube via Sepia Search");
   assert.equal(providerLabel("verified-videos"), "Verified YouTube watch links");
   assert.equal(providerLabel("india-storefronts"), "Indian retailer listings");
+  assert.equal(providerLabel("mdn"), "MDN Web Docs");
+  assert.equal(providerLabel("searxng"), "SearXNG");
+  assert.equal(providerLabel("nasa-library"), "NASA Image and Video Library");
   assert.equal(displayPrice(null), "");
   assert.equal(displayPrice({ value: "-1", currency: "INR" }), "");
   assert.equal(displayPrice({ value: "4.50", currency: "GBP" }), "");
