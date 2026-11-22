@@ -23,9 +23,10 @@
   <main>
     <p class="label">Veyra media</p>
     <h1>TikTok player</h1>
-    <p>TikTok controls which posts can be played here. Loading its official player connects directly to TikTok, outside Veyra’s Fast Proxy and VPN.</p>
+    <p id="playerInfo">TikTok controls which posts can be played here. Loading its official player connects directly to TikTok, outside Veyra’s Fast Proxy and VPN.</p>
     <div class="actions">
-      <button id="loadPlayer" type="button" disabled>Load TikTok player</button>
+      <button id="loadPlayer" type="button" hidden disabled>Load TikTok player</button>
+      <button id="closePlayer" type="button" hidden>Close TikTok player</button>
       <button id="tryProxy" type="button" disabled>Use Fast Proxy</button>
       <a id="openOriginal" target="_blank" rel="noopener noreferrer" hidden>Open on TikTok</a>
     </div>
