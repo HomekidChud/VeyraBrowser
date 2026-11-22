@@ -4,7 +4,7 @@
   "private": true,
   "description": "Veyra Browser Android wrapper and static web application.",
   "scripts": {
-    "precheck": "node --test tests/search-deck.test.js tests/search-entry.test.js tests/tiktok-player.test.js tests/media-recovery.test.js",
+    "precheck": "node --test tests/search-deck.test.js tests/search-entry.test.js tests/tiktok-player.test.js tests/media-recovery.test.js tests/qr-open.test.js",
     "build": "node scripts/verify-source.cjs",
     "check": "node scripts/verify-source.cjs && node scripts/verify-console-lab.cjs && node tests/console-traffic.test.cjs && node scripts/verify-extensions.cjs && node tests/source-address.test.js && node tests/frame-escape.test.js && node tests/fast-proxy-fallback.test.js && node tests/youtube-fallback.test.js && node tests/tab-groups-history.test.js && node tests/split-screen.test.js && node tests/device-cast.test.js && node tests/chrome-extensions.test.js && node tests/dev-platform.test.js && node tests/signin-in-proxy.test.cjs && node tests/popup-relay.test.cjs && node tests/incognito-privacy.test.js && node tests/account-navigation.test.js && node tests/admin-entry.test.js && node tests/workspace-layout.test.js && node tests/customization-studio.test.js && node tests/settings-deck.test.js && node tests/vpn-availability.test.js && node --test tests/velocity.test.js tests/remote-frames.test.js tests/shortcuts-workbench.test.js",
     "sync": "npx cap sync android",
