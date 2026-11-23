@@ -2634,12 +2634,20 @@ function aiTurnHTML(turn, index, query, scope, latest) {
 }
 function renderAIAnswer(t) {
   const ai = $("aiAnswer"), query = t.searchQuery, chat = t.searchAnswer;
-  if (ephemeralSession() || !t.searchData?.results?.length) {
+  if (INCOGNITO || !t.searchData?.results?.length) {
     ai.classList.add("hidden"); ai.replaceChildren(); paintedAI = null; return;
   }
+  const access = !auth.user ? "signed-out" : state.session?.ephemeral ? "guest-session" : "ready";
   ai.classList.remove("hidden");
-  if (paintedAI?.tab === t && paintedAI.chat === chat && paintedAI.query === query) return;
-  paintedAI = { tab: t, chat, query };
+  if (paintedAI?.tab === t && paintedAI.chat === chat && paintedAI.query === query && paintedAI.access === access) return;
+  paintedAI = { tab: t, chat, query, access };
+  if (access !== "ready") {
+    const prompt = access === "signed-out"
+      ? '<p class="ai-chat-note">Sign in to get a cited summary or ask about these results.</p><button class="btn ghost sm" type="button" data-auth="login">Sign in to use Veyra AI</button>'
+      : '<p class="ai-chat-note">AI is off in this guest browsing session. Open Veyra in a new browser tab while signed in to use AI.</p>';
+    ai.innerHTML = `<div class="ai-answer-card ai-chat"><div class="ai-chat-head"><h2>Veyra AI</h2></div>${prompt}</div>`;
+    return;
+  }
   const turns = chat?.turns || [], scope = siteScope(query), last = turns.at(-1);
   const prompts = ["What are the key facts?", "Where do the sources disagree?", "What details should I verify?"];
   ai.innerHTML = `<div class="ai-answer-card ai-chat">

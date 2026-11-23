@@ -33,6 +33,7 @@ api.use((req, res, next) => {
 });
 api.get("/api/gate/status", (_req, res) => res.json({ ok: true, gated: false }));
 api.get("/api/auth/me", (_req, res) => res.json({ ok: true, user: fixtureUser }));
+api.post("/api/auth/login", (_req, res) => res.json({ ok: true, token: "preview-test-token", user: fixtureUser }));
 api.post("/api/auth/logout", (_req, res) => res.json({ ok: true }));
 api.get(`${publisherPath}/status`, (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
@@ -443,6 +444,7 @@ try {
 
       await page.goto(`${origin}${prefix}/search/?q=private%20moon&type=images&incognito=1`);
       await result("images result for private moon").waitFor();
+      assert.equal(await page.locator("#aiAnswer").isVisible(), false);
       assert.equal(new URL(page.url()).searchParams.has("q"), false);
       assert.equal(new URL(page.url()).searchParams.get("incognito"), "1");
       assert.ok(calls.some(call => call.path === "/api/search/vertical" && call.query.q === "private moon" && call.query.private === "1"));
@@ -561,10 +563,20 @@ try {
       assert.equal(await tiles.count(), 48, "pagination appends 24 unique image tiles");
       assert.equal(await result("Dense photos 23").count(), 1);
 
-      await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
       await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);
       await result("research result for railway").waitFor();
+      const signInAI = page.getByRole("button", { name: "Sign in to use Veyra AI" });
+      await signInAI.click();
+      await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.locator("#authDialog").waitFor({ state: "hidden" });
+      await result("research result for railway").waitFor();
       assert.ok(!calls.some(call => call.path === "/api/search/answer"));
+      await signInAI.click();
+      await page.locator('#authDialog input[name="email"]').fill(fixtureUser.email);
+      await page.locator('#authDialog input[name="password"]').fill("fixture-only");
+      await page.locator("#authSubmit").click();
+      await page.locator("#authDialog").waitFor({ state: "hidden" });
       const summary = page.getByRole("button", { name: "Summarize sources with AI" });
       assert.equal(await summary.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector("#searchResults")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
       assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
@@ -603,8 +615,8 @@ try {
         const { setAuth } = await import(`${base}/src/core.js?v=8.36.0-workbench`);
         setAuth("", null);
       }, prefix);
-      assert.equal(await page.locator("#aiAnswer").isVisible(), false);
-      assert.equal(await page.locator("#aiAnswer").textContent(), "");
+      await signInAI.waitFor();
+      assert.equal(await page.locator("#aiAnswer .ai-chat-turn").count(), 0);
 
       await page.goto(`${origin}${prefix}/browse/`);
       await openPost("google.com");
