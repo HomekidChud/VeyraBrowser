@@ -6,6 +6,12 @@ import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "
 import { querySuggestions, annotateResultBatch } from "../web/src/search-match.js";
 import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
 import { siteScope } from "../web/src/search-site-scope.js";
+
+test("site scope exposes the topic separately from its operators", () => {
+  assert.equal(siteScope("site:example.com").text, "");
+  assert.equal(siteScope('site:example.com "site:literal" -site:sub.example.com aurora').text, '"site:literal" aurora');
+  assert.equal(siteScope("Why does the Moon have phases?").text, "Why does the Moon have phases?");
+});
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "../web/src/search-privacy.js";
 
 test("search privacy defaults safely and distinguishes scope, host, and result filtering", () => {
