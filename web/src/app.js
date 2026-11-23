@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=13";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=14";
 import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
@@ -2377,7 +2377,7 @@ function loadWebMediaPreview(t, input, domain, scope, lang) {
         t.searchSource !== "web" || t.searchQuery !== input) return;
     preview.batches[category] = mergeResults([], (Array.isArray(data?.results) ? data.results : []).filter(row => {
       if (!resultUrl(row?.url) || (row.canonicalUrl && !scopedUrl(scope, row.canonicalUrl))) return false;
-      if (category === "videos") return scopedUrl(scope, row.url);
+      if (category === "videos") return !!posterUrl(row.thumbnail) && scopedUrl(scope, row.url);
       const page = row.sourcePageUrl ? resultUrl(row.sourcePageUrl) : row.url;
       return !!page && posterUrl(row.thumbnail) && scopedUrl(scope, page);
     })).slice(0, 6);
@@ -2811,7 +2811,9 @@ function renderWebMediaPreview(t) {
   if (!visible) { paintedMedia.delete(box); box.replaceChildren(); return; }
   const old = paintedMedia.get(box);
   if (old?.preview === preview && old.images === batches.images && old.videos === batches.videos) return;
-  const focusCategory = box.contains(document.activeElement) ? document.activeElement.closest("[data-media-section]")?.dataset.mediaSection : "";
+  const focused = document.activeElement;
+  const focusCategory = box.contains(focused) ? focused.closest("[data-media-section]")?.dataset.mediaSection : "";
+  const focusHandoff = focused?.classList.contains("search-media-handoff");
   paintedMedia.set(box, { preview, ...batches });
   box.innerHTML = ["images", "videos"].flatMap(category => {
     const rows = batches[category], { label, icon } = CATEGORIES[category];
@@ -2819,7 +2821,7 @@ function renderWebMediaPreview(t) {
     return [`<section data-media-section="${category}"><div class="search-image-preview-head"><h2>${searchIcon(icon)} ${label}</h2>
       <button type="button" class="search-image-more">See all ${category}</button></div>
       ${rows.length ? `<div class="search-image-preview-grid">${rows.map(row => previewTile(row, category)).join("")}</div>`
-        : `<p class="search-media-empty">No ${category === "images" ? "image previews" : "video results"} from available sources.</p>`}</section>`];
+        : `<p class="search-media-empty">No ${category === "images" ? "image" : "video"} previews from Veyra’s sources.</p>${scopedMediaAnchor(searchEntry(t.searchQuery).query, category)}`}</section>`];
   }).join("");
   for (const section of box.querySelectorAll("[data-media-section]")) {
     const category = section.dataset.mediaSection;
@@ -2828,7 +2830,10 @@ function renderWebMediaPreview(t) {
       selectSearchCategory(category);
       $(`search-tab-${category}`)?.focus({ preventScroll: true });
     };
-    if (category === focusCategory) button.focus({ preventScroll: true });
+    if (category === focusCategory) {
+      const nextFocus = focusHandoff ? section.querySelector(".search-media-handoff") || button : button;
+      nextFocus.focus({ preventScroll: true });
+    }
   }
   wireSearchLinks(box); wireSearchImages(box);
 }
@@ -2838,9 +2843,14 @@ function searchSkeleton(source) {
 function searchEmpty(icon, title, message, button = "") {
   return `<div class="empty search-empty">${searchIcon(icon)}<b>${esc(title)}</b><span>${esc(message)}</span>${button}</div>`;
 }
+function scopedMediaAnchor(query, category) {
+  const link = !INCOGNITO && scopedMediaHandoff(query, category);
+  return link ? `<a class="search-external search-media-handoff" href="${esc(link.url)}" target="_blank" rel="noopener noreferrer" title="Opens a new tab outside Veyra and its VPN">Search ${esc(link.label)} ${searchIcon("i-external")}</a>` : "";
+}
 function searchAlternatives(t, source) {
   const { query } = searchEntry(t.searchQuery);
-  if (INCOGNITO || siteScope(query).active) return "";
+  if (INCOGNITO) return "";
+  if (siteScope(query).active) return scopedMediaAnchor(query, source);
   const links = externalSearchLinks(query, source);
   if (!links.length) return "";
   return `<div class="search-alternatives"><span>Search outside Veyra</span><div>${links.map(({ label, url }) =>
@@ -2930,7 +2940,7 @@ function renderSearch() {
       }
     }
   } else {
-    results.innerHTML = shown ? renderRows(d.results) : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : web && domain ? "No Web pages matched. Check Images or Videos for media from this site." : "Results outside the requested scope are not shown.")
+    results.innerHTML = shown ? renderRows(d.results) : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : web && domain ? "No Web pages matched. Check Images or Videos for media from this site." : "Results outside the requested scope are not shown.", d.siteFilter.invalid ? "" : scopedMediaAnchor(terms, source))
     : searchEmpty(category.icon, `No results for “${t.searchQuery}”`,
       source === "shopping" ? "No matching product listings from Veyra’s sources." :
       source === "videos" ? "No matching watch pages from Veyra’s sources." :

@@ -126,6 +126,16 @@ export function externalSearchLinks(query, source) {
   if (source === "images") return [link("Search Openverse", "https://openverse.org/search/image", "q")];
   return [];
 }
+export function scopedMediaHandoff(query, category) {
+  if (!["images", "videos"].includes(category)) return null;
+  const scope = siteScope(query);
+  if (scope.invalid || !scope.include.length || scope.include.some(domain =>
+    !/\.[a-z][a-z0-9-]*$/.test(domain) || /\.(?:localhost|local|internal|lan)$/.test(domain))) return null;
+  const label = category === "images" ? "Google Images" : "Google Videos";
+  return { label, url: `https://www.google.com/search?${new URLSearchParams({
+    q: query, udm: category === "images" ? "2" : "7"
+  })}` };
+}
 export function displayPrice(price) {
   if (price?.currency !== "INR" || !/^\d{1,12}(?:\.\d{1,2})?$/.test(price.value) || !(Number(price.value) > 0)) return "";
   try { return new Intl.NumberFormat(SEARCH_LOCALE, { style: "currency", currency: "INR" }).format(Number(price.value)); }
