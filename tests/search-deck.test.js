@@ -1,9 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks } from "../web/src/search-deck.js";
+import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
+
+test("scoped media fallback preserves the query without forcing Google settings", () => {
+  const { query } = searchEntry('search:science.nasa.gov "solar winds" & filter=off');
+  for (const [category, mode] of [["images", "2"], ["videos", "7"]]) {
+    const url = new URL(scopedMediaHandoff(query, category).url);
+    assert.equal(url.origin + url.pathname, "https://www.google.com/search");
+    assert.deepEqual([...url.searchParams], [["q", 'site:science.nasa.gov "solar winds" & filter=off'], ["udm", mode]]);
+  }
+  for (const query of ["moon", "-site:nasa.gov moon", "site:localhost.local moon", "site:127.0.0.1 moon", "site:https://nasa.gov/path moon"]) {
+    assert.equal(scopedMediaHandoff(query, "images"), null);
+  }
+  assert.equal(scopedMediaHandoff("site:nasa.gov moon", "web"), null);
+});
 
 test("full-query suggestions handle prefixes, trailing spaces and the old one-word API", () => {
   assert.deepEqual(querySuggestions(["moon", "NASA moon", "NASA mission", "<img>", "mo\non"], "NASA mo", 8), ["NASA moon"]);

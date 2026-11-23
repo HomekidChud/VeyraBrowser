@@ -72,6 +72,16 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (req.query.q === "search:example.com lunar atlas") {
+    return res.json(type === "web" ? { status: "ok", results: [
+      { url: "https://example.com/lunar", title: "Lunar atlas fixture" }
+    ] } : { status: "empty", results: [] });
+  }
+  if (req.query.q === "search:example.com lunar mission") {
+    const video = { url: "https://example.com/lunar-video", title: "Lunar mission video fixture",
+      thumbnail: "https://unapproved.example/poster.jpg" };
+    return res.json(type === "images" ? { status: "empty", results: [] } : { status: "ok", results: [video] });
+  }
   if (req.query.q === "search:nasa.gov") {
     const watch = { url: "https://www.nasa.gov/watch?id=42", title: "NASA watch fixture", thumbnail: "https://upload.wikimedia.org/fixture.jpg", duration: "2:15" };
     const image = { url: "https://upload.wikimedia.org/fixture.jpg", title: "NASA image fixture", sourcePageUrl: watch.url,
@@ -587,6 +597,29 @@ try {
       await result("NASA watch fixture").waitFor();
       assert.equal(await page.locator("#searchInput").inputValue(), "search:nasa.gov");
       assert.equal(await result("Offsite fixture").count(), 0);
+      await page.goto(`${origin}${prefix}/search/?q=search%3Aexample.com+lunar+atlas&type=web`);
+      await result("Lunar atlas fixture").waitFor();
+      for (const [label, mode] of [["Images", "2"], ["Videos", "7"]]) {
+        const handoff = page.locator("#searchImagePreview").getByRole("link", { name: `Search Google ${label}` });
+        await handoff.waitFor();
+        const destination = new URL(await handoff.getAttribute("href"));
+        assert.equal(destination.origin, "https://www.google.com");
+        assert.equal(destination.searchParams.get("q"), "site:example.com lunar atlas");
+        assert.equal(destination.searchParams.get("udm"), mode);
+        assert.equal(await handoff.getAttribute("target"), "_blank");
+        assert.equal(await handoff.getAttribute("rel"), "noopener noreferrer");
+      }
+      await page.getByRole("button", { name: "See all videos" }).click();
+      await page.locator("#searchResults").getByRole("link", { name: "Search Google Videos" }).waitFor();
+      await page.goto(`${origin}${prefix}/search/?q=search%3Aexample.com+lunar+mission&type=web`);
+      await page.locator("#searchImagePreview").getByText("No video previews from Veyra’s sources.").waitFor();
+      assert.equal(await page.locator("#searchImagePreview [data-media-section=videos] img").count(), 0);
+      await page.getByRole("button", { name: "See all videos" }).click();
+      await result("Lunar mission video fixture").waitFor();
+      assert.equal(await page.locator("#searchResults img[src*='unapproved.example']").count(), 0);
+      await page.goto(`${origin}${prefix}/search/?q=search%3Aexample.com+lunar+atlas&type=videos&incognito=1`);
+      await page.getByText("No results within the requested site scope").waitFor();
+      assert.equal(await page.locator(".search-media-handoff").count(), 0);
       calls.length = 0;
       await page.goto(`${origin}${prefix}/search/?q=search%3Anasa.gov&type=web&incognito=1`);
       await result("NASA direct media page").waitFor();

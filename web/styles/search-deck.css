@@ -142,6 +142,7 @@ body.incognito .search-deck {
 .search-image-preview-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--search-caption); }
 .search-image-preview > section + section { margin-top: .6rem; padding-top: .45rem; border-top: 1px solid var(--search-line); }
 .search-media-empty { margin: 0 0 .3rem; color: var(--search-muted); font-size: var(--search-caption); }
+.search-media-handoff { margin-inline-start: 0; color: var(--search-link); text-underline-offset: .2em; }
 .search-result-media { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .6rem; }
 .search-result-media > div { width: 7.25rem; }
 .search-result-media .search-card-art { aspect-ratio: 16 / 9; background: var(--search-field); }
