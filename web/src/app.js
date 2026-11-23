@@ -40,7 +40,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=5";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=6";
 import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -1078,7 +1078,7 @@ function onFrameLoad(t) {
     const current = () => state.tabs.includes(t) && t.view === "page" && t.localPage === "tiktok"
       && t.pageLoad === load && t.url === url && frameFor(t) === frame && localFrameDocument(frame) === doc;
     mountTikTokPlayer(doc, url, {
-      directAllowed: () => current() && directTikTokAllowed() && t.tiktokSession === state.session,
+      directAllowed: () => current() && t.tiktokDirectVerified && directTikTokAllowed() && t.tiktokSession === state.session,
       openProxy: () => { if (current()) void loadInTab(t, url, { trackHistory: false, skipTikTokPlayer: true }); }
     });
     return;
@@ -1808,7 +1808,8 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   const active = activeTab() === t;
   const mediaSession = state.session;
   let youtubeAllowed = !!(loadFrame && !useMediaProxy && !forceBrowser && youtubeEmbedUrl(url) && inlineYouTubeAllowed());
-  let tiktokAllowed = !!(loadFrame && !tiktokProxy && !forceBrowser && tiktokTarget(url) && directTikTokAllowed());
+  const tiktokPanel = !!(loadFrame && !tiktokProxy && !forceBrowser && (settings.runtime || "auto") === "auto" && tiktokTarget(url));
+  let tiktokAllowed = tiktokPanel && directTikTokAllowed();
   if ((tiktokAllowed || youtubeAllowed) && mediaSession) {
     // Resumed sessions can already be protected before the VPN panel has refreshed.
     const vpn = await api(`/api/vpn/session?sid=${encodeURIComponent(mediaSession.id)}`, { timeoutMs: 4500 }).catch(() => null);
@@ -1817,7 +1818,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     youtubeAllowed &&= directVerified && inlineYouTubeAllowed();
     if (!current()) return;
   }
-  const direct = loadFrame && !forceBrowser && localPageKind(url, youtubeAllowed, tiktokAllowed);
+  const direct = loadFrame && !forceBrowser && localPageKind(url, youtubeAllowed, tiktokPanel);
   if (direct) {
     frameFor(t)?.remove();
     if (t.browserSessionId) void stopBrowserSession(t);
@@ -1830,7 +1831,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     if (direct === "youtube") frame.setAttribute("allow", "encrypted-media; fullscreen; picture-in-picture");
     else if (direct === "tiktok") frame.setAttribute("allow", "fullscreen");
     else frame.removeAttribute("allow");
-    if (direct === "tiktok") { t.tiktokSession = mediaSession; frame.src = tiktokPlayerPage(); }
+    if (direct === "tiktok") { t.tiktokSession = mediaSession; t.tiktokDirectVerified = tiktokAllowed; frame.src = tiktokPlayerPage(); }
     else if (direct === "youtube") { t.mediaSession = mediaSession; frame.srcdoc = youtubeFallbackHtml(url); }
     else frame.srcdoc = nowGameMarkup(url);
     if (trackHistory) recordHistory(record?.kind || "page", url, t.title, null);
@@ -2077,10 +2078,14 @@ function showSiteRecovery(t = activeTab(), reason = "") {
   if (!url || activeTab() !== t) return;
   if (showAccountOptions(url)) return;
   const target = new URL(url);
-  const directUrl = t.localPage === "tiktok" ? tiktokTarget(url)?.url || url : url;
+  const tiktok = tiktokTarget(url);
+  const directUrl = tiktok?.url || url;
   dismissSiteRecovery?.(true);
   siteRecoveryFor = { tab: t, load: t.pageLoad, slow: reason === SLOW_PROXY_NOTICE };
-  dismissSiteRecovery = toast([reason, DIRECT_SITE_NOTICE].filter(Boolean).join(" "), {
+  // The local TikTok panel has already checked session privacy. A generic
+  // recovery menu must not expose the direct action that the panel hid.
+  const offerDirect = !tiktok || (t.localPage === "tiktok" && t.tiktokDirectVerified && directTikTokAllowed() && t.tiktokSession === state.session);
+  dismissSiteRecovery = toast([reason, offerDirect ? DIRECT_SITE_NOTICE : "Direct TikTok access is unavailable from this view."].filter(Boolean).join(" "), {
     title: `Site options: ${target.host}`, ms: 0,
     actions: [
       { label: "Retry in Veyra", dismiss: false, onClick: () => {
@@ -2090,7 +2095,11 @@ function showSiteRecovery(t = activeTab(), reason = "") {
         t.compatFallbackTried?.delete(`${t.url}|blank-shell`);
         void reload({ hard: true });
       } },
-      { label: "Open original site", href: directUrl, primary: true }
+      ...(offerDirect ? [{ label: "Open original site", href: directUrl, primary: true }] : tiktok && t.tiktokProxyUrl === url && (settings.runtime || "auto") === "auto" ? [{
+        label: "Return to TikTok options", onClick: () => {
+          if (activeTab() === t && t.view === "page" && originalSiteUrl(t.url) === url) void loadInTab(t, t.url, { trackHistory: false });
+        }
+      }] : [])
     ]
   });
   if (!reason && dismissSiteRecovery) $("toasts")?.querySelector("section:last-child .toast-action")?.focus({ preventScroll: true });
@@ -3806,6 +3815,7 @@ async function handleMessage(e) {
     if (e.origin !== API_ORIGIN) return;
     const source = tabForSource(e.source);
     if (!source || activeTab() !== source || frameFor(source)?.contentWindow !== e.source) return;
+    if (tiktokTarget(source.url)) return; // Direct TikTok actions belong in its checked local panel.
     if (d.type === "veyra:open-direct-ping") { try { e.source?.postMessage?.({ type: "veyra:open-direct-ack" }, API_ORIGIN); } catch {} return; }
     const url = String(d.url || "");
     if (accountDestination(canonical(url))) {

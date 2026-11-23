@@ -45,7 +45,9 @@
 ## TikTok and proxy recovery
 - In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Load it, use its official controls, and close it. Check that a silent iframe does not imply readiness, an unavailable post stays unavailable despite late events, and photo navigation identifies the visible slide.
 - Paste a TikTok share link. It should offer **Open on TikTok** and **Use Fast Proxy**, with no player or automatic third-party request. Check the official link opens a separate tab without a referrer, and that **Use Fast Proxy** replaces the panel in the same Veyra tab.
-- In incognito, with a VPN, or when VPN status is unknown, a TikTok post must not instantiate a direct player. A profile, unrelated site, and unrelated lookalike URLs should continue to use normal browsing.
+- Type `tiktok.com` or select it from search. The local panel must render without contacting TikTok. **Open on TikTok** should explicitly open the official site in a separate tab, with no referrer. **Use Fast Proxy** stays in the Veyra tab, and site options allow returning to the panel.
+- Paste a public creator profile. Click **Load TikTok profile**; verify that the actual creator card and recent posts are visible, then close it. Unrelated sites and lookalike hosts must not be treated as TikTok.
+- In incognito, with a VPN, or when VPN status is unknown, TikTok’s panel must not expose a direct player, profile preview, or direct launch. **Use Fast Proxy** stays in the same privacy mode.
 - Open a Fast Proxy site that stays blank. If Chromium is disabled, Veyra should keep the page and offer site options with a retry and explicit direct link. A populated site, a different tab, and a stale message after navigation should not get that notice.
 
 ## Match scores and social smoke checks

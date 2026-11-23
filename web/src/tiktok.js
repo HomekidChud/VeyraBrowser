@@ -1,6 +1,14 @@
 const PLAYER_ORIGIN = "https://www.tiktok.com";
 const MAIN_HOSTS = ["www.tiktok.com", "tiktok.com", "m.tiktok.com"];
 const SHARE_HOSTS = ["vm.tiktok.com", "vt.tiktok.com"];
+function httpsTikTok(raw) {
+  try {
+    const url = new URL(String(raw));
+    if (url.protocol === "https:" && !url.username && !url.password && !url.port &&
+        (MAIN_HOSTS.includes(url.hostname) || SHARE_HOSTS.includes(url.hostname))) return url;
+  } catch {}
+  return null;
+}
 export function normalizeTikTokHome(raw) {
   try {
     const url = new URL(raw);
@@ -18,31 +26,41 @@ const PLAYER_STATES = new Map([
 ]);
 
 export function publicTikTokPost(raw) {
-  try {
-    const url = new URL(String(raw));
-    if (url.protocol !== "https:" || !MAIN_HOSTS.includes(url.hostname)
-        || url.username || url.password || url.port) return null;
-    const match = /^\/@([A-Za-z0-9_.]{1,32})\/(video|photo)\/([0-9]{15,22})\/?$/.exec(url.pathname);
-    if (!match) return null;
-    const [, user, kind, id] = match;
-    return { url: `${PLAYER_ORIGIN}/@${user}/${kind}/${id}`, player: `${PLAYER_ORIGIN}/player/v1/${id}?autoplay=0` };
-  } catch { return null; }
+  const url = httpsTikTok(raw);
+  if (!url || !MAIN_HOSTS.includes(url.hostname)) return null;
+  const match = /^\/@([A-Za-z0-9_.]{1,32})\/(video|photo)\/([0-9]{15,22})\/?$/.exec(url.pathname);
+  if (!match) return null;
+  const [, user, kind, id] = match;
+  return { url: `${PLAYER_ORIGIN}/@${user}/${kind}/${id}`, player: `${PLAYER_ORIGIN}/player/v1/${id}?autoplay=0` };
 }
 
 export function tiktokTarget(raw) {
   const post = publicTikTokPost(raw);
   if (post) return post;
-  try {
-    const url = new URL(String(raw));
-    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
-    const share = SHARE_HOSTS.includes(url.hostname) ? /^\/[A-Za-z0-9]{3,40}\/?$/ : /^\/t\/[A-Za-z0-9]{3,40}\/?$/;
-    if (![...MAIN_HOSTS, ...SHARE_HOSTS].includes(url.hostname) || !share.test(url.pathname)) return null;
-    return { url: url.origin + url.pathname, player: "" };
-  } catch { return null; }
+  const url = httpsTikTok(raw);
+  if (!url) return null;
+  const separateShareHost = SHARE_HOSTS.includes(url.hostname);
+  const share = separateShareHost ? /^\/[A-Za-z0-9]{3,40}\/?$/ : /^\/t\/[A-Za-z0-9]{3,40}\/?$/;
+  if (share.test(url.pathname)) return { url: url.origin + url.pathname, player: "", kind: "share" };
+  if (separateShareHost) return null;
+  const handle = /^\/@([A-Za-z0-9_.]{1,32})\/?$/.exec(url.pathname)?.[1];
+  if (handle) return { url: `${PLAYER_ORIGIN}/@${handle}`, player: "", kind: "profile", handle };
+  return { url: normalizeTikTokHome(url.href), player: "", kind: "site" };
 }
 
 export function tiktokPlayerPage() {
-  return new URL("../media/tiktok.html?v=3", import.meta.url).href;
+  return new URL("../media/tiktok.html?v=4", import.meta.url).href;
+}
+
+function makeProfileFrame(doc, post) {
+  // Host the creator preview in a TikTok document, not by loading embed.js
+  // as a script on the Veyra origin.
+  const iframe = doc.createElement("iframe");
+  iframe.className = "profile-embed";
+  iframe.title = `TikTok creator profile for @${post.handle}`;
+  iframe.referrerPolicy = "strict-origin-when-cross-origin";
+  iframe.src = `${PLAYER_ORIGIN}/embed/@${post.handle}`;
+  return iframe;
 }
 
 const mounted = new WeakSet();
@@ -52,12 +70,26 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   const stop = doc.querySelector("#closePlayer");
   const proxy = doc.querySelector("#tryProxy");
   const original = doc.querySelector("#openOriginal");
+  const info = doc.querySelector("#playerInfo");
+  const heading = doc.querySelector("h1");
   const container = doc.querySelector("#player");
   const status = doc.querySelector("#playerStatus");
   const view = doc.defaultView;
-  if (!post || !button || !stop || !proxy || !original || !container || !status || !view || mounted.has(doc)) return;
+  if (!post || !button || !stop || !proxy || !original || !info || !heading || !container || !status || !view || mounted.has(doc)) return;
   mounted.add(doc);
   const photo = new URL(post.url).pathname.includes("/photo/");
+  const profile = post.kind === "profile";
+  const loadLabel = profile ? "Load TikTok profile" : photo ? "Load TikTok photo post" : "Load TikTok player";
+  if (profile) {
+    heading.textContent = `TikTok profile: @${post.handle}`;
+    info.textContent = "Load the official creator preview, or open the full profile on TikTok. Both connect directly, outside Veyra’s Fast Proxy and VPN.";
+  } else if (post.kind === "share") {
+    heading.textContent = "TikTok share link";
+    info.textContent = "Open this link on TikTok to let TikTok find the original post. This opens a separate tab outside Veyra’s Fast Proxy and VPN.";
+  } else if (post.kind === "site") {
+    heading.textContent = "TikTok";
+    info.textContent = "The full TikTok site can appear blank in Fast Proxy. Open TikTok in a separate tab for the feed, search and account features. This connects directly, outside Veyra’s Fast Proxy and VPN.";
+  }
   let frame, timer, phase = "idle", proxyPending = false;
   const clearPlayer = () => {
     view.clearTimeout(timer);
@@ -71,7 +103,8 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     clearPlayer();
     button.hidden = true;
     original.hidden = true;
-    status.textContent = "Direct access is unavailable in this session. You can still use Fast Proxy.";
+    info.textContent = "Fast Proxy keeps your current privacy settings, but TikTok may not load through it.";
+    status.textContent = "Direct TikTok access is unavailable in this session.";
   };
   original.href = post.url;
   original.hidden = false;
@@ -87,19 +120,15 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   });
   original.addEventListener("click", event => { if (!directAllowed()) { event.preventDefault(); blockDirect(); } });
   if (!directAllowed()) { blockDirect(); return; }
-  if (!post.player) {
-    doc.querySelector("h1").textContent = "TikTok share link";
-    doc.querySelector("#playerInfo").textContent = "This shortened URL doesn’t contain a post ID. Open it on TikTok to go to the original post, or try it inside Veyra.";
-    status.textContent = "Opening on TikTok connects directly, outside Veyra’s Fast Proxy and VPN.";
-    return;
-  }
+  if (!post.player && !profile) return;
   button.hidden = false;
   button.disabled = false;
-  if (photo) button.textContent = "Load TikTok photo post";
+  button.textContent = loadLabel;
+  if (profile) stop.textContent = "Close TikTok profile";
   stop.addEventListener("click", () => {
     clearPlayer();
-    button.textContent = photo ? "Load TikTok photo post" : "Load TikTok player";
-    status.textContent = "TikTok player closed.";
+    button.textContent = loadLabel;
+    status.textContent = profile ? "TikTok profile preview closed." : "TikTok player closed.";
     button.focus();
   });
   function watchdog(message) {
@@ -112,7 +141,7 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     }, 12000);
   }
   view.addEventListener("message", event => {
-    if (!frame || event.origin !== PLAYER_ORIGIN || event.source !== frame.contentWindow || event.data?.["x-tiktok-player"] !== true) return;
+    if (profile || !frame || event.origin !== PLAYER_ORIGIN || event.source !== frame.contentWindow || event.data?.["x-tiktok-player"] !== true) return;
     const { type, value } = event.data;
     if (!["onPlayerReady", "onPlayerError", "onError", "onStateChange", "onImageChange"].includes(type)) return;
     if (!directAllowed()) { blockDirect(); return; }
@@ -152,9 +181,16 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     if (proxyPending) return;
     if (!directAllowed()) { blockDirect(); return; }
     clearPlayer();
+    stop.hidden = false;
+    if (profile) {
+      frame = makeProfileFrame(doc, post);
+      status.textContent = "If TikTok’s preview doesn’t appear, retry or open the full profile on TikTok.";
+      button.textContent = "Retry TikTok profile";
+      container.replaceChildren(frame);
+      return;
+    }
     button.disabled = true;
     button.textContent = "Retry TikTok player";
-    stop.hidden = false;
     frame = doc.createElement("iframe");
     frame.title = photo ? "Official TikTok photo post" : "Official TikTok player";
     frame.referrerPolicy = "strict-origin-when-cross-origin";

@@ -32,6 +32,39 @@ function fixture() {
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test("TikTok home launches only on demand; blocked sessions expose only Fast Proxy", () => {
+  for (const allow of [true, false]) {
+    const { el, doc } = fixture();
+    let proxy = 0;
+    mountTikTokPlayer(doc, "https://tiktok.com/", { directAllowed: () => allow, openProxy: () => proxy++ });
+    assert.equal(el("h1").textContent, "TikTok");
+    assert.equal(el("#loadPlayer").hidden, true);
+    assert.equal(el("#openOriginal").hidden, !allow);
+    assert.equal(el("#openOriginal").href, "https://www.tiktok.com/");
+    assert.equal(el("#player").children.length, 0);
+    el("#tryProxy").hidden = false;
+    el("#tryProxy").click();
+    el("#tryProxy").click();
+    assert.equal(proxy, 1);
+  }
+});
+
+test("TikTok profile loads and closes an official isolated frame only after a click", () => {
+  const { el, doc, message } = fixture();
+  mountTikTokPlayer(doc, "https://m.tiktok.com/@scout2015/?ignored=yes", { directAllowed: () => true, openProxy() {} });
+  assert.equal(el("h1").textContent, "TikTok profile: @scout2015");
+  assert.equal(el("#player").children.length, 0);
+  el("#loadPlayer").click();
+  const [profile] = el("#player").children;
+  assert.equal(profile.src, "https://www.tiktok.com/embed/@scout2015");
+  assert.match(el("#playerStatus").textContent, /retry or open the full profile/);
+  message(profile.contentWindow, "onPlayerReady");
+  assert.match(el("#playerStatus").textContent, /retry or open the full profile/);
+  el("#closePlayer").click();
+  assert.equal(el("#player").children.length, 0);
+  assert.equal(el("#loadPlayer").textContent, "Load TikTok profile");
+});
+
 test("Watch Desk distinguishes transport failure, approval and denied embeds", async () => {
   const { el, doc } = fixture();
   const player = el("[data-player]"), status = el("[data-player-status]"), action = el("[data-player-action]");
