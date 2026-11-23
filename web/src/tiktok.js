@@ -134,6 +134,7 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy, resolveS
   if (!directAllowed()) { blockDirect(); return; }
   if (post.kind === "share" && resolveShare && openPost) {
     button.hidden = false;
+    button.disabled = false;
     button.textContent = "Find public post";
     view.addEventListener("pagehide", clearPlayer);
     button.addEventListener("click", async () => {
