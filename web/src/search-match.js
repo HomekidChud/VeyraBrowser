@@ -32,9 +32,8 @@ export function resultMatch(row, query, source) {
   const score = .47 * coverage(title) + core * coverage(description) + .07 * coverage(path) + .19 * evidence + (phrase ? .11 : 0);
   return Math.max(1, Math.min(100, Math.round(100 * score)));
 }
-export function rankResultBatch(rows, query, source) {
-  return rows.map(row => ({ ...row, matchPercent: resultMatch(row, query, source) }))
-    .sort((a, b) => b.matchPercent - a.matchPercent);
+export function annotateResultBatch(rows, query, source) {
+  return rows.map(row => ({ ...row, matchPercent: resultMatch(row, query, source) }));
 }
 
 export function querySuggestions(values, typed, limit) {

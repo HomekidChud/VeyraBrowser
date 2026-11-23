@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
-import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
+import { querySuggestions, annotateResultBatch } from "../web/src/search-match.js";
 import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
 import { siteScope } from "../web/src/search-site-scope.js";
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "../web/src/search-privacy.js";
@@ -66,18 +66,21 @@ test("full-query suggestions handle prefixes, trailing spaces and the old one-wo
   assert.deepEqual(querySuggestions(["café locations", "Cafe locations"], "  CAFÉ", 8), ["café locations"]);
 });
 
-test("every visible result has a bounded estimate, and API scores take precedence", () => {
+test("badges are bounded and preserve server order, including fallback estimates", () => {
   const rows = [
     { title: " unrelated", url: "https://example.test/unrelated" },
     { title: "月面 地図", url: "https://example.test/maps" },
     { title: "Low authored title", url: "https://example.test/other", matchPercent: 100 },
     { title: "月面", url: "https://example.test/partial", matchPercent: 120 }
   ];
-  const ranked = rankResultBatch(rows, "site:example.test 月面 地図", "images");
-  assert.deepEqual(ranked.map(row => row.url), [rows[2].url, rows[1].url, rows[3].url, rows[0].url]);
-  assert.equal(ranked[3].matchPercent, 1);
-  assert.ok(ranked.every(row => Number.isInteger(row.matchPercent) && row.matchPercent >= 1 && row.matchPercent <= 100));
+  const annotated = annotateResultBatch(rows, "site:example.test 月面 地図", "images");
+  assert.deepEqual(annotated.map(row => row.url), rows.map(row => row.url));
+  assert.equal(annotated[0].matchPercent, 1);
+  assert.equal(annotated[2].matchPercent, 100);
+  assert.ok(annotated[1].matchPercent > annotated[3].matchPercent);
+  assert.ok(annotated.every(row => Number.isInteger(row.matchPercent) && row.matchPercent >= 1 && row.matchPercent <= 100));
   assert.equal(rows[3].matchPercent, 120);
+  assert.deepEqual(mergeResults(annotated.slice(0, 2), annotated.slice(2)).map(row => row.url), rows.map(row => row.url));
 });
 
 test("category routing preserves the query and upgrades legacy history", () => {
