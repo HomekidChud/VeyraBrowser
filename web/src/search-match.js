@@ -36,6 +36,13 @@ export function annotateResultBatch(rows, query, source) {
   return rows.map(row => ({ ...row, matchPercent: resultMatch(row, query, source) }));
 }
 
+export function matchSignal(row) {
+  if (row?.source === "veyra-navigation" && row.navigation === "official-site") return "Official site";
+  const score = row?.matchPercent;
+  if (!Number.isFinite(score) || score <= 1) return "";
+  return score >= 78 ? "Strong text match" : score >= 48 ? "Partial text match" : "Weak text match";
+}
+
 export function querySuggestions(values, typed, limit) {
   if (!Array.isArray(values)) return [];
   const q = String(typed).trimStart().slice(0, 600), lowered = q.normalize("NFKC").toLowerCase();
