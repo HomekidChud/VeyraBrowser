@@ -40,7 +40,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=6";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=7";
 import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
