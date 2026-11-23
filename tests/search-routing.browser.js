@@ -575,7 +575,7 @@ try {
       await signInAI.click();
       await page.locator('#authDialog input[name="email"]').fill(fixtureUser.email);
       await page.locator('#authDialog input[name="password"]').fill("fixture-only");
-      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await page.locator("#authSubmit").click();
       await page.locator("#authDialog").waitFor({ state: "hidden" });
       const summary = page.getByRole("button", { name: "Summarize sources with AI" });
       assert.equal(await summary.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector("#searchResults")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
