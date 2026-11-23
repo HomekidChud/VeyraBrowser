@@ -23,6 +23,11 @@
 - Start over, change the category or search, open another tab, or sign out during a reply. Follow-ups must not bleed into a different search or account. The current chat shows at most five turns and does not restore after reload.
 - Guest and incognito browsing cannot request AI summaries or follow-ups. Incognito disables external thumbnails and uses local initials instead of requesting favicons. Check the favicon fallback and image pagination when the provider repeats a result or a thumbnail fails.
 
+## Restricted publisher catalog
+- With the catalog disabled, while signed out, or in incognito, search a supported publisher in Web and Videos. No catalog control, protected title or publisher image should appear. Public search and the existing external handoff still work.
+- In a signed-in fixture with the catalog available, use **Verify age**. No protected titles or images should be present before the synthetic bridge returns a valid decision. Try denial, cancel, an unrelated message and a stale response after changing tabs.
+- For a successful fixture, check the visible count, **More publisher results**, same-domain outbound links and **Close publisher results** at narrow and wide viewport sizes. Expiry, sign-out and switching search/category should remove the protected titles; they must not restore on reload. No thumbnails are fetched by this implementation.
+
 ## Surrounding browser shell
 - Open and close a new tab; return to the search with its data intact. Check Calculator, History, and Settings navigation, browser resize at 375px, and the console for regressions.
 

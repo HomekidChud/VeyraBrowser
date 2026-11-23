@@ -15,6 +15,7 @@ import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=14";
 import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
+import { createPublisherSearch } from "./publisher-search.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -864,6 +865,7 @@ function renderConsoleLabEntry() {
 
 export function renderActive({ push = true, replace = false } = {}) {
   const t = activeTab(); if (!t) return;
+  if (t.view !== "search") publisherSearch?.clear();
   if (renderedTab !== t || t.view !== "search") resetSearchSuggestions();
   renderedTab = t;
   if (siteRecoveryFor && (t.view !== "page" || siteRecoveryFor.tab !== t || siteRecoveryFor.load !== t.pageLoad)) {
@@ -2513,6 +2515,7 @@ function stopSearch(t) {
   resetSearchChat(t);
 }
 function syncSearchAuth() {
+  syncPublisherSearch();
   const identity = ephemeralSession() ? "" : auth.token;
   if (identity !== searchAIIdentity || !identity) {
     searchAIIdentity = identity;
@@ -2858,6 +2861,17 @@ function searchAlternatives(t, source) {
   ).join("")}</div></div>`;
 }
 let paintedSearch = null;
+let publisherSearch = null, publisherRevokedToken = "";
+function syncPublisherSearch() {
+  const tab = activeTab();
+  const token = !ephemeralSession() && auth.token !== publisherRevokedToken ? auth.token : "";
+  if (!token || tab?.view !== "search") { publisherSearch?.clear(); return; }
+  const rawQuery = tab.searchQuery, category = searchCategory(tab.searchSource);
+  publisherSearch ||= createPublisherSearch({ panel: $("publisherSearch"), request: api });
+  publisherSearch.show({ tab, rawQuery, category, token,
+    current: () => activeTab() === tab && tab.view === "search" && tab.searchQuery === rawQuery &&
+      searchCategory(tab.searchSource) === category && auth.token === token && publisherRevokedToken !== token && !ephemeralSession() });
+}
 function loadNextSearchPage({ auto = false } = {}) {
   const t = activeTab();
   if (t?.view !== "search" || t.searchLoading || (auto && (t.searchFeedError || t.searchData?.noNew))) return;
@@ -2866,6 +2880,7 @@ function loadNextSearchPage({ auto = false } = {}) {
 }
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
+  syncPublisherSearch();
   const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web";
   const { query: terms, preferGoogle, command, domain } = searchEntry(t.searchQuery);
   if (document.activeElement !== $("searchInput") || $("searchInput").value === "") $("searchInput").value = t.searchQuery;
@@ -4012,6 +4027,14 @@ function wire() {
   });
   window.addEventListener("pageshow", event => {
     if (event.persisted && ephemeralSession()) location.reload();
+    else if (event.persisted) syncPublisherSearch();
+  });
+  window.addEventListener("storage", event => {
+    if (event.key !== null && event.key !== "veyra-auth") return;
+    // A remote tab may be signing out or replacing the current stored session.
+    if (event.newValue && load("veyra-auth", null)?.token === auth.token) return;
+    publisherRevokedToken = auth.token;
+    publisherSearch?.clear();
   });
   $("newTabBtn").onclick = () => newTab();
   $("backBtn").onclick = back; $("forwardBtn").onclick = forward; $("reloadBtn").onclick = () => reload(); $("homeBtn").onclick = goHome;
