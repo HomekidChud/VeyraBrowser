@@ -283,6 +283,11 @@ try {
         if (url.hostname === "www.google.co.in") return route.fulfill({ contentType: "text/html", body: "<h1>External search fixture</h1>" });
         if (url.hostname === "www.amazon.in") return route.fulfill({ contentType: "text/html", body: "<h1>External retailer fixture</h1>" });
         if (url.href === shortLink) return route.fulfill({ contentType: "text/html", body: "<h1>Official share link fixture</h1>" });
+        if (url.href === "https://www.tiktok.com/") return route.fulfill({ contentType: "text/html", body: "<h1>TikTok home fixture</h1>" });
+        if (url.href === "https://www.tiktok.com/embed/@scout2015") {
+          tiktokRequests++;
+          return route.fulfill({ contentType: "text/html", body: "<h1>TikTok creator preview fixture</h1>" });
+        }
         if (url.href === "https://www.tiktok.com/player/v1/6718335390845095173?autoplay=0") {
           tiktokRequests++;
           if (tiktokMode === "silent") return route.fulfill({ contentType: "text/html", body: `<h1>Silent player fixture</h1>
@@ -509,6 +514,10 @@ try {
       const proxyPage = frame.getByRole("heading", { name: "Fixture website" });
       const tiktokPage = frame.getByRole("heading", { name: "TikTok player" });
       await openPost();
+      await tiktokPage.waitFor();
+      await frame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
+      assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).count(), 0);
+      await frame.getByRole("button", { name: "Use Fast Proxy" }).click();
       await proxyPage.waitFor();
       assert.equal(tiktokRequests, 0, "incognito did not reach the official player");
 
@@ -555,10 +564,26 @@ try {
       for (const mode of ["on", "unknown", "off"]) {
         vpnMode = mode;
         await openPost();
-        if (mode === "off") await tiktokPage.waitFor();
-        else await proxyPage.waitFor();
+        await tiktokPage.waitFor();
+        if (mode === "off") await frame.getByRole("link", { name: "Open on TikTok" }).waitFor();
+        else await frame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
         assert.equal(tiktokRequests, 3);
       }
+      await openPost("tiktok.com");
+      await frame.getByRole("heading", { name: "TikTok", exact: true }).waitFor();
+      assert.equal(await frame.locator("#player iframe").count(), 0);
+      const [home] = await Promise.all([context.waitForEvent("page"), frame.getByRole("link", { name: "Open on TikTok" }).click()]);
+      await home.getByRole("heading", { name: "TikTok home fixture" }).waitFor();
+      assert.equal(await home.evaluate(() => document.referrer), "");
+      await home.close();
+      await openPost("https://www.tiktok.com/@scout2015");
+      await frame.getByRole("heading", { name: "TikTok profile: @scout2015" }).waitFor();
+      assert.equal(tiktokRequests, 3);
+      await frame.getByRole("button", { name: "Load TikTok profile" }).click();
+      await frame.frameLocator("#player iframe").getByRole("heading", { name: "TikTok creator preview fixture" }).waitFor();
+      assert.equal(tiktokRequests, 4);
+      await frame.getByRole("button", { name: "Close TikTok profile" }).click();
+      assert.equal(await frame.locator("#player iframe").count(), 0);
       await openPost(`${shortLink}?ignored=yes`);
       await frame.getByRole("heading", { name: "TikTok share link" }).waitFor();
       assert.equal(await frame.getByRole("button", { name: "Load TikTok player" }).count(), 0);
@@ -574,6 +599,10 @@ try {
       await original.close();
       await frame.getByRole("button", { name: "Use Fast Proxy" }).click();
       await proxyPage.waitFor();
+      await page.locator("#siteChip").click();
+      await page.locator("#popover").getByRole("button", { name: "Site options" }).click();
+      await page.getByRole("button", { name: "Return to TikTok options" }).click();
+      await frame.getByRole("heading", { name: "TikTok share link" }).waitFor();
       await openPost(blankSite);
       const blankNotice = page.getByText("This page appears blank in Fast Proxy.", { exact: false });
       await blankNotice.waitFor();
