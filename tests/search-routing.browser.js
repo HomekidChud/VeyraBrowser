@@ -88,6 +88,11 @@ api.get("/api/view", (req, res) => {
   return res.type("html").send("<h1>Fixture website</h1>");
 });
 api.get("/api/acquisition/status", (_req, res) => res.json({ ok: true, chromiumEnabled: false }));
+api.post("/api/media/tiktok/share", express.json(), (req, res) => {
+  assert.deepEqual(req.body, { url: shortLink });
+  assert.equal(req.headers.authorization, undefined);
+  res.json({ state: "resolved", url: "https://m.tiktok.com/@sample/video/6718335390845095173?tracking=fixture" });
+});
 api.post("/api/search/answer", express.json(), (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   assert.equal(req.body.region, "IN");
@@ -111,7 +116,11 @@ api.post("/api/search/answer", express.json(), (req, res) => {
   }
   const reply = () => res.json({ hasAnswer: true,
     answer: query === "railway" ? `This is a cited ${source} overview. [S1]\n\nThis is a second cited paragraph. [S2] [S3]`
-      : `Cited fixture for ${query}. [S1]`, sources, observationId: "obs_abcdefghijabcdefghij" });
+      : `Cited fixture for ${query}. [S1]`, sources, observationId: "obs_abcdefghijabcdefghij",
+    relatedQuestions: query === "railway" ? [
+      { question: "Where does the railway run?", answer: "The railway crosses the valley. [S2]" },
+      { question: "Where can this unverified answer be seen?", answer: "Unsupported fixture. [S9]" }
+    ] : [] });
   if (query === "slow overview" || query === "railway" && source === "news") return setTimeout(reply, 1200);
   return reply();
 });
@@ -607,6 +616,9 @@ try {
       await page.locator("#popover").getByRole("button", { name: "Site options" }).click();
       await page.getByRole("button", { name: "Return to TikTok options" }).click();
       await frame.getByRole("heading", { name: "TikTok share link" }).waitFor();
+      await frame.getByRole("button", { name: "Find public post" }).click();
+      await frame.getByRole("button", { name: "Load TikTok player" }).waitFor();
+      assert.equal(await frame.locator("#openOriginal").getAttribute("href"), "https://www.tiktok.com/@sample/video/6718335390845095173");
       await openPost(blankSite);
       const blankNotice = page.getByText("This page appears blank in Fast Proxy.", { exact: false });
       await blankNotice.waitFor();
@@ -655,6 +667,13 @@ try {
       assert.equal(await overview.locator("form,input,textarea,[data-ai-prompt]").count(), 0);
       assert.equal(await body.locator(":scope > p").count(), 2);
       assert.equal(await body.locator(".ai-source-cite").count(), 3);
+      const related = overview.getByRole("region", { name: "Related questions" });
+      const question = related.getByText("Where does the railway run?", { exact: true });
+      await question.waitFor();
+      assert.equal(await related.locator("details").count(), 1, "reject any unmapped citation in a related answer");
+      assert.equal(await related.getByText("The railway crosses the valley.").isVisible(), false);
+      await question.press("Enter");
+      await related.getByRole("link", { name: "Source Second fixture source" }).waitFor();
       await overview.getByText("A quoted source excerpt.").waitFor();
       const sourcePanel = overview.getByRole("complementary", { name: "Sources" });
       const sourceBox = await sourcePanel.boundingBox(), answerBox = await body.boundingBox();
