@@ -40,7 +40,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=7";
+import { mountTikTokPlayer, resolveSharedTikTokPost, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=8";
 import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -1079,6 +1079,8 @@ function onFrameLoad(t) {
       && t.pageLoad === load && t.url === url && frameFor(t) === frame && localFrameDocument(frame) === doc;
     mountTikTokPlayer(doc, url, {
       directAllowed: () => current() && t.tiktokDirectVerified && directTikTokAllowed() && t.tiktokSession === state.session,
+      resolveShare: (link, signal) => resolveSharedTikTokPost(API, link, signal),
+      openPost: destination => { if (current()) navigate(destination, { tab: t, activate: false }); },
       openProxy: () => { if (current()) void loadInTab(t, url, { trackHistory: false, skipTikTokPlayer: true }); }
     });
     return;
@@ -2655,7 +2657,19 @@ function normalizeOverview(r, scope, privacy) {
     byId.set(row.id, row);
   }
   if (!used.length || used.some(id => !byId.has(id))) return unavailable;
-  return { answer: r.answer, sources: used.map(id => byId.get(id)), caveats: r.caveats, observationId: r.observationId };
+  const related = [];
+  const seen = new Set();
+  for (const row of (Array.isArray(r.relatedQuestions) ? r.relatedQuestions : []).slice(0, 4)) {
+    if (typeof row?.question !== "string" || !/^[^?？\n<>{}\[\]|]{8,140}[?？]$/u.test(row.question) ||
+        typeof row.answer !== "string" || row.answer.length > 350 || unsafeAiText(row.question) || unsafeAiText(row.answer)) continue;
+    const ids = [...row.answer.matchAll(/\[(S\d+)\]/g)].map(m => m[1]);
+    const key = row.question.toLowerCase().trim();
+    if (!ids.length || ids.some(id => !byId.has(id)) || seen.has(key)) continue;
+    seen.add(key);
+    related.push(row);
+  }
+  return { answer: r.answer, sources: used.map(id => byId.get(id)), caveats: r.caveats, observationId: r.observationId,
+    related, neuralExcerpt: r.generatedBy === "neural-grounded-fallback" };
 }
 function overviewSourceHTML(s) {
   const title = s.title || displayUrl(s.url);
@@ -2671,10 +2685,12 @@ function overviewAnswerHTML(r, query) {
   const caveats = (Array.isArray(r.caveats) ? r.caveats : []).filter(p => typeof p === "string" && p && !unsafeAiText(p)).slice(0, 3);
   const feedbackId = /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
   const extra = sources.length - 2;
+  const related = r.related.length ? `<section class="ai-related" aria-label="Related questions"><h3>Related questions</h3>
+    ${r.related.map(row => `<details><summary>${esc(row.question)}</summary><div>${renderAnswerWithSources(row.answer, query, sources)}</div></details>`).join("")}</section>` : "";
   return `<div class="ai-overview-grid">
     <div class="ai-answer-body">${renderAnswerWithSources(r.answer, query, sources)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>
     <aside class="ai-overview-sources" aria-label="Sources"><h3>Sources <span>${sources.length}</span></h3><ul>${sources.slice(0, 2).map(overviewSourceHTML).join("")}</ul>${extra > 0 ? `<details><summary>Show ${extra} more ${extra === 1 ? "source" : "sources"}</summary><ul>${sources.slice(2).map(overviewSourceHTML).join("")}</ul></details>` : ""}</aside>
-    </div>
+    </div>${related}
     ${feedbackId ? `<div class="ai-answer-feedback" data-observation="${esc(feedbackId)}"><span>Was this overview helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful"${r.feedback ? " disabled" : ""}>Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful"${r.feedback ? " disabled" : ""}>Not helpful</button><span class="ai-feedback-status" role="status">${r.feedback ? "Feedback saved." : ""}</span></div>` : ""}`;
 }
 function renderAIAnswer(t) {
@@ -2701,7 +2717,7 @@ function renderAIAnswer(t) {
     : ready ? overviewAnswerHTML(answer, scope.text)
     : `<div class="ai-overview-note"><p role="status">${esc(answer.pending ? "Checking sources for an answer…" : answer.message)}</p>${answer.retry ? '<button class="btn ghost sm" id="searchAIRetry" type="button">Retry overview</button>' : ""}</div>`;
   ai.innerHTML = `<div class="ai-overview${ready ? " ai-overview-ready" : ""}">
-    <header class="ai-overview-head"><span class="ai-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><use href="#i-bolt"/></svg></span><h2>Veyra AI overview</h2>${ready ? '<span class="sr-only" role="status">Cited overview ready.</span>' : ""}</header>
+    <header class="ai-overview-head"><span class="ai-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><use href="#i-bolt"/></svg></span><h2>Veyra AI overview</h2>${ready && answer.neuralExcerpt ? '<span class="ai-extract-label">Source excerpts</span>' : ""}${ready ? '<span class="sr-only" role="status">Cited overview ready.</span>' : ""}</header>
     ${content}</div>`;
   $("searchAIRetry")?.addEventListener("click", () => void fetchAIAnswer(t));
   wireSearchLinks(ai);

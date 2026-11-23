@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeTikTokHome, publicTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
+import { normalizeTikTokHome, publicTikTokPost, resolveSharedTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
+
+test("short-link lookup sends no user credentials or tracking and accepts only a TikTok post", async () => {
+  for (const [url, expected] of [
+    ["https://m.tiktok.com/@artist/photo/1234567890123456/?tracking=private", "https://www.tiktok.com/@artist/photo/1234567890123456"],
+    ["https://example.com/@artist/photo/1234567890123456/", ""],
+    ["https://www.tiktok.com/@artist", ""]
+  ]) {
+    const signal = new AbortController().signal;
+    assert.equal(await resolveSharedTikTokPost("https://api.example", "https://vm.tiktok.com/AbC/?utm_source=tracking", signal, async (endpoint, opts) => {
+      assert.equal(endpoint, "https://api.example/api/media/tiktok/share");
+      assert.equal(opts.credentials, "omit");
+      assert.equal(opts.redirect, "error");
+      assert.equal(opts.signal, signal);
+      assert.deepEqual(opts.headers, { "Content-Type": "application/json" });
+      assert.deepEqual(JSON.parse(opts.body), { url: "https://vm.tiktok.com/AbC/" });
+      return Response.json({ state: "resolved", url });
+    }), expected);
+  }
+});
 
 test("canonicalises only the HTTPS TikTok homepage", () => {
   assert.equal(normalizeTikTokHome("https://tiktok.com/"), "https://www.tiktok.com/");

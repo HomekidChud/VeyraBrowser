@@ -64,7 +64,18 @@ function makeProfileFrame(doc, post) {
 }
 
 const mounted = new WeakSet();
-export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
+export async function resolveSharedTikTokPost(apiOrigin, link, signal, request = fetch) {
+  const share = tiktokTarget(link);
+  if (share?.kind !== "share") return "";
+  const response = await request(`${apiOrigin}/api/media/tiktok/share`, { method: "POST", credentials: "omit",
+    redirect: "error", referrerPolicy: "no-referrer", cache: "no-store", signal,
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: share.url }) });
+  if (!response.ok) return "";
+  const data = await response.json();
+  return data?.state === "resolved" ? publicTikTokPost(data.url)?.url || "" : "";
+}
+
+export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy, resolveShare, openPost }) {
   const post = tiktokTarget(raw);
   const button = doc.querySelector("#loadPlayer");
   const stop = doc.querySelector("#closePlayer");
@@ -85,13 +96,14 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
     info.textContent = "Load the official creator preview, or open the full profile on TikTok. Both connect directly, outside Veyra’s Fast Proxy and VPN.";
   } else if (post.kind === "share") {
     heading.textContent = "TikTok share link";
-    info.textContent = "Open this link on TikTok to let TikTok find the original post. This opens a separate tab outside Veyra’s Fast Proxy and VPN.";
+    info.textContent = "Find the original public post in Veyra, or open the share link directly on TikTok in a separate tab. The TikTok player connects outside Veyra’s Fast Proxy and VPN.";
   } else if (post.kind === "site") {
     heading.textContent = "TikTok";
     info.textContent = "The full TikTok site can appear blank in Fast Proxy. Open TikTok in a separate tab for the feed, search and account features. This connects directly, outside Veyra’s Fast Proxy and VPN.";
   }
-  let frame, timer, phase = "idle", proxyPending = false;
+  let frame, timer, shareRequest, phase = "idle", proxyPending = false;
   const clearPlayer = () => {
+    shareRequest?.abort();
     view.clearTimeout(timer);
     frame?.remove();
     frame = null;
@@ -120,6 +132,29 @@ export function mountTikTokPlayer(doc, raw, { directAllowed, openProxy }) {
   });
   original.addEventListener("click", event => { if (!directAllowed()) { event.preventDefault(); blockDirect(); } });
   if (!directAllowed()) { blockDirect(); return; }
+  if (post.kind === "share" && resolveShare && openPost) {
+    button.hidden = false;
+    button.disabled = false;
+    button.textContent = "Find public post";
+    view.addEventListener("pagehide", clearPlayer);
+    button.addEventListener("click", async () => {
+      if (proxyPending || button.disabled) return;
+      if (!directAllowed()) { blockDirect(); return; }
+      const request = shareRequest = new AbortController();
+      button.disabled = true;
+      status.textContent = "Looking up the original public post…";
+      let destination;
+      try { destination = await resolveShare(post.url, AbortSignal.any([request.signal, AbortSignal.timeout(6500)])); } catch {}
+      if (request.signal.aborted || shareRequest !== request) return;
+      if (!directAllowed()) { blockDirect(); return; }
+      shareRequest = null;
+      if (destination) { status.textContent = "Public post found."; openPost(destination); return; }
+      status.textContent = "Veyra couldn’t find a public post. Retry or open the link on TikTok.";
+      button.textContent = "Retry post lookup";
+      button.disabled = false;
+    });
+    return;
+  }
   if (!post.player && !profile) return;
   button.hidden = false;
   button.disabled = false;
