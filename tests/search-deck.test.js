@@ -39,6 +39,11 @@ test("search commands distinguish a domain lookup, Google preference, and site s
   assert.deepEqual(searchEntry("search:google.com"), { command: true, query: "google.com", preferGoogle: false });
   assert.deepEqual(searchEntry("SEARCH: WWW.GOOGLE.COM 日本語 site:example.org"), { command: true, query: "日本語 site:example.org", preferGoogle: true });
   assert.deepEqual(searchEntry("site:google.com anything"), { command: false, query: "site:google.com anything", preferGoogle: false });
+  assert.deepEqual(searchEntry("search:NASA.GOV"), { command: true, query: "site:nasa.gov", domain: "nasa.gov", preferGoogle: false });
+  assert.deepEqual(searchEntry("search:nasa.gov aurora"), { command: true, query: "site:nasa.gov aurora", domain: "nasa.gov", preferGoogle: false });
+  for (const input of ["search:127.0.0.1", "search:example.com@other.test", "search:example.com/path", "search:foo.local"]) {
+    assert.equal(searchEntry(input).domain, undefined);
+  }
   for (const url of ["https://google.com/", "https://www.google.co.in/search?q=arctic"]) assert.equal(isGoogleWebUrl(url), true);
   for (const url of ["https://google.com.evil.test/", "https://accounts.google.com/", "https://google.com:81/", "https://a@google.com/"]) assert.equal(isGoogleWebUrl(url), false);
 });

@@ -1,3 +1,5 @@
+import { siteScope } from "./search-site-scope.js?v=1";
+
 export const CATEGORIES = Object.freeze({
   web: { label: "Web", icon: "i-globe", description: "Pages from across the web" },
   images: { label: "Images", icon: "i-search-image", description: "Photos, illustrations and visual references" },
@@ -19,6 +21,13 @@ export function searchEntry(value) {
   const command = /^search:\s*/i.exec(input);
   const text = command ? input.slice(command[0].length) : input;
   const google = command && /^(?:www\.)?google\.com\s+(\S[\s\S]*)$/i.exec(text);
+  const site = command && /^([\p{L}\p{M}\p{N}.-]+)(?:\s+([\s\S]+))?$/u.exec(text);
+  if (site && !/^(?:www\.)?google\.com$/i.test(site[1])) {
+    const [domain] = siteScope(`site:${site[1]}`).include;
+    if (domain && /\.[a-z][a-z0-9-]*$/.test(domain) && !/\.(?:localhost|local|internal|lan)$/.test(domain)) {
+      return { query: `site:${domain}${site[2] ? ` ${site[2]}` : ""}`, domain, command: true, preferGoogle: false };
+    }
+  }
   return { query: google ? google[1] : text, command: Boolean(command), preferGoogle: Boolean(google) };
 }
 
@@ -60,6 +69,15 @@ export function posterUrl(value) {
   }
   return url && url.startsWith("https:") && ["imgs.search.brave.com", "upload.wikimedia.org", "thumb.wikimedia.org", "i.ebayimg.com", "i.ytimg.com",
     "images-assets.nasa.gov", "science.nasa.gov", "assets.science.nasa.gov", "www.esa.int", "media.esa.int"].includes(new URL(url).hostname) ? url : "";
+}
+export function mediaPageKey(value) {
+  const url = resultUrl(value);
+  if (!url) return "";
+  const u = new URL(url);
+  u.hash = "";
+  for (const key of [...u.searchParams.keys()]) if (/^utm_|^(?:fbclid|gclid|mc_cid|mc_eid)$/i.test(key)) u.searchParams.delete(key);
+  u.searchParams.sort();
+  return u.href;
 }
 export function mergeResults(previous, next) {
   const key = row => {

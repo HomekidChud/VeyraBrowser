@@ -72,6 +72,17 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (req.query.q === "search:nasa.gov") {
+    const watch = { url: "https://www.nasa.gov/watch?id=42", title: "NASA watch fixture", thumbnail: "https://upload.wikimedia.org/fixture.jpg", duration: "2:15" };
+    const image = { url: "https://upload.wikimedia.org/fixture.jpg", title: "NASA image fixture", sourcePageUrl: watch.url,
+      thumbnail: "https://upload.wikimedia.org/fixture.jpg" };
+    const offsite = { url: "https://nasa.gov.other.test/watch", title: "Offsite fixture", thumbnail: image.thumbnail };
+    return res.json({ status: "ok", results: type === "images" ? [image, offsite] : type === "videos" ? [watch, offsite] :
+      [{ title: "NASA watch page", url: `${watch.url}&utm_source=result` },
+        { url: "https://nasa.gov/research", title: "NASA research page" },
+        { url: "https://nasa.gov/direct", title: "NASA direct media page",
+          media: { type: "videos", thumbnail: "https://imgs.search.brave.com/fixture.jpg", duration: "3:35" } }, offsite] });
+  }
   if (req.query.preview === "1") {
     if (req.query.q === "slow preview") return setTimeout(() => res.json({ results: [{
       title: "Stale thumbnail", url: "https://example.test/stale", thumbnail: "https://upload.wikimedia.org/stale.jpg"
@@ -557,9 +568,33 @@ try {
       await (await scopedPreview).finished();
       await page.locator("#searchStat").getByText("0 results", { exact: true }).waitFor();
       assert.equal(await page.locator("#searchImagePreview").isVisible(), false, "Neither a stale nor an out-of-scope image is shown");
+      await openPost("search:nasa.gov");
+      await result("NASA watch page").waitFor();
+      assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "search:nasa.gov" && !call.query.region));
+      assert.equal(await page.locator("#searchResults .search-match").count(), 0, "a domain without keywords does not show a match percentage");
+      await page.locator("#searchImagePreview").getByRole("heading", { name: "Videos", exact: true }).waitFor();
+      await page.locator("#searchImagePreview").getByRole("link", { name: "NASA image fixture" }).waitFor();
+      await page.locator("#searchImagePreview").getByRole("link", { name: /NASA watch fixture/ }).waitFor();
+      const watchPage = page.locator("#searchResults .result").filter({ hasText: "NASA watch page" });
+      await watchPage.getByRole("link", { name: /Watch video/ }).waitFor();
+      await page.locator("#searchResults").getByRole("link", { name: "Image preview" }).waitFor();
+      const directMedia = page.locator("#searchResults .result").filter({ hasText: "NASA direct media page" });
+      assert.equal(await directMedia.getByText("3:35").textContent(), "3:35");
+      assert.equal(await directMedia.locator(".search-result-media img").getAttribute("src"), "https://imgs.search.brave.com/fixture.jpg");
+      assert.equal(await page.getByText("Offsite fixture").count(), 0);
+      assert.equal(await page.locator("#searchResults .result").filter({ hasText: "NASA research page" }).locator(".search-result-media").count(), 0);
+      await page.getByRole("button", { name: "See all videos" }).click();
+      await result("NASA watch fixture").waitFor();
+      assert.equal(await page.locator("#searchInput").inputValue(), "search:nasa.gov");
+      assert.equal(await result("Offsite fixture").count(), 0);
+      calls.length = 0;
+      await page.goto(`${origin}${prefix}/search/?q=search%3Anasa.gov&type=web&incognito=1`);
+      await result("NASA direct media page").waitFor();
+      assert.equal(await page.locator(".search-result-media").count(), 0);
+      assert.ok(!calls.some(call => call.query.q === "search:nasa.gov" && call.query.preview === "1"));
 
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, search commands, inline images, category pagination, private search, cited chat, and TikTok recovery`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, private search, cited chat, and TikTok recovery`);
     } finally { await browser.close(); }
   }
 } finally {

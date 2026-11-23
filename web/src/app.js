@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=12";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=13";
 import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
@@ -2363,25 +2363,35 @@ export function showSearch(query = "", { tab = null, push = true, pushHist = tru
   stopSearch(t);
   query = query.trim().slice(0, 600);
   const terms = searchEntry(query).query;
-  Object.assign(t, { view: "search", title: terms ? `${terms} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchImages: null, searchCorrection: null, searchAnswer: null, searchLoading: !!terms, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
+  Object.assign(t, { view: "search", title: terms ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchMedia: null, searchCorrection: null, searchAnswer: null, searchLoading: !!terms, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
   if (pushHist) pushTabHistory(t, searchStateKey(query, t.searchSource));
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
   if (query) runSearch(query, 0, { tab: t });
 }
-function loadWebImagePreview(t, input, scope, lang) {
-  const preview = t.searchImages = { rows: [], request: new AbortController() };
+function loadWebMediaPreview(t, input, domain, scope, lang) {
+  const preview = t.searchMedia = { request: new AbortController(), domain, batches: {} };
   const { signal } = preview.request;
-  const params = searchParams(input, "images", lang);
-  params.set("preview", "1");
-  void api(`/api/search/vertical?${params}`, { timeoutMs: 10500, signal }).then(data => {
-    if (signal.aborted || t.searchImages !== preview || !state.tabs.includes(t) || t.view !== "search" ||
+  const apply = (category, data) => {
+    if (signal.aborted || t.searchMedia !== preview || !state.tabs.includes(t) || t.view !== "search" ||
         t.searchSource !== "web" || t.searchQuery !== input) return;
-    preview.rows = mergeResults([], (Array.isArray(data?.results) ? data.results : []).filter(row =>
-      resultUrl(row?.url) && posterUrl(row.thumbnail) && scopedUrl(scope, row.sourcePageUrl || row.url) &&
-      (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)))).slice(0, 6);
-    if (activeTab() === t) renderWebImagePreview(t);
-  }).catch(() => {});
+    preview.batches[category] = mergeResults([], (Array.isArray(data?.results) ? data.results : []).filter(row => {
+      if (!resultUrl(row?.url) || (row.canonicalUrl && !scopedUrl(scope, row.canonicalUrl))) return false;
+      if (category === "videos") return scopedUrl(scope, row.url);
+      const page = row.sourcePageUrl ? resultUrl(row.sourcePageUrl) : row.url;
+      return !!page && posterUrl(row.thumbnail) && scopedUrl(scope, page);
+    })).slice(0, 6);
+    if (activeTab() === t) {
+      renderWebMediaPreview(t);
+      attachWebResultMedia($("searchResults"), t);
+    }
+  };
+  for (const category of domain ? ["images", "videos"] : ["images"]) {
+    const params = searchParams(input, category, lang);
+    params.set("preview", "1");
+    void api(`/api/search/vertical?${params}`, { timeoutMs: 10500, signal })
+      .then(data => apply(category, data), () => apply(category, null));
+  }
 }
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
@@ -2402,14 +2412,14 @@ async function runSearch(query, offset = 0, opts = {}) {
   t.searchFeedError = false;
   if (!offset) {
     resetSearchChat(t);
-    t.searchImages?.request.abort();
-    Object.assign(t, { searchData: null, searchImages: null, searchCorrection: null });
+    t.searchMedia?.request.abort();
+    Object.assign(t, { searchData: null, searchMedia: null, searchCorrection: null });
     if (visible()) $("view-search").scrollTop = 0;
   }
   if (visible()) renderSearch();
   if (!terms) return;
   if (!offset && source === "web" && !INCOGNITO && !scope.invalid) {
-    loadWebImagePreview(t, query, scope, lang);
+    loadWebMediaPreview(t, query, entry.domain, scope, lang);
   }
   try {
     if (!offset && !opts.corrected && !scope.active && !entry.command) {
@@ -2423,7 +2433,8 @@ async function runSearch(query, offset = 0, opts = {}) {
       const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.nextProvider || t.searchData?.provider)}${INCOGNITO ? "&incognito=1" : ""}`, { timeoutMs: 11500, signal })
       : source === "web"
-      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(!entry.command && t.searchEngine ? { engine: t.searchEngine } : {}), ...(INCOGNITO ? { incognito: "1" } : {}) })}`, { timeoutMs: 20000, signal })
+      // An explicit publisher is already a scope; a fixed market can hide its pages.
+      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, feed: "1", ...(!entry.domain ? { region: SEARCH_REGION } : {}), ...(!entry.command && t.searchEngine ? { engine: t.searchEngine } : {}), ...(INCOGNITO ? { incognito: "1" } : {}) })}`, { timeoutMs: 20000, signal })
       : await api(`/api/search?${new URLSearchParams({ q: terms, offset, limit: 10, region: SEARCH_REGION })}`, { signal });
       if (!Array.isArray(data?.results)) throw new ApiError("The server did not return search results.", 0, "API_INVALID_RESPONSE");
       return data;
@@ -2443,7 +2454,9 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rankResultBatch(rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), terms, source);
+    b.results = rankResultBatch(rows.filter(row => resultUrl(row?.url) &&
+      scopedUrl(scope, source === "images" ? row.sourcePageUrl || row.url : row.url) &&
+      (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), terms, source);
     if (!offset && source === "web" && /^(?:www\.)?google\.com$/i.test(terms)) {
       const home = b.results.findIndex(row => resultUrl(row.url) === "https://www.google.com/");
       if (home > 0) b.results.unshift(...b.results.splice(home, 1));
@@ -2496,7 +2509,7 @@ function resetSearchChat(t) {
 }
 function stopSearch(t) {
   t.searchRequest?.abort();
-  t.searchImages?.request.abort();
+  t.searchMedia?.request.abort();
   resetSearchChat(t);
 }
 function syncSearchAuth() {
@@ -2660,7 +2673,7 @@ function submitSearch(query, { corrected = false } = {}) {
   pushTabHistory(t, searchStateKey(q, t.searchSource));
   t.searchQuery = q;
   const terms = searchEntry(q).query;
-  t.title = terms ? `${terms} - Veyra Search` : "Veyra Search";
+  t.title = terms ? `${q} - Veyra Search` : "Veyra Search";
   if (q) recordHistory("search", `veyra://search?q=${encodeURIComponent(q)}`, t.title);
   renderTabs(); updateAddress(); updateNavButtons(); syncRoute();
   void runSearch(q, 0, { corrected });
@@ -2713,8 +2726,8 @@ function sourceEvidence(evidence) {
   const [level, explanation] = sourceEvidenceCopy[evidence.basis];
   return `<details class="search-evidence"><summary>Source evidence: ${level}</summary><p>${explanation} This rating is not a fact-check or an accuracy percentage.</p></details>`;
 }
-function richResult(r, source) {
-  const url = resultUrl(r.url);
+function richResult(r, source, domain, showMatch) {
+  const url = (domain && source === "images" && resultUrl(r.sourcePageUrl)) || resultUrl(r.url);
   if (!url) return "";
   const media = ["images", "videos"].includes(source) || (source === "shopping" && !!posterUrl(r.thumbnail) && !INCOGNITO);
   const poster = !INCOGNITO && posterUrl(r.thumbnail);
@@ -2727,7 +2740,7 @@ function richResult(r, source) {
     <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
       ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
       <div class="search-card-copy"><span class="search-card-source">${source === "images" ? "" : searchSiteIcon(url)}${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
-        <h2>${esc(title)}</h2>${matchBadge(r.matchPercent)}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
+        <h2>${esc(title)}</h2>${showMatch ? matchBadge(r.matchPercent) : ""}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
         ${r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
       </div>
     </a>
@@ -2741,29 +2754,83 @@ function wireSearchImages(container) {
     else img.addEventListener("error", hide, { once: true });
   });
 }
-let paintedWebImages = null;
-function renderWebImagePreview(t) {
-  const box = $("searchImagePreview"), rows = t.searchImages?.rows;
-  const visible = !INCOGNITO && t.searchSource === "web" && !!rows?.length;
+function previewTile(row, category, compact = false) {
+  const url = (category === "images" && resultUrl(row.sourcePageUrl)) || resultUrl(row.url);
+  const title = row.title || (category === "videos" ? "Video result" : "Image result");
+  const poster = posterUrl(row.thumbnail);
+  const label = category === "videos" ? "Watch video" : "Image preview";
+  return `<a class="search-image-preview-tile" href="${esc(url)}" data-open="${esc(url)}" title="${esc(title)}">
+    <span class="search-card-art">${searchIcon(CATEGORIES[category].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${category === "videos" && row.duration ? `<span>${esc(row.duration)}</span>` : ""}</span>
+    <span class="search-image-preview-caption">${esc(compact ? label : title)}</span></a>`;
+}
+function appendResultPreview(article, category, row) {
+  let media = article.querySelector(".search-result-media");
+  if (!media) {
+    media = document.createElement("div");
+    media.className = "search-result-media";
+    article.append(media);
+  }
+  if (media.querySelector(`[data-media-type="${category}"]`)) return;
+  const tile = document.createElement("div");
+  tile.dataset.mediaType = category;
+  tile.innerHTML = previewTile(row, category, true);
+  media.append(tile);
+  wireSearchLinks(tile);
+  wireSearchImages(tile);
+}
+function attachWebResultMedia(container, t) {
+  const preview = t.searchMedia;
+  if (INCOGNITO || t.searchSource !== "web" || !preview?.domain) return;
+  const direct = new Map((t.searchData?.results || []).filter(row => posterUrl(row.media?.thumbnail) &&
+    ["images", "videos"].includes(row.media?.type)).map(row => [mediaPageKey(row.url), row]));
+  const articles = [...container.querySelectorAll(".result")].map(article => [article, mediaPageKey(article.querySelector(".r-title")?.href)]);
+  for (const [article, key] of articles) {
+    const row = direct.get(key);
+    if (row) appendResultPreview(article, row.media.type, { ...row, ...row.media });
+  }
+  for (const [category, rows] of Object.entries(preview.batches)) {
+    if (!rows.length) continue;
+    const byPage = new Map();
+    for (const row of rows) {
+      const key = mediaPageKey(category === "images" ? row.sourcePageUrl || row.url : row.url);
+      if (key && !byPage.has(key)) byPage.set(key, row);
+    }
+    for (const [article, key] of articles) {
+      const row = byPage.get(key);
+      if (row) appendResultPreview(article, category, row);
+    }
+  }
+}
+const paintedMedia = new WeakMap();
+function renderWebMediaPreview(t) {
+  const box = $("searchImagePreview"), preview = t.searchMedia;
+  const batches = preview?.batches || {};
+  const visible = !INCOGNITO && t.searchSource === "web" &&
+    (Object.values(batches).some(rows => rows.length) || (preview?.domain && batches.images && batches.videos));
   box.classList.toggle("hidden", !visible);
-  if (!visible) { paintedWebImages = null; box.replaceChildren(); return; }
-  if (paintedWebImages === rows) return;
-  paintedWebImages = rows;
-  box.innerHTML = `<div class="search-image-preview-head"><h2 id="searchImagePreviewTitle">${searchIcon(CATEGORIES.images.icon)} Images</h2>
-      <button type="button" class="search-image-more">See all images</button></div>
-    <div class="search-image-preview-grid">${rows.map(row => {
-      const url = resultUrl(row.sourcePageUrl) || resultUrl(row.url);
-      const title = row.title || "Image result";
-      return `<a class="search-image-preview-tile" href="${esc(url)}" data-open="${esc(url)}" title="${esc(title)}">
-        <span class="search-card-art">${searchIcon(CATEGORIES.images.icon)}<img src="${esc(posterUrl(row.thumbnail))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>
-        <span class="search-image-preview-caption">${esc(title)}</span></a>`;
-    }).join("")}</div>`;
-  box.querySelector(".search-image-more").onclick = () => {
-    selectSearchCategory("images");
-    $("search-tab-images")?.focus({ preventScroll: true });
-  };
-  wireSearchLinks(box);
-  wireSearchImages(box);
+  if (!visible) { paintedMedia.delete(box); box.replaceChildren(); return; }
+  const old = paintedMedia.get(box);
+  if (old?.preview === preview && old.images === batches.images && old.videos === batches.videos) return;
+  const focusCategory = box.contains(document.activeElement) ? document.activeElement.closest("[data-media-section]")?.dataset.mediaSection : "";
+  paintedMedia.set(box, { preview, ...batches });
+  box.innerHTML = ["images", "videos"].flatMap(category => {
+    const rows = batches[category], { label, icon } = CATEGORIES[category];
+    if (!rows || (!rows.length && !preview.domain)) return [];
+    return [`<section data-media-section="${category}"><div class="search-image-preview-head"><h2>${searchIcon(icon)} ${label}</h2>
+      <button type="button" class="search-image-more">See all ${category}</button></div>
+      ${rows.length ? `<div class="search-image-preview-grid">${rows.map(row => previewTile(row, category)).join("")}</div>`
+        : `<p class="search-media-empty">No ${category === "images" ? "image previews" : "video results"} from available sources.</p>`}</section>`];
+  }).join("");
+  for (const section of box.querySelectorAll("[data-media-section]")) {
+    const category = section.dataset.mediaSection;
+    const button = section.querySelector("button");
+    button.onclick = () => {
+      selectSearchCategory(category);
+      $(`search-tab-${category}`)?.focus({ preventScroll: true });
+    };
+    if (category === focusCategory) button.focus({ preventScroll: true });
+  }
+  wireSearchLinks(box); wireSearchImages(box);
 }
 function searchSkeleton(source) {
   return `<div class="search-skeleton ${isVertical(source) ? "search-skeleton-grid" : ""}" aria-hidden="true">${Array.from({ length: 4 }, () => "<div><span></span><span></span></div>").join("")}</div>`;
@@ -2790,7 +2857,7 @@ function loadNextSearchPage({ auto = false } = {}) {
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
   const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web";
-  const { query: terms, preferGoogle, command } = searchEntry(t.searchQuery);
+  const { query: terms, preferGoogle, command, domain } = searchEntry(t.searchQuery);
   if (document.activeElement !== $("searchInput") || $("searchInput").value === "") $("searchInput").value = t.searchQuery;
   $("searchInput").placeholder = web ? "Search the web" : `Search ${category.label.toLowerCase()}`;
   $("searchInput").setAttribute("aria-label", web ? "Search the web" : `Search ${category.label.toLowerCase()}`);
@@ -2798,7 +2865,7 @@ function renderSearch() {
   $("searchPanel").dataset.category = source;
   renderSearchTabs(t);
   renderSearchCorrection(t);
-  renderWebImagePreview(t);
+  renderWebMediaPreview(t);
   renderAIAnswer(t);
   const results = $("searchResults"), more = $("searchMore"), stat = $("searchStat"), meta = $("searchMeta");
   const feedStatus = $("searchFeedStatus");
@@ -2813,7 +2880,7 @@ function renderSearch() {
     paintedSearch = null;
     stat.textContent = "";
     meta.textContent = "";
-    results.innerHTML = `<div class="search-start"><h2>${web ? "Search the web" : esc(category.label)}</h2><p>${web ? "Search across the web, or choose a category to narrow your results." : `${esc(category.description)}.`}</p>${web || source === "index" ? "<p>Use <code>site:example.com</code> to search one website.</p>" : ""}${web ? "<p>Try <code>search:google.com northern lights</code> to request Google alongside Veyra’s other sources.</p>" : ""}</div>`;
+    results.innerHTML = `<div class="search-start"><h2>${web ? "Search the web" : esc(category.label)}</h2><p>${web ? "Search across the web, or choose a category to narrow your results." : `${esc(category.description)}.`}</p>${web || source === "index" ? "<p>Use <code>search:nasa.gov</code> or <code>search:nasa.gov aurora</code> for results from one website.</p>" : ""}${web ? "<p>Try <code>search:google.com northern lights</code> to request Google alongside Veyra’s other sources.</p>" : ""}</div>`;
     return;
   }
   if (t.searchError || ["unavailable", "cancelled"].includes(d?.status)) {
@@ -2827,7 +2894,7 @@ function renderSearch() {
   if (!d) {
     paintedSearch = null;
     stat.textContent = t.searchConnecting ? "Waiting for the Veyra server…" : "Searching…";
-    meta.textContent = category.description;
+    meta.textContent = domain ? `From ${domain}` : category.description;
     results.innerHTML = searchSkeleton(source);
     return;
   }
@@ -2841,16 +2908,17 @@ function renderSearch() {
     : web && preferGoogle ? (googleIncluded ? "Includes Google results" : "No Google results from the API; showing Veyra sources")
     : web && !command && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured"
     : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
-  meta.textContent = [label, note].filter(Boolean).join(" · ");
+  meta.textContent = [domain ? `From ${domain}` : "", label, note].filter(Boolean).join(" · ");
   const retry = '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>';
+  const showMatch = !domain || terms !== `site:${domain}`;
   const previous = paintedSearch;
   const append = previous?.tab === t && previous.query === t.searchQuery && previous.source === source && previous.rows.length > 0 &&
     previous.rows.length <= d.results.length && previous.rows.every((row, i) => row === d.results[i]);
-  const renderRows = rows => vertical ? rows.map(row => richResult(row, source)).join("")
+  const renderRows = rows => vertical ? rows.map(row => richResult(row, source, domain, showMatch)).join("")
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, terms)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
+      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${showMatch ? matchBadge(r.matchPercent) : ""}${r.snippet ? `<p>${highlightTerms(r.snippet, terms)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;
@@ -2862,7 +2930,7 @@ function renderSearch() {
       }
     }
   } else {
-    results.innerHTML = shown ? renderRows(d.results) : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : "Results outside the requested scope are not shown.")
+    results.innerHTML = shown ? renderRows(d.results) : d.siteFilter ? searchEmpty(category.icon, d.siteFilter.invalid ? "Invalid site filter" : "No results within the requested site scope", d.siteFilter.invalid ? "Use a hostname, for example site:nasa.gov." : web && domain ? "No Web pages matched. Check Images or Videos for media from this site." : "Results outside the requested scope are not shown.")
     : searchEmpty(category.icon, `No results for “${t.searchQuery}”`,
       source === "shopping" ? "No matching product listings from Veyra’s sources." :
       source === "videos" ? "No matching watch pages from Veyra’s sources." :
@@ -2871,11 +2939,13 @@ function renderSearch() {
     wireSearchLinks(results, { learn: !vertical });
     wireSearchImages(results);
   }
+  attachWebResultMedia(results, t);
   paintedSearch = { tab: t, query: t.searchQuery, source, rows: d.results };
   $("searchWeb")?.addEventListener("click", () => selectSearchCategory("web"));
   $("searchRetry")?.addEventListener("click", () => void runSearch(t.searchQuery));
   const canMore = vertical ? Number.isInteger(d.nextPage) : Number.isInteger(d.nextOffset);
   more.classList.toggle("hidden", !canMore);
+  more.textContent = !shown && canMore ? "Check next page" : "More results";
   more.disabled = !!t.searchLoading;
   more.textContent = t.searchLoading ? "Loading more…" : t.searchFeedError ? "Retry more results" : "More results";
   feedStatus.textContent = t.searchLoading ? "Loading more results…" : t.searchFeedError ? "Couldn’t load the next page." :

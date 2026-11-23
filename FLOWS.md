@@ -9,6 +9,7 @@
 ## Google navigation and inline search images
 - With Fast Proxy active, enter `google.com`; the real Google homepage should load when it is available. Enter a query there or navigate to `https://www.google.com/search?q=northern+lights`; Fast Proxy tries the live URL. If Google challenges the proxy instead, use **Search with Veyra**; the original query opens in the same tab. **Open directly in a new tab** still goes to Google.
 - Enter `search:google.com` to get search results with the official homepage first. Enter `search:google.com northern lights` to request Google alongside Veyra sources; the feed states whether Google was included. Check the command survives Back and category changes and that `site:` still filters results.
+- Enter `search:nasa.gov moon landing`. Check that Web, Images and Videos keep the site scope, and that result-level previews appear only next to their matching source pages. Switch categories with **See all images** or **See all videos**. Providers may leave either section empty.
 - Search for `moon`; when safe thumbnail results exist, verify Images appears alongside Web results on desktop and as a scrollable row on a phone. Select a thumbnail to open its source, or choose **See all images** to switch to the full gallery for the same query. Incognito does not request or show this preview.
 
 ## Change category
