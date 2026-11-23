@@ -21,6 +21,10 @@ const shortLink = "https://vm.tiktok.com/ZXy42/";
 const qtDiagram = "https://doc.qt.io/qtforpython-6/_images/coroutines.png";
 const qtSource = "https://doc.qt.io/qtforpython-6/PySide6/QtAsyncio/index.html";
 let vpnMode = "off";
+let publisherMode = "off", publisherVerified = false, publisherPosterRequests = 0;
+const publisherNonce = "a".repeat(43);
+const verifierOrigin = "https://verify.example.test";
+const publisherPath = "/api/search/publisher";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
   if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -29,6 +33,35 @@ api.use((req, res, next) => {
 });
 api.get("/api/gate/status", (_req, res) => res.json({ ok: true, gated: false }));
 api.get("/api/auth/me", (_req, res) => res.json({ ok: true, user: fixtureUser }));
+api.post("/api/auth/logout", (_req, res) => res.json({ ok: true }));
+api.get(`${publisherPath}/status`, (req, res) => {
+  assert.equal(req.headers.authorization, "Bearer preview-test-token");
+  assert.equal(Object.keys(req.query).length, 1);
+  res.status(publisherMode === "off" ? 404 : 200).json({ ok: publisherMode !== "off" });
+});
+api.post(`${publisherPath}/challenge`, (_req, res) => {
+  publisherVerified = false;
+  res.json({ ok: true, nonce: publisherNonce, expiresInSeconds: 600, verificationUrl: `${verifierOrigin}/check?nonce=${publisherNonce}` });
+});
+api.post(`${publisherPath}/verify`, express.json(), (req, res) => {
+  assert.equal(req.headers.authorization, "Bearer preview-test-token");
+  publisherVerified = req.body.assertion === "signed.fixture.accepted";
+  res.status(publisherVerified ? 200 : 403).json({ ok: publisherVerified });
+});
+api.post(publisherPath, express.json(), (req, res) => {
+  assert.ok(publisherVerified, "search must wait for verified decision");
+  assert.equal(req.body.nonce, publisherNonce);
+  assert.equal(req.headers.authorization, "Bearer preview-test-token");
+  const domain = /^search:(pornhub\.com|xvideos\.com)(?: |$)/.exec(req.body.q)?.[1];
+  assert.ok(domain);
+  const { page } = req.body;
+  const results = Array.from({ length: page ? 1 : 24 }, (_item, i) => {
+    const n = page * 24 + i + 1;
+    return { title: `Publisher fixture ${n}`, source: domain, url: `https://www.${domain}/fixture-${n}`,
+      type: "videos", thumbnail: "https://publisher-fixtures.example.test/poster.jpg" };
+  });
+  res.json({ ok: true, domain, page, total: 25, nextPage: page ? null : 1, expiresInMs: publisherMode === "expire" ? 1250 : 60_000, results });
+});
 api.get("/api/health", (_req, res) => {
   if (calls.filter(call => call.path === "/api/health").length === 1) return res.type("html").send("<h1>Starting</h1>");
   res.json({ ok: true });
@@ -70,6 +103,9 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
     return res.type("html").send("<h1>Veyra server page</h1>");
   if (req.query.q === "denied") return res.status(403).json({ ok: false, code: "GATE_REQUIRED", error: "Access is required." });
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
+  if (/^search:(?:pornhub\.com|xvideos\.com)(?: |$)/.test(req.query.q)) {
+    return res.json({ status: "empty", results: [], siteFilter: { active: true } });
+  }
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
   if (req.query.q === "search:example.com lunar atlas") {
@@ -198,6 +234,19 @@ try {
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "127.0.0.1") return route.continue();
+        if (url.hostname === "publisher-fixtures.example.test") { publisherPosterRequests++; return route.abort(); }
+        if (url.origin === verifierOrigin && url.pathname === "/check") {
+          assert.equal(route.request().headers().referer, undefined);
+          return route.fulfill({ contentType: "text/html", body: `<h1>Test-only verification bridge</h1>
+            <button id="wrong">Send unrelated decision</button><button id="ok">Send approved fixture decision</button><button id="deny">Send denied fixture decision</button>
+            <script>
+            for (const [id, nonce, assertion] of ${JSON.stringify([
+              ["wrong", "wrong-nonce", "signed.fixture.accepted"], ["ok", publisherNonce, "signed.fixture.accepted"],
+              ["deny", publisherNonce, "signed.fixture.denied"]
+            ])}) document.getElementById(id).onclick = () =>
+              window.opener.postMessage({type:"veyra:publisher-age-decision",nonce,assertion}, ${JSON.stringify(origin)});
+            </script>` });
+        }
         if (url.href === qtDiagram || (url.hostname === "icons.duckduckgo.com" && url.pathname === "/ip3/example.in.ico") ||
             (url.hostname === "upload.wikimedia.org" && url.pathname !== "/preview-0.jpg")) {
           return route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#6b7e91"/></svg>' });
@@ -626,8 +675,81 @@ try {
       assert.equal(await page.locator(".search-result-media").count(), 0);
       assert.ok(!calls.some(call => call.query.q === "search:nasa.gov" && call.query.preview === "1"));
 
+      const restricted = (domain, type = "videos", privateMode = false) =>
+        `${origin}${prefix}/search/?${new URLSearchParams({ q: `search:${domain} lunar atlas`, type, incognito: privateMode ? "1" : "0" })}`;
+      const panel = page.locator("#publisherSearch");
+      const start = async () => {
+        const opened = page.waitForEvent("popup");
+        await panel.getByRole("button", { name: "Verify age" }).click();
+        const popup = await opened;
+        await popup.getByRole("heading", { name: "Test-only verification bridge" }).waitFor();
+        return popup;
+      };
+      await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
+      await Promise.all([page.waitForResponse(r => r.url().includes(`${publisherPath}/status`)), page.goto(restricted("pornhub.com"))]);
+      assert.equal(await panel.isVisible(), false, "disabled server leaves public search unchanged");
+      publisherMode = "on";
+      await page.goto(restricted("pornhub.com", "web"));
+      await panel.getByRole("button", { name: "Verify age" }).waitFor();
+      assert.equal(await panel.locator("li").count(), 0);
+      let popup = await start();
+      await popup.getByRole("button", { name: "Send unrelated decision" }).click();
+      await page.evaluate(nonce => postMessage({ type: "veyra:publisher-age-decision", nonce, assertion: "signed.fixture.accepted" }, location.origin), publisherNonce);
+      await panel.getByText("Waiting for age verification…").waitFor();
+      assert.ok(!calls.some(call => call.path === `${publisherPath}/verify`));
+      await popup.getByRole("button", { name: "Send denied fixture decision" }).click();
+      await panel.getByText("Age verification did not unlock publisher results.").waitFor();
+      assert.equal(await panel.locator("li").count(), 0);
+      popup = await start();
+      await Promise.all([popup.waitForEvent("close"), panel.getByRole("button", { name: "Cancel" }).click()]);
+      await panel.getByText("Age verification cancelled.").waitFor();
+      assert.ok(popup.isClosed());
+      popup = await start();
+      await popup.getByRole("button", { name: "Send approved fixture decision" }).click();
+      await panel.getByText(/^24 of 25 verified catalog results/).waitFor();
+      const watch = panel.getByRole("link", { name: "Publisher fixture 1", exact: true });
+      assert.equal(await watch.getAttribute("rel"), "noopener noreferrer");
+      assert.equal(await watch.getAttribute("href"), "https://www.pornhub.com/fixture-1");
+      const viewport = await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1);
+      assert.equal(viewport, true, "catalog does not overflow");
+      await panel.getByRole("button", { name: "More publisher results" }).click();
+      await panel.getByText(/^25 of 25 verified catalog results/).waitFor();
+      assert.equal(await panel.locator("li").count(), 25);
+      assert.equal(await panel.locator("img, video, iframe").count(), 0);
+      assert.equal(publisherPosterRequests, 0);
+      await panel.getByRole("button", { name: "Close publisher results" }).click();
+      await panel.getByRole("button", { name: "Verify age" }).waitFor();
+      await page.getByRole("tab", { name: "Videos", exact: true }).click();
+      popup = await start();
+      await Promise.all([popup.waitForEvent("close"), page.getByRole("tab", { name: "Images", exact: true }).click()]);
+      await panel.waitFor({ state: "hidden" });
+      assert.ok(popup.isClosed());
+      assert.equal(await panel.locator("li").count(), 0);
+      publisherMode = "expire";
+      await page.goto(restricted("xvideos.com"));
+      popup = await start();
+      await popup.getByRole("button", { name: "Send approved fixture decision" }).click();
+      await panel.getByText(/^24 of 25 verified catalog results/).waitFor();
+      await panel.getByText(/Age verification expired/).waitFor();
+      assert.equal(await panel.locator("li").count(), 0);
+      publisherMode = "on";
+      popup = await start();
+      await popup.getByRole("button", { name: "Send approved fixture decision" }).click();
+      await panel.getByText(/^24 of 25 verified catalog results/).waitFor();
+      await page.locator("#profileBtn").click();
+      await page.getByRole("button", { name: "Sign out", exact: true }).click();
+      await panel.waitFor({ state: "hidden" });
+      assert.equal(await panel.locator("li").count(), 0);
+      const before = calls.filter(call => call.path.startsWith(publisherPath)).length;
+      for (const privateMode of [false, true]) {
+        await page.goto(restricted("xvideos.com", "videos", privateMode));
+        await page.getByText("No results within the requested site scope").waitFor();
+        assert.equal(await panel.isVisible(), false);
+      }
+      assert.equal(calls.filter(call => call.path.startsWith(publisherPath)).length, before);
+      publisherMode = "off";
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, private search, cited chat, and TikTok recovery`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, private search, cited chat, TikTok recovery, and publisher gate lifecycle`);
     } finally { await browser.close(); }
   }
 } finally {

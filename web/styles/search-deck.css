@@ -123,6 +123,13 @@ body.incognito .search-deck {
 .search-deck .search-results:not(.search-rich-results), .search-deck .ai-answer { max-width: var(--search-column); }
 .search-deck .search-results:not(.search-rich-results) { grid-template-columns: minmax(0, 1fr); }
 .search-deck .search-main { min-width: 0; }
+.search-publisher { max-width: var(--search-column); margin: .45rem 0 .85rem; padding: .75rem 1rem; border: 1px solid var(--search-line); border-radius: .5rem; background: var(--search-field); }
+.search-publisher h2 { margin: 0; font: 650 var(--search-title)/1.25 var(--font-ui); }
+.search-publisher p { margin: .45rem 0; color: var(--search-muted); }
+.search-publisher .btn { margin: .25rem .4rem .25rem 0; min-height: 2.75rem; }
+.search-publisher-list { list-style: none; margin: .5rem 0; padding: 0; }
+.search-publisher-list li { border-top: 1px solid var(--search-line); }
+.search-publisher-list a { display: flex; align-items: center; min-height: 2.75rem; padding-block: .375rem; color: var(--search-link); overflow-wrap: anywhere; }
 .search-image-preview {
   min-width: 0; max-width: var(--search-column); margin: .45rem 0 .85rem; padding: .75rem;
   border: 1px solid var(--search-line); border-radius: .5rem; background: var(--search-field);

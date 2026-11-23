@@ -4,6 +4,25 @@ import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
+import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
+
+test("protected scope, verifier launch and result pages reject unexpected destinations", () => {
+  assert.deepEqual(publisherScope("SEARCH: WWW.XVIDEOS.COM lunar atlas", "videos"),
+    { domain: "xvideos.com", q: "search:xvideos.com lunar atlas" });
+  for (const q of ["site:xvideos.com", "search:xvideos.com.evil.test", "search:xvideos.com -site:xvideos.com",
+    "search:xvideos.com/path", `search:xvideos.com ${"x".repeat(241)}`]) assert.equal(publisherScope(q, "videos"), null);
+  assert.equal(publisherScope("search:xvideos.com", "images"), null);
+  const nonce = "a".repeat(43), verificationUrl = `https://verify.example.test/check?nonce=${nonce}`;
+  assert.equal(publisherLaunch({ nonce, verificationUrl, expiresInSeconds: 600 }).url.origin, "https://verify.example.test");
+  for (const url of [verificationUrl + "&unused=x", verificationUrl.replace("https:", "http:"), verificationUrl.replace(nonce, "wrong")])
+    assert.equal(publisherLaunch({ nonce, verificationUrl: url, expiresInSeconds: 600 }), null);
+  const row = { source: "xvideos.com", type: "videos", title: "Fixture", url: "https://www.xvideos.com/fixture", thumbnail: "https://untrusted.example/poster.jpg" };
+  const data = { ok: true, domain: "xvideos.com", page: 0, total: 25, expiresInMs: 5000, nextPage: 1,
+    results: [row, { ...row, title: "Spoofed", url: "https://www.xvideos.com.evil.test/fixture" }] };
+  assert.deepEqual(publisherPage(data, "xvideos.com", 0), { rows: [{ title: row.title, url: row.url }], total: 25, ttl: 5000, next: 1 });
+  assert.equal(publisherPage(data, "pornhub.com", 0), null);
+  assert.equal(publisherPage({ ...data, expiresInMs: 0 }, "xvideos.com", 0), null);
+});
 
 test("scoped media fallback preserves the query without forcing Google settings", () => {
   const { query } = searchEntry('search:science.nasa.gov "solar winds" & filter=off');
