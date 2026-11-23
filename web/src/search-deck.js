@@ -12,6 +12,23 @@ export const SEARCH_REGION = "IN";
 export const SEARCH_LOCALE = "en-IN";
 export const isVertical = key => Object.hasOwn(CATEGORIES, key) && !["web", "index"].includes(key);
 export const searchCategory = value => Object.hasOwn(CATEGORIES, value) ? value : "web";
+const GOOGLE_WEB_HOST = /^(?:www\.)?google\.(?:com|co\.uk|co\.in)$/i;
+
+export function searchEntry(value) {
+  const input = String(value || "").trim();
+  const command = /^search:\s*/i.exec(input);
+  const text = command ? input.slice(command[0].length) : input;
+  const google = command && /^(?:www\.)?google\.com\s+(\S[\s\S]*)$/i.exec(text);
+  return { query: google ? google[1] : text, command: Boolean(command), preferGoogle: Boolean(google) };
+}
+
+export function isGoogleWebUrl(value) {
+  try {
+    const u = new URL(value);
+    return /^https?:$/.test(u.protocol) && !u.username && !u.password && !u.port && GOOGLE_WEB_HOST.test(u.hostname) &&
+      /^\/(?:search|webhp)?$/.test(u.pathname);
+  } catch { return false; }
+}
 export const searchStateKey = (query, category) => `veyra:search-v2:${JSON.stringify([query, searchCategory(category)])}`;
 export function readSearchState(value) {
   if (value.startsWith("veyra:search:")) return { query: value.slice("veyra:search:".length) };
@@ -75,7 +92,7 @@ export function providerLabel(provider) {
     "space-images": "Space image archives", "nasa-library": "NASA Image and Video Library", "research-mix": "Scholarly indexes",
     "europe-pmc": "Europe PMC", "discussion-mix": "Community search", "stack-exchange": "Stack Exchange",
     google: "Google API", duckduckgo: "DuckDuckGo", bing: "Bing", mojeek: "Mojeek", ecosia: "Ecosia", yahoo: "Yahoo",
-    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index", "veyra-crawl": "Veyra crawler", "veyra-reference": "Veyra reference catalog",
+    startpage: "Startpage", searxng: "SearXNG", local: "Veyra index", "veyra-index": "Veyra index", "veyra-crawl": "Veyra crawler", "veyra-reference": "Veyra reference catalog", "veyra-navigation": "Website",
     wikipedia: "Wikipedia", stackoverflow: "Stack Overflow", mdn: "MDN Web Docs", github: "GitHub", npm: "npm",
     "crates-io": "crates.io", "open-library": "Open Library", wikivoyage: "Wikivoyage", wiktionary: "Wiktionary", wikibooks: "Wikibooks"
   };

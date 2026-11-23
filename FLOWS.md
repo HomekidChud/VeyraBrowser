@@ -1,10 +1,15 @@
 # Veyra Search main flows
 
 ## Start a search
-- From New Tab or the address bar, enter `Indian Railways`; the active Veyra tab shows its own Search form and a simple list of links, domains and descriptions. The Web tab has no preview panels, does not request the all-category feed and does not request summaries automatically.
+- From New Tab or the address bar, enter `Indian Railways`; the active Veyra tab shows the larger Search form and a list of links, domains and descriptions. Optional image previews load independently; Web does not request the all-category feed or request summaries automatically.
 - Submit a different query from that form, accept a spelling correction when offered, and use More results if available. Confirm a new or restored tab retains its own results, category and answer.
 - Open or reload `/search/?q=moon&type=images` under the app base, then try the same link with the legacy Pages prefix (without `/web`). Both should display Images for `moon`, not the landing or server health page.
 - In a fresh guest or incognito window, search before opening a website. A search should work without creating a browsing session, and an unavailable server should leave the query in the tab with a retry action. Incognito must not put a new query in the address.
+
+## Google navigation and inline search images
+- With Fast Proxy active, enter `google.com`; the real Google homepage should load when it is available. Enter a query there or navigate to `https://www.google.com/search?q=northern+lights`; Fast Proxy tries the live URL. If Google challenges the proxy instead, use **Search with Veyra**; the original query opens in the same tab. **Open directly in a new tab** still goes to Google.
+- Enter `search:google.com` to get search results with the official homepage first. Enter `search:google.com northern lights` to request Google alongside Veyra sources; the feed states whether Google was included. Check the command survives Back and category changes and that `site:` still filters results.
+- Search for `moon`; when safe thumbnail results exist, verify Images appears alongside Web results on desktop and as a scrollable row on a phone. Select a thumbnail to open its source, or choose **See all images** to switch to the full gallery for the same query. Incognito does not request or show this preview.
 
 ## Change category
 - Use Web, Images, Videos, News, Shopping, Research, Discussions or Veyra index. Check rich cards, attributed sources, pagination, retry/empty states and site filtering.

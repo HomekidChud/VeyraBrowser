@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks } from "../web/src/search-deck.js";
+import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
 
@@ -33,6 +33,14 @@ test("category routing preserves the query and upgrades legacy history", () => {
   assert.deepEqual(readSearchState(`veyra:search-v2:${JSON.stringify(["日本語 site:example.com", "deep"])}`), { query: "日本語 site:example.com", source: "web" });
   assert.deepEqual(readSearchState("veyra:search:old history"), { query: "old history" });
   assert.equal(readSearchState("veyra:search-v2:invalid"), null);
+});
+
+test("search commands distinguish a domain lookup, Google preference, and site scoping", () => {
+  assert.deepEqual(searchEntry("search:google.com"), { command: true, query: "google.com", preferGoogle: false });
+  assert.deepEqual(searchEntry("SEARCH: WWW.GOOGLE.COM 日本語 site:example.org"), { command: true, query: "日本語 site:example.org", preferGoogle: true });
+  assert.deepEqual(searchEntry("site:google.com anything"), { command: false, query: "site:google.com anything", preferGoogle: false });
+  for (const url of ["https://google.com/", "https://www.google.co.in/search?q=arctic"]) assert.equal(isGoogleWebUrl(url), true);
+  for (const url of ["https://google.com.evil.test/", "https://accounts.google.com/", "https://google.com:81/", "https://a@google.com/"]) assert.equal(isGoogleWebUrl(url), false);
 });
 
 test("pagination carries category adapter and does not repeat results", () => {

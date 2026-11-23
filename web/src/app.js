@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=11";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks } from "./search-deck.js?v=12";
 import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
@@ -614,7 +614,7 @@ export function closeTab(id, { silent = false } = {}) {
   if (!silent) hooks.playStudioSound?.("close");
   if (t.view === "page" && t.url) { state.closed.push({ url: t.url, title: t.title, index: idx }); if (state.closed.length > 25) state.closed.shift(); }
   else if (t.view !== "newtab") state.closed.push({ view: t.view, title: t.title, index: idx, section: t.section, ...(t.view === "search" ? { searchQuery: t.searchQuery, searchSource: t.searchSource } : {}) });
-  t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
+  stopSearch(t);
   teardownTab(t); hooks.dt?.onTabClosed(t);
 
   teardownPopupLinks(t);
@@ -696,7 +696,7 @@ function applyRoute() {
     const fallback = routeUrl("/browse");
     try { history.replaceState({ veyra: true }, "", fallback); } catch {}
     if (t.view === "page") teardownTab(t);
-    else if (t.view === "search") resetSearchChat(t);
+    else if (t.view === "search") stopSearch(t);
     t.view = "newtab"; t.section = ""; t.url = ""; t.favicon = ""; t.loading = false;
     t.browserSessionId = ""; t.jobId = null; t.done = true; t.browserMode = "FAST_PROXY";
     renderTabs(); renderActive({ push: false });
@@ -746,7 +746,7 @@ export function openInternal(view, { tab = null, push = true, section = "", calc
   }
   if (["resources", "links"].includes(view) && !t.sourceTabId) { const src = state.tabs.find(x => x.view === "page" && x.url && x !== t); t.sourceTabId = src?.id || null; }
   if (t.view === "page") teardownTab(t);
-  else if (t.view === "search") resetSearchChat(t);
+  else if (t.view === "search") stopSearch(t);
   else if (t.view === "cast" && view !== "cast") hooks.cleanupCast?.();
   t.view = view; t.section = view === "settings" ? String(section || "") : section || ""; t.title = INTERNAL[view].title; t.url = ""; t.favicon = ""; t.loading = false; t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
   if (view === "calculator" && calc) t.calcExpression = calc;
@@ -1503,7 +1503,7 @@ export async function endSession(reason = "timer") {
     const pageTabs = ephemeral ? state.tabs : state.tabs.filter(t => t.view === "page");
     const restoreUrls = ephemeral ? [] : [...new Set(pageTabs.map(t => t.url).filter(u => /^https?:\/\//.test(u)))];
     for (const t of pageTabs) {
-      t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
+      stopSearch(t);
       teardownTab(t); hooks.dt?.onTabClosed(t);
     }
     state.tabs = ephemeral ? [] : state.tabs.filter(t => t.view !== "page");
@@ -1597,6 +1597,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
   if (r.kind === "unsupported") { toast("Veyra only opens http and https addresses", { kind: "warn" }); return; }
   if (r.kind === "calc") { openInternal("calculator", { tab, calc: r.expression, push }); return; }
   if (r.kind === "search") {
+    if (searchEntry(r.query).command) return showSearch(r.query, { tab, push, source: "web" });
     const ext = engineUrl(r.query);
     if (ext) return navigate(ext, { tab, push, activate, record: { kind: "search", title: `${r.query} - ${engineName()}` } });
     return showSearch(r.query, { tab, push });
@@ -1608,7 +1609,7 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
   if (interceptAccount(url, (tab || activeTab())?.url)) { updateAddress(); return; }
   url = normalizeYouTubeUrl(url);
   let t = tab || activeTab(); if (!t) return;
-  if (t.view !== "page") { if (t.view === "search") resetSearchChat(t); t.view = "page"; t.title = hostOf(url) || "Loading"; }
+  if (t.view !== "page") { if (t.view === "search") stopSearch(t); t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
   if (pushHist) pushTabHistory(t, url);
   if (!activate && t !== activeTab() && !frameFor(t) && !t.popupOf && t.browserMode === "FAST_PROXY"
@@ -1644,7 +1645,7 @@ function desiredStrategy(url) {
   return { key: "auto", proxy: true, crawler: true, browser: false, race: false, auto: true };
 }
 export function isGoogleSearchUrl(url) {
-  try { const u = new URL(url); return /(^|\.)google\.[a-z.]+$/i.test(u.hostname) && /^\/(search|webhp)?$/.test(u.pathname) && u.searchParams.has("q"); } catch { return false; }
+  return isGoogleWebUrl(url) && Boolean(new URL(url).searchParams.get("q")?.trim());
 }
 
 function hostNeedsRealBrowser(url) {
@@ -1681,9 +1682,9 @@ function resolveStrategy(url) {
     return { key: "browser", proxy: false, crawler: false, browser: true, race: false, forceBrowserHost: true };
   }
 
-  if (isGoogleSearchUrl(url) && String(settings.runtime || "auto") !== "browser") {
-    return { key: "google-search-fallback", proxy: false, crawler: false, browser: false, race: false, googleSearchFallback: true };
-  }
+  // Let the public Google homepage and search navigate normally through Fast
+  // Proxy. Do not pre-empt a usable Google response or warm it via the crawler.
+  if (base.auto && isGoogleWebUrl(url)) return { ...base, crawler: false };
 
   if (hostNeedsRealBrowser(url) && browserFallbackAllowed()) {
     return { key: "combined", proxy: true, crawler: false, browser: true, race: true, auto: true, forceBrowserHost: true };
@@ -1749,10 +1750,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
-  if (!forceBrowser && resolveStrategy(url).googleSearchFallback) {
-    showSearch(new URL(url).searchParams.get("q") || "", { tab: t, push: false, pushHist: false, source: "web", engine: "google" });
-    return;
-  }
   resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
   t.pendingProxyNotice = null;
@@ -1994,15 +1991,6 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
     } catch (e) {
       if (e.code === "SESSION_EXPIRED") return;
       if (!current()) return;
-      if (strategy.google) {
-
-        addLog("info", `Google via Chromium unavailable (${e.message}); showing Veyra web results.`);
-        if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
-        t.browserMode = "FAST_PROXY"; t.browserSessionId = "";
-        let q = ""; try { q = new URL(url).searchParams.get("q") || ""; } catch {}
-        showSearch(q, { tab: t, push: activeTab() === t, pushHist: false, source: "web", engine: "google" });
-        return;
-      }
       if (strategy.forceBrowserHost) {
         addLog("warn", `Required Chromium path unavailable for ${hostOf(url)}: ${e.message}`);
         if (t.browserSessionId) stopBrowserSession(t).catch(() => {});
@@ -2337,7 +2325,7 @@ export async function stopLoad() {
   try { frameFor(t)?.contentWindow?.stop?.(); } catch {}
   setLoading(false); toast("Stopped loading");
 }
-export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); else if (t.view === "search") resetSearchChat(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
+export function goHome() { const t = activeTab(); if (!t) return; if (settings.homepage) return go(settings.homepage); if (t.view === "page") teardownTab(t); else if (t.view === "search") stopSearch(t); Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", browserMode: "FAST_PROXY", browserSessionId: "", loading: false, renderWinner: "", loadStrategy: settings.runtime || "auto" }); pushTabHistory(t, "veyra:newtab"); renderTabs(); renderActive(); }
 export function pageCommand(type, payload = {}, t = activeTab()) {
   const f = frameFor(t); if (!f?.contentWindow || !t?.url) return false;
   const targetOrigin = f.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
@@ -2372,13 +2360,28 @@ export function closeFind() { $("findBar").classList.add("hidden"); pageCommand(
 export function showSearch(query = "", { tab = null, push = true, pushHist = true, source = "", engine = "" } = {}) {
   let t = tab || activeTab(); if (!t) return;
   if (t.view === "page") teardownTab(t);
-  t.searchRequest?.abort(); t.searchAnswerRequest?.abort();
+  stopSearch(t);
   query = query.trim().slice(0, 600);
-  Object.assign(t, { view: "search", title: query ? `${query} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchCorrection: null, searchAnswer: null, searchLoading: !!query, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
+  const terms = searchEntry(query).query;
+  Object.assign(t, { view: "search", title: terms ? `${terms} - Veyra Search` : "Veyra Search", url: "", favicon: "", searchQuery: query, searchData: null, searchImages: null, searchCorrection: null, searchAnswer: null, searchLoading: !!terms, searchError: "", loading: false, browserSessionId: "", searchSource: searchCategory(source || t.searchSource || settings.searchSource), searchEngine: engine || (settings.searchEngine === "google" ? "google" : "") });
   if (pushHist) pushTabHistory(t, searchStateKey(query, t.searchSource));
   if (query) recordHistory("search", `veyra://search?q=${encodeURIComponent(query)}`, `${query} - Veyra Search`);
   renderTabs(); renderActive({ push });
   if (query) runSearch(query, 0, { tab: t });
+}
+function loadWebImagePreview(t, input, scope, lang) {
+  const preview = t.searchImages = { rows: [], request: new AbortController() };
+  const { signal } = preview.request;
+  const params = searchParams(input, "images", lang);
+  params.set("preview", "1");
+  void api(`/api/search/vertical?${params}`, { timeoutMs: 10500, signal }).then(data => {
+    if (signal.aborted || t.searchImages !== preview || !state.tabs.includes(t) || t.view !== "search" ||
+        t.searchSource !== "web" || t.searchQuery !== input) return;
+    preview.rows = mergeResults([], (Array.isArray(data?.results) ? data.results : []).filter(row =>
+      resultUrl(row?.url) && posterUrl(row.thumbnail) && scopedUrl(scope, row.sourcePageUrl || row.url) &&
+      (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)))).slice(0, 6);
+    if (activeTab() === t) renderWebImagePreview(t);
+  }).catch(() => {});
 }
 async function runSearch(query, offset = 0, opts = {}) {
   const t = opts.tab || activeTab(); if (!t || t.view !== "search") return;
@@ -2389,22 +2392,27 @@ async function runSearch(query, offset = 0, opts = {}) {
   const lang = (navigator.language || SEARCH_LOCALE).slice(0, 35);
   const current = () => state.tabs.includes(t) && t.view === "search" && t.searchQuery === query && t.searchSource === source && t.searchRequest === request && !request.signal.aborted;
   const visible = () => current() && activeTab() === t;
-  const scope = siteScope(query);
+  const entry = searchEntry(query), terms = entry.query;
+  const scope = siteScope(terms);
   const signal = request.signal;
   t.searchQuery = query;
-  t.searchLoading = !!query;
+  t.searchLoading = !!terms;
   t.searchConnecting = false;
   t.searchError = "";
   t.searchFeedError = false;
   if (!offset) {
     resetSearchChat(t);
-    Object.assign(t, { searchData: null, searchCorrection: null });
+    t.searchImages?.request.abort();
+    Object.assign(t, { searchData: null, searchImages: null, searchCorrection: null });
     if (visible()) $("view-search").scrollTop = 0;
   }
   if (visible()) renderSearch();
-  if (!query) return;
+  if (!terms) return;
+  if (!offset && source === "web" && !INCOGNITO && !scope.invalid) {
+    loadWebImagePreview(t, query, scope, lang);
+  }
   try {
-    if (!offset && !opts.corrected && !scope.active) {
+    if (!offset && !opts.corrected && !scope.active && !entry.command) {
       void api(`/api/search/correct?q=${encodeURIComponent(query)}`, { timeoutMs: 3500, signal }).then(correction => {
         if (!current() || !correction.changed || typeof correction.corrected !== "string" || correction.corrected.toLowerCase() === query.toLowerCase()) return;
         t.searchCorrection = correction.corrected.slice(0, 600);
@@ -2415,8 +2423,8 @@ async function runSearch(query, offset = 0, opts = {}) {
       const data = scope.invalid ? { provider: "none", results: [], siteFilter: { invalid: true }, more: false } : vertical
       ? await api(`/api/search/vertical?${searchParams(query, source, lang, offset, t.searchData?.nextProvider || t.searchData?.provider)}${INCOGNITO ? "&incognito=1" : ""}`, { timeoutMs: 11500, signal })
       : source === "web"
-      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(t.searchEngine ? { engine: t.searchEngine } : {}), ...(INCOGNITO ? { incognito: "1" } : {}) })}`, { timeoutMs: 20000, signal })
-      : await api(`/api/search?${new URLSearchParams({ q: query, offset, limit: 10, region: SEARCH_REGION })}`, { signal });
+      ? await api(`/api/search/web?${new URLSearchParams({ q: query, offset, lang, region: SEARCH_REGION, feed: "1", ...(!entry.command && t.searchEngine ? { engine: t.searchEngine } : {}), ...(INCOGNITO ? { incognito: "1" } : {}) })}`, { timeoutMs: 20000, signal })
+      : await api(`/api/search?${new URLSearchParams({ q: terms, offset, limit: 10, region: SEARCH_REGION })}`, { signal });
       if (!Array.isArray(data?.results)) throw new ApiError("The server did not return search results.", 0, "API_INVALID_RESPONSE");
       return data;
     };
@@ -2435,7 +2443,11 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rankResultBatch(rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), query, source);
+    b.results = rankResultBatch(rows.filter(row => resultUrl(row?.url) && scopedUrl(scope, row.sourcePageUrl || row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), terms, source);
+    if (!offset && source === "web" && /^(?:www\.)?google\.com$/i.test(terms)) {
+      const home = b.results.findIndex(row => resultUrl(row.url) === "https://www.google.com/");
+      if (home > 0) b.results.unshift(...b.results.splice(home, 1));
+    }
     if (scope.active) {
       b.siteFilter ||= scope;
     }
@@ -2482,6 +2494,11 @@ function resetSearchChat(t) {
   t.searchAnswer = null;
   t.searchChatDraft = "";
 }
+function stopSearch(t) {
+  t.searchRequest?.abort();
+  t.searchImages?.request.abort();
+  resetSearchChat(t);
+}
 function syncSearchAuth() {
   const identity = ephemeralSession() ? "" : auth.token;
   if (identity !== searchAIIdentity || !identity) {
@@ -2512,7 +2529,7 @@ async function fetchAIAnswer(t, input = "", { retry = false } = {}) {
   t.searchAnswer = { pending: true, turns };
   renderAIAnswer(t);
   if (question) $("searchAIQuestion")?.focus({ preventScroll: true });
-  const json = { query, source, ...(vertical ? { vertical } : {}), lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION };
+  const json = { query: searchEntry(query).query, source, ...(vertical ? { vertical } : {}), lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION };
   if (question) json.followUp = { question, ...(priorQuestion ? { previousQuestion: priorQuestion } : {}) };
   else if (!vertical) json.results = searchData.results.slice(0, 12).map(row => ({ url: row.url }));
   try {
@@ -2642,7 +2659,8 @@ function submitSearch(query, { corrected = false } = {}) {
   const q = query.trim().slice(0, 600);
   pushTabHistory(t, searchStateKey(q, t.searchSource));
   t.searchQuery = q;
-  t.title = q ? `${q} - Veyra Search` : "Veyra Search";
+  const terms = searchEntry(q).query;
+  t.title = terms ? `${terms} - Veyra Search` : "Veyra Search";
   if (q) recordHistory("search", `veyra://search?q=${encodeURIComponent(q)}`, t.title);
   renderTabs(); updateAddress(); updateNavButtons(); syncRoute();
   void runSearch(q, 0, { corrected });
@@ -2723,6 +2741,30 @@ function wireSearchImages(container) {
     else img.addEventListener("error", hide, { once: true });
   });
 }
+let paintedWebImages = null;
+function renderWebImagePreview(t) {
+  const box = $("searchImagePreview"), rows = t.searchImages?.rows;
+  const visible = !INCOGNITO && t.searchSource === "web" && !!rows?.length;
+  box.classList.toggle("hidden", !visible);
+  if (!visible) { paintedWebImages = null; box.replaceChildren(); return; }
+  if (paintedWebImages === rows) return;
+  paintedWebImages = rows;
+  box.innerHTML = `<div class="search-image-preview-head"><h2 id="searchImagePreviewTitle">${searchIcon(CATEGORIES.images.icon)} Images</h2>
+      <button type="button" class="search-image-more">See all images</button></div>
+    <div class="search-image-preview-grid">${rows.map(row => {
+      const url = resultUrl(row.sourcePageUrl) || resultUrl(row.url);
+      const title = row.title || "Image result";
+      return `<a class="search-image-preview-tile" href="${esc(url)}" data-open="${esc(url)}" title="${esc(title)}">
+        <span class="search-card-art">${searchIcon(CATEGORIES.images.icon)}<img src="${esc(posterUrl(row.thumbnail))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>
+        <span class="search-image-preview-caption">${esc(title)}</span></a>`;
+    }).join("")}</div>`;
+  box.querySelector(".search-image-more").onclick = () => {
+    selectSearchCategory("images");
+    $("search-tab-images")?.focus({ preventScroll: true });
+  };
+  wireSearchLinks(box);
+  wireSearchImages(box);
+}
 function searchSkeleton(source) {
   return `<div class="search-skeleton ${isVertical(source) ? "search-skeleton-grid" : ""}" aria-hidden="true">${Array.from({ length: 4 }, () => "<div><span></span><span></span></div>").join("")}</div>`;
 }
@@ -2730,8 +2772,9 @@ function searchEmpty(icon, title, message, button = "") {
   return `<div class="empty search-empty">${searchIcon(icon)}<b>${esc(title)}</b><span>${esc(message)}</span>${button}</div>`;
 }
 function searchAlternatives(t, source) {
-  if (INCOGNITO || siteScope(t.searchQuery).active) return "";
-  const links = externalSearchLinks(t.searchQuery, source);
+  const { query } = searchEntry(t.searchQuery);
+  if (INCOGNITO || siteScope(query).active) return "";
+  const links = externalSearchLinks(query, source);
   if (!links.length) return "";
   return `<div class="search-alternatives"><span>Search outside Veyra</span><div>${links.map(({ label, url }) =>
     `<a class="btn ghost sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Opens outside Veyra and its VPN">${esc(label)} ${searchIcon("i-external")}</a>`
@@ -2747,13 +2790,15 @@ function loadNextSearchPage({ auto = false } = {}) {
 function renderSearch() {
   const t = activeTab(); if (!t || t.view !== "search") return;
   const source = searchCategory(t.searchSource), category = CATEGORIES[source], vertical = isVertical(source), web = source === "web";
+  const { query: terms, preferGoogle, command } = searchEntry(t.searchQuery);
   if (document.activeElement !== $("searchInput") || $("searchInput").value === "") $("searchInput").value = t.searchQuery;
   $("searchInput").placeholder = web ? "Search the web" : `Search ${category.label.toLowerCase()}`;
   $("searchInput").setAttribute("aria-label", web ? "Search the web" : `Search ${category.label.toLowerCase()}`);
-  $("searchOnGoogle").classList.toggle("hidden", !web || !t.searchQuery || INCOGNITO);
+  $("searchOnGoogle").classList.toggle("hidden", !web || !terms || INCOGNITO);
   $("searchPanel").dataset.category = source;
   renderSearchTabs(t);
   renderSearchCorrection(t);
+  renderWebImagePreview(t);
   renderAIAnswer(t);
   const results = $("searchResults"), more = $("searchMore"), stat = $("searchStat"), meta = $("searchMeta");
   const feedStatus = $("searchFeedStatus");
@@ -2764,17 +2809,17 @@ function renderSearch() {
   results.classList.toggle("search-rich-results", vertical && !!d?.results?.length);
   $("searchCoverage").classList.toggle("hidden", source !== "index");
   if (source === "index") void loadIndexStats();
-  if (!t.searchQuery) {
+  if (!terms) {
     paintedSearch = null;
     stat.textContent = "";
     meta.textContent = "";
-    results.innerHTML = `<div class="search-start"><h2>${web ? "Search the web" : esc(category.label)}</h2><p>${web ? "Search across the web, or choose a category to narrow your results." : `${esc(category.description)}.`}</p>${web || source === "index" ? "<p>Use <code>site:example.com</code> to search one website.</p>" : ""}</div>`;
+    results.innerHTML = `<div class="search-start"><h2>${web ? "Search the web" : esc(category.label)}</h2><p>${web ? "Search across the web, or choose a category to narrow your results." : `${esc(category.description)}.`}</p>${web || source === "index" ? "<p>Use <code>site:example.com</code> to search one website.</p>" : ""}${web ? "<p>Try <code>search:google.com northern lights</code> to request Google alongside Veyra’s other sources.</p>" : ""}</div>`;
     return;
   }
   if (t.searchError || ["unavailable", "cancelled"].includes(d?.status)) {
     paintedSearch = null;
     stat.textContent = `${category.label} search unavailable`;
-    meta.textContent = category.description;
+    meta.textContent = web && preferGoogle ? "Neither Google nor Veyra returned results" : category.description;
     results.innerHTML = searchEmpty(category.icon, "This search couldn’t finish", t.searchError || "The provider is temporarily unavailable. Try again or switch categories.", '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>' + searchAlternatives(t, source));
     $("searchRetry").onclick = () => void runSearch(t.searchQuery);
     return;
@@ -2791,8 +2836,11 @@ function renderSearch() {
   const providers = [...new Set(d.results.flatMap(row => (vertical ? [row.provider] : [row.source, ...(Array.isArray(row.providers) ? row.providers : [])]).map(providerLabel)).filter(Boolean))];
   const label = source === "index" ? "Veyra index" : providers.length > 1 ? providers.slice(0, 3).join(" + ") + (providers.length > 3 ? " + more" : "")
     : providers[0] || providerLabel(d.provider);
+  const googleIncluded = providers.includes("Google API");
   const note = source === "shopping" ? "Check the retailer for current prices and stock"
-    : web && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured" : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
+    : web && preferGoogle ? (googleIncluded ? "Includes Google results" : "No Google results from the API; showing Veyra sources")
+    : web && !command && t.searchEngine === "google" && d.provider !== "google" && d.googleConfigured === false ? "Google API is not configured"
+    : INCOGNITO && (source === "images" || source === "videos") ? "External thumbnails are off in incognito" : "";
   meta.textContent = [label, note].filter(Boolean).join(" · ");
   const retry = '<button class="btn ghost sm" type="button" id="searchRetry">Try again</button>';
   const previous = paintedSearch;
@@ -2802,7 +2850,7 @@ function renderSearch() {
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, t.searchQuery)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
+      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${matchBadge(r.matchPercent)}${r.snippet ? `<p>${highlightTerms(r.snippet, terms)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;
@@ -2848,7 +2896,7 @@ function resetSearchSuggestions() {
 }
 function loadSuggestions(q) {
   resetSearchSuggestions();
-  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || siteScope(q).active) return;
+  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || searchEntry(q).command || siteScope(q).active) return;
   const tab = activeTab();
   const request = suggestRequest = new AbortController();
   const current = () => !request.signal.aborted && settings.suggestions && activeTab() === tab && tab?.view === "search" && $("searchInput").value === q;
@@ -2861,7 +2909,7 @@ function loadSuggestions(q) {
   }, 160);
 }
 export async function omniSuggest(q) {
-  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || siteScope(q).active || classify(q)?.kind !== "search") return [];
+  if (INCOGNITO || !settings.suggestions || q.trim().length < 2 || searchEntry(q).command || siteScope(q).active || classify(q)?.kind !== "search") return [];
   try { const b = await api(`/api/search/suggest?${new URLSearchParams({ q, limit: 5 })}`, { timeoutMs: 3000 }); return querySuggestions(b.suggestions, q, 5); } catch { return []; }
 }
 
@@ -3623,6 +3671,16 @@ async function handleMessage(e) {
     if (activeTab() === t && e.origin === API_ORIGIN && frameFor(t)?.contentWindow === e.source) hooks.handleForwardedShortcut?.(d);
     return;
   }
+  if (d.type === "veyra:google-search-fallback") {
+    if (e.origin !== API_ORIGIN || e.source !== frameFor(t)?.contentWindow || t !== activeTab() ||
+        t.view !== "page" || t.browserMode !== "FAST_PROXY" || !isGoogleWebUrl(t.url) ||
+        !t.sessionId || d.sessionId !== t.sessionId || typeof d.query !== "string") return;
+    const query = d.query.trim();
+    const currentQuery = new URL(t.url).searchParams.get("q")?.trim();
+    if (!query || query.length > 575 || (currentQuery && currentQuery.slice(0, 575) !== query)) return;
+    showSearch(`search:google.com ${query}`, { tab: t, source: "web" });
+    return;
+  }
   if (d.type === "veyra:proxy-status") {
     const notice = proxyStatusNotice(d.status);
     if (notice && e.origin === API_ORIGIN && e.source === frameFor(t)?.contentWindow && t.view === "page"
@@ -3886,7 +3944,7 @@ function wire() {
   $("searchForm").onsubmit = e => { e.preventDefault(); submitSearch($("searchInput").value); };
   $("searchInput").oninput = e => loadSuggestions(e.target.value);
   $("searchOnGoogle").onclick = () => {
-    const q = activeTab()?.searchQuery;
+    const { query: q } = searchEntry(activeTab()?.searchQuery);
     if (q && !INCOGNITO) window.open(`https://www.google.co.in/search?${new URLSearchParams({ q, gl: SEARCH_REGION.toLowerCase() })}`, "_blank", "noopener,noreferrer");
   };
   $("searchTabs").innerHTML = Object.entries(CATEGORIES).map(([key, value]) => `<button type="button" id="search-tab-${key}" role="tab" data-src="${key}" aria-controls="searchPanel" aria-selected="false" tabindex="-1">${esc(value.label)}</button>`).join("");
