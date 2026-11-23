@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CATEGORIES, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
-import { querySuggestions, annotateResultBatch } from "../web/src/search-match.js";
+import { querySuggestions, annotateResultBatch, matchSignal } from "../web/src/search-match.js";
 import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
 import { siteScope } from "../web/src/search-site-scope.js";
 
@@ -87,6 +87,14 @@ test("badges are bounded and preserve server order, including fallback estimates
   assert.ok(annotated.every(row => Number.isInteger(row.matchPercent) && row.matchPercent >= 1 && row.matchPercent <= 100));
   assert.equal(rows[3].matchPercent, 120);
   assert.deepEqual(mergeResults(annotated.slice(0, 2), annotated.slice(2)).map(row => row.url), rows.map(row => row.url));
+});
+
+test("match labels distinguish verified navigation from an estimated text match", () => {
+  const official = { url: "https://www.tiktok.com/", source: "veyra-navigation", navigation: "official-site", matchPercent: 100 };
+  assert.equal(matchSignal(official), "Official site");
+  assert.equal(matchSignal({ ...official, source: "wikipedia" }), "Strong text match");
+  assert.equal(matchSignal({ matchPercent: 74 }), "Partial text match");
+  assert.equal(matchSignal({ matchPercent: 1 }), "");
 });
 
 test("category routing preserves the query and upgrades legacy history", () => {

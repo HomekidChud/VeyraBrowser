@@ -14,7 +14,7 @@ import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=2";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=16";
-import { annotateResultBatch, querySuggestions } from "./search-match.js?v=2";
+import { annotateResultBatch, matchSignal, querySuggestions } from "./search-match.js?v=3";
 import { createPublisherSearch } from "./publisher-search.js?v=2";
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
@@ -2753,8 +2753,10 @@ function searchDate(value) {
   const date = new Date(value || NaN);
   return Number.isFinite(date.valueOf()) ? new Intl.DateTimeFormat(SEARCH_LOCALE, { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(date) : "";
 }
-function matchBadge(score) {
-  return `<span class="search-match" title="Estimated relevance to this query, not a probability">${score}% match</span>`;
+function matchBadge(row) {
+  const label = matchSignal(row);
+  const title = label === "Official site" ? "Direct match for the requested website" : "Text match to the query, not a rank or reliability score";
+  return label ? `<span class="search-match" title="${title}">${label}</span>` : "";
 }
 const sourceEvidenceCopy = {
   "catalog-passage": ["Strong", "Veyra found a relevant passage on a selected reference publisher’s site."],
@@ -2783,7 +2785,7 @@ function richResult(r, source, domain, showMatch) {
     <a href="${esc(url)}" data-open="${esc(url)}" class="search-card-link">
       ${media ? `<div class="search-card-art">${searchIcon(CATEGORIES[source].icon)}${poster ? `<img src="${esc(poster)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ""}${source === "videos" && r.duration ? `<span>${esc(r.duration)}</span>` : ""}</div>` : ""}
       <div class="search-card-copy"><span class="search-card-source">${source === "images" ? "" : searchSiteIcon(url)}${esc(attribution)}${!sourcePage && attribution !== hostOf(url) ? ` · ${esc(hostOf(url))}` : ""}</span>
-        <h2>${esc(title)}</h2>${showMatch ? matchBadge(r.matchPercent) : ""}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
+        <h2>${esc(title)}</h2>${showMatch ? matchBadge(r) : ""}${price ? `<b class="search-price">${esc(price)}</b>` : ""}${details ? `<span class="search-card-meta">${details}</span>` : ""}
         ${r.snippet && source !== "images" ? `<p>${esc(r.snippet)}</p>` : ""}
       </div>
     </a>
@@ -2994,7 +2996,7 @@ function renderSearch() {
     : rows.map(r => {
       const url = resultUrl(r.url);
       const via = web && providerLabel(r.source);
-      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${showMatch ? matchBadge(r.matchPercent) : ""}${r.snippet ? `<p>${highlightTerms(r.snippet, terms)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
+      return `<article class="result"><div class="r-url">${searchSiteIcon(url)}<span>${esc(displayUrl(r.displayUrl || url))}${via ? ` · ${esc(via)}` : ""}</span></div><h2><a class="r-title" href="${esc(url)}" data-open="${esc(url)}">${esc(r.title || url)}</a></h2>${showMatch ? matchBadge(r) : ""}${r.snippet ? `<p>${highlightTerms(r.snippet, terms)}</p>` : ""}${web && !INCOGNITO ? sourceEvidence(r.evidence) : ""}</article>`;
     }).join("");
   if (append) {
     const oldTail = results.lastElementChild;
