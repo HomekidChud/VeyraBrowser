@@ -20,6 +20,18 @@ export function normalizeTikTokHome(raw) {
   } catch {}
   return raw;
 }
+
+// Route legacy HTTP links through the same local, consented options as HTTPS.
+export function normalizeTikTokNavigation(raw) {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "http:" && !url.username && !url.password && !url.port) {
+      url.protocol = "https:";
+      if (tiktokTarget(url.href)) return normalizeTikTokHome(url.href);
+    }
+  } catch {}
+  return normalizeTikTokHome(raw);
+}
 const PLAYER_STATES = new Map([
   [-1, "TikTok is initializing the player…"], [0, "TikTok playback ended."],
   [1, "Playing in the TikTok player."], [2, "TikTok playback paused."], [3, "TikTok is buffering…"]

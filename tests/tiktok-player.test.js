@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeTikTokHome, publicTikTokPost, resolveSharedTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
+import { normalizeTikTokHome, normalizeTikTokNavigation, publicTikTokPost, resolveSharedTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
+
+test("legacy HTTP TikTok navigation uses the same local options as HTTPS", () => {
+  for (const [input, expected] of [
+    ["http://tiktok.com/", "https://www.tiktok.com/"],
+    ["http://www.tiktok.com:80/search?q=dog%20tricks#results", "https://www.tiktok.com/search?q=dog%20tricks#results"],
+    ["http://m.tiktok.com/@sample/video/6718335390845095173", "https://m.tiktok.com/@sample/video/6718335390845095173"],
+    ["http://vm.tiktok.com/ZXy42/?tracking=sample", "https://vm.tiktok.com/ZXy42/?tracking=sample"]
+  ]) {
+    assert.equal(normalizeTikTokNavigation(input), expected);
+    assert.ok(tiktokTarget(expected));
+  }
+  for (const input of ["http://www.tiktok.com.example.test/", "http://www.tiktok.com:8080/", "http://user@www.tiktok.com/", "http://vm.tiktok.com/bad/path"]) {
+    assert.equal(normalizeTikTokNavigation(input), input);
+  }
+});
 
 test("short-link lookup sends no user credentials or tracking and accepts only a TikTok post", async () => {
   for (const [url, expected] of [

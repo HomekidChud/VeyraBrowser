@@ -28,7 +28,14 @@ test("search privacy defaults safely and distinguishes scope, host, and result f
     assert.equal(allowsSearchResult(mode, { url: "https://clean.test", media: { thumbnail: "https://cdn.phncdn.com/fixture.jpg" } }), false);
     assert.equal(allowsSearchResult(mode, { url: "https://clean.test", nsfw: true }), false);
     assert.equal(allowsSearchResult(mode, { url: "https://nasa.gov" }), true);
+    assert.equal(masked(mode, "site:www.porn.com"), true);
+    assert.equal(masked(mode, "site:porn.com.lookalike.test"), false);
+    assert.equal(masked(mode, "biology -site:porn.com"), false);
+    assert.equal(allowsSearchResult(mode, { url: "https://www.porn.com/fixture" }), false);
   }
+  assert.equal(masked("blocked", "(https://www.porn.com/fixture), clip"), true);
+  assert.equal(masked("filtered", "(https://www.porn.com/fixture), clip"), false);
+  assert.equal(masked("unfiltered", "search:porn.com"), false);
   assert.equal(masked("blocked", "(https://www.xvideos.com/fixture), clip"), true);
   assert.equal(masked("filtered", "(https://www.xvideos.com/fixture), clip"), false);
   assert.equal(masked("unfiltered", "search:xvideos.com"), false);

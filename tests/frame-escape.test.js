@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { originalSiteUrl, siteLoadErrorMarkup } from "../web/src/site-recovery.js";
+import { originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "../web/src/site-recovery.js";
 
 const src = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
 
@@ -40,6 +40,11 @@ assert.match(errorPage, /&lt;script&gt;bad&lt;\/script&gt;/);
 assert.match(errorPage, /Request &quot;test&quot;/);
 assert.doesNotMatch(errorPage, /<script|onclick=/);
 assert.doesNotMatch(siteLoadErrorMarkup("Invalid", {}, "javascript:alert(1)"), /Open original site/);
+assert.match(proxyStatusNotice(451), /unavailable for legal reasons/);
+assert.notEqual(proxyStatusNotice(451), proxyStatusNotice(403));
+const tiktokError = siteLoadErrorMarkup("Couldn't load", {}, "https://www.tiktok.com/", { offerDirect: false, returnToTikTok: true });
+assert.match(tiktokError, /id="veyra-local-options"/);
+assert.doesNotMatch(tiktokError, /Open original site|<a href=/);
 assert.doesNotMatch(src, /veyra:local-retry/, "untrusted frames cannot request the local error screen's retry action");
 
 console.log("frame escape + address-bar hijack regression checks passed");

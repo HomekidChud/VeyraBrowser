@@ -21,6 +21,7 @@ const shortLink = "https://vm.tiktok.com/ZXy42/";
 const qtDiagram = "https://doc.qt.io/qtforpython-6/_images/coroutines.png";
 const qtSource = "https://doc.qt.io/qtforpython-6/PySide6/QtAsyncio/index.html";
 let vpnMode = "off";
+let sessionsAvailable = true;
 let publisherMode = "off", publisherVerified = false, publisherPosterRequests = 0;
 const publisherNonce = "a".repeat(43);
 const verifierOrigin = "https://verify.example.test";
@@ -72,7 +73,9 @@ api.get("/api/health", (_req, res) => {
   if (calls.filter(call => call.path === "/api/health").length === 1) return res.type("html").send("<h1>Starting</h1>");
   res.json({ ok: true });
 });
-api.post("/api/session", (_req, res) => res.json({ ok: true, sessionId: "browser_fixture_session", timeLimitMs: 300000, guest: true }));
+api.post("/api/session", (_req, res) => sessionsAvailable
+  ? res.json({ ok: true, sessionId: "browser_fixture_session", timeLimitMs: 300000, guest: true })
+  : res.status(503).json({ error: "Fixture browsing session unavailable" }));
 api.get("/api/vpn/session", (_req, res) => vpnMode === "unknown"
   ? res.status(503).json({ ok: false }) : res.json({ ok: true, connected: vpnMode === "on" }));
 api.get("/api/view", (req, res) => {
@@ -522,7 +525,7 @@ try {
       const frame = page.frameLocator("#frame-t1");
       const proxyPage = frame.getByRole("heading", { name: "Fixture website" });
       const tiktokPage = frame.getByRole("heading", { name: "TikTok player" });
-      await openPost();
+      await openPost(post.replace("https:", "http:"));
       await tiktokPage.waitFor();
       await frame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
       assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).count(), 0);
@@ -578,8 +581,9 @@ try {
         else await frame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
         assert.equal(tiktokRequests, 3);
       }
-      await openPost("tiktok.com");
+      await openPost("http://tiktok.com/");
       await frame.getByRole("heading", { name: "TikTok", exact: true }).waitFor();
+      assert.equal(await page.locator("#address").inputValue(), "https://www.tiktok.com/");
       assert.equal(await frame.locator("#player iframe").count(), 0);
       assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).evaluate(el => {
         const proxy = el.ownerDocument.getElementById("tryProxy"), view = el.ownerDocument.defaultView;
@@ -863,6 +867,14 @@ try {
       await page.getByText("This search is excluded by the current mode").waitFor();
       assert.ok(!calls.some(call => call.query.q?.includes("xvideos.com/fixture")), "blocked query never reaches the API");
       assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
+      for (const host of ["porn.com", "pornhub.com", "xvideos.com", "xhamster.com"]) {
+        const query = `site:${host}`;
+        await page.locator("#searchInput").fill(query);
+        await page.locator("#searchInput").press("Enter");
+        await page.getByText("This search is excluded by the current mode").waitFor();
+        assert.ok(!calls.some(call => call.query.q === query), `${host} scope stays inside the client`);
+        assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
+      }
       await modeControl.selectOption("restricted");
 
       const restricted = (domain, type = "videos", privateMode = false) =>
@@ -947,6 +959,25 @@ try {
       assert.equal(calls.filter(call => call.path.startsWith(publisherPath)).length, before);
       publisherMode = "off";
       assert.deepEqual(errors, []);
+      const offlineContext = await browser.newContext();
+      try {
+        sessionsAvailable = false;
+        const offline = await offlineContext.newPage();
+        await offline.goto(`${origin}${prefix}/browse/?incognito=1`);
+        const address = offline.locator("#address");
+        await address.fill("http://tiktok.com/");
+        await address.press("Enter");
+        const offlineFrame = offline.frameLocator("#frame-t1");
+        await offlineFrame.getByRole("button", { name: "Use Fast Proxy" }).click();
+        await offlineFrame.getByRole("heading", { name: "Veyra couldn't reach its server" }).waitFor();
+        assert.equal(await offlineFrame.getByRole("link", { name: "Open original site" }).count(), 0);
+        await offlineFrame.getByRole("button", { name: "Return to TikTok options" }).click();
+        await offlineFrame.getByRole("heading", { name: "TikTok", exact: true }).waitFor();
+        await offlineFrame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
+      } finally {
+        sessionsAvailable = true;
+        await offlineContext.close();
+      }
       console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, privacy modes, automatic cited overviews, TikTok recovery, and publisher gate lifecycle`);
     } finally { await browser.close(); }
   }
