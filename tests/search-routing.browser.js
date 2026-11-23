@@ -971,6 +971,11 @@ try {
         await offlineFrame.getByRole("button", { name: "Use Fast Proxy" }).click();
         await offlineFrame.getByRole("heading", { name: "Veyra couldn't reach its server" }).waitFor();
         assert.equal(await offlineFrame.getByRole("link", { name: "Open original site" }).count(), 0);
+        // A background or blurred incognito tab can legitimately cover the
+        // error screen. Resume through the same control as a returning user.
+        await offline.bringToFront();
+        const reveal = offline.getByRole("button", { name: "Reveal screen" });
+        if (await reveal.isVisible()) await reveal.click();
         await offlineFrame.getByRole("button", { name: "Return to TikTok options" }).click();
         await offlineFrame.getByRole("heading", { name: "TikTok", exact: true }).waitFor();
         await offlineFrame.getByText("Direct TikTok access is unavailable in this session.").waitFor();
