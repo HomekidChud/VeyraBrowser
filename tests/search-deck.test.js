@@ -5,6 +5,29 @@ import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, se
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 import { querySuggestions, rankResultBatch } from "../web/src/search-match.js";
 import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
+import { siteScope } from "../web/src/search-site-scope.js";
+import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "../web/src/search-privacy.js";
+
+test("search privacy defaults safely and distinguishes scope, host, and result filtering", () => {
+  assert.deepEqual(Object.keys(SEARCH_PRIVACY), ["filtered", "blocked", "restricted", "unfiltered"]);
+  for (const input of [undefined, "unknown", ["unfiltered"], "__proto__"]) assert.equal(searchPrivacy(input), "filtered");
+  const masked = (mode, raw) => {
+    const { query } = searchEntry(raw);
+    return masksSearchScope(mode, query, siteScope(query));
+  };
+  for (const mode of ["filtered", "blocked", "restricted"]) {
+    assert.equal(masked(mode, "search:docs.xvideos.com"), true);
+    assert.equal(masked(mode, "site:xvideos.com.lookalike.test"), false);
+    assert.equal(masked(mode, "biology -site:xvideos.com"), false);
+    assert.equal(allowsSearchResult(mode, { url: "https://clean.test", media: { thumbnail: "https://cdn.phncdn.com/fixture.jpg" } }), false);
+    assert.equal(allowsSearchResult(mode, { url: "https://clean.test", nsfw: true }), false);
+    assert.equal(allowsSearchResult(mode, { url: "https://nasa.gov" }), true);
+  }
+  assert.equal(masked("blocked", "(https://www.xvideos.com/fixture), clip"), true);
+  assert.equal(masked("filtered", "(https://www.xvideos.com/fixture), clip"), false);
+  assert.equal(masked("unfiltered", "search:xvideos.com"), false);
+  assert.equal(allowsSearchResult("unfiltered", { url: "https://clean.test", nsfw: true }), true);
+});
 
 test("protected scope, verifier launch and result pages reject unexpected destinations", () => {
   assert.deepEqual(publisherScope("SEARCH: WWW.XVIDEOS.COM lunar atlas", "videos"),

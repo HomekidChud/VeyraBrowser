@@ -1,11 +1,12 @@
 import { $, qsa, esc, api, rawFetch, API, APP_BASE, VERSION, hooks, settings, save, saveSettings, resetSettings, SEARCH_ENGINES, auth, setAuth, isAdmin, isMac, toast, confirmDialog, promptDialog, fmtClock, fmtBytes, copyText, debounce, getNeuralStats, CHROMIUM_TRY_DISABLED } from "./core.js?v=8.36.0-workbench";
-import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.42.0-search-chat";
+import { openAuth, signOut, pushSync, COMMANDS, cmd, keysFor, prettyCombo, comboFromEvent } from "./ui.js?v=8.44.3-search-privacy";
 import { changeStudioAppearance, studioMarkup, wireStudio } from "./studio.js?v=5";
 import { performanceMarkup } from "./velocity.js?v=2";
 import { STREAM_PRESETS, streamPreset, measureVeyraConnection } from "./remote-frames.js?v=1";
 import { settingsPins, settingSearchTerms, settingTextMatches } from "./settings-model.js?v=1";
 import { BINDING_KEY_GROUPS, assignableBinding, buildShortcutBinding, shortcutClashes, storeShortcutKeys } from "./shortcuts-model.js?v=2";
 import { GUIDES } from "./settings-guides.js?v=1";
+import { SEARCH_PRIVACY, searchPrivacy } from "./search-privacy.js?v=1";
 
 let B;
 const SECTIONS = [
@@ -64,10 +65,15 @@ function accountSection() {
 }
 const appearanceSection = () => studioMarkup({ row, toggle, select, number }, !!$("settingsSearch").value.trim());
 function searchSection() {
+  settings.searchPrivacy = searchPrivacy(settings.searchPrivacy);
   return section("search", "Search engine", "Used when you type something that isn't a URL in the address bar.", `
     ${radios("searchEngine", Object.entries(SEARCH_ENGINES).map(([k, e]) => [k, e.name, k === "veyra" ? "Built-in results through the Veyra crawler" : k === "custom" ? "Use your own URL with %s for the query" : ""]))}
     ${settings.searchEngine === "custom" ? text("customSearch", "Custom search URL", "Use %s where the query goes.", "https://example.com/search?q=%s") : ""}
-    ${toggle("suggestions", "Show search and site suggestions", "Suggestions come from your history, bookmarks and tabs.")}`);
+    ${toggle("suggestions", "Show search and site suggestions", "Suggestions come from your history, bookmarks and tabs.")}
+    <fieldset class="search-privacy-settings"><legend>Search privacy</legend>
+      <p class="small muted">Applies to built-in search on this device. This is a content filter, not incognito or a browsing-site block.</p>
+      ${radios("searchPrivacy", Object.entries(SEARCH_PRIVACY).map(([value, [label, desc]]) => [value, label, desc]))}
+    </fieldset>`);
 }
 function startupSection() {
   return section("startup", "On startup", "", `
