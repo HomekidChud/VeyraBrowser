@@ -14,7 +14,7 @@ import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=14";
-import { rankResultBatch, querySuggestions } from "./search-match.js?v=1";
+import { annotateResultBatch, querySuggestions } from "./search-match.js?v=2";
 import { createPublisherSearch } from "./publisher-search.js?v=2";
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=1";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
@@ -2491,13 +2491,9 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (!current()) return;
     b.source = source;
     const rows = b.results || [];
-    b.results = rankResultBatch(rows.filter(row => allowsSearchResult(privacy, row) && resultUrl(row.url) &&
+    b.results = annotateResultBatch(rows.filter(row => allowsSearchResult(privacy, row) && resultUrl(row.url) &&
       scopedUrl(scope, source === "images" ? row.sourcePageUrl || row.url : row.url) &&
       (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl))), terms, source);
-    if (!offset && source === "web" && /^(?:www\.)?google\.com$/i.test(terms)) {
-      const home = b.results.findIndex(row => resultUrl(row.url) === "https://www.google.com/");
-      if (home > 0) b.results.unshift(...b.results.splice(home, 1));
-    }
     if (scope.active) {
       b.siteFilter ||= scope;
     }
