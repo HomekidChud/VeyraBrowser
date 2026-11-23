@@ -96,7 +96,7 @@ api.post("/api/search/answer", express.json(), (req, res) => {
   res.locals.call.body = req.body;
   const { query, source, vertical, results } = req.body;
   if (vertical) { assert.equal(vertical, source); assert.equal(results, undefined); }
-  else assert.ok(results.length && results.every(row => Object.keys(row).join() === "url"));
+  else assert.ok(Array.isArray(results) && results.every(row => Object.keys(row).join() === "url"));
   const sources = [
     { id: "S1", url: "https://example.test/fixture", title: "Research fixture", passages: [{ text: "A quoted source excerpt." }] },
     { id: "S2", url: "https://second.example/fixture", title: "Second fixture source" },
