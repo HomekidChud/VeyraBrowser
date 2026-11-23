@@ -36,19 +36,23 @@ api.get("/api/auth/me", (_req, res) => res.json({ ok: true, user: fixtureUser })
 api.post("/api/auth/logout", (_req, res) => res.json({ ok: true }));
 api.get(`${publisherPath}/status`, (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
-  assert.equal(Object.keys(req.query).length, 1);
+  assert.equal(req.query.privacy, "restricted");
+  assert.equal(Object.keys(req.query).length, 2);
   res.status(publisherMode === "off" ? 404 : 200).json({ ok: publisherMode !== "off" });
 });
-api.post(`${publisherPath}/challenge`, (_req, res) => {
+api.post(`${publisherPath}/challenge`, (req, res) => {
+  assert.equal(req.query.privacy, "restricted");
   publisherVerified = false;
   res.json({ ok: true, nonce: publisherNonce, expiresInSeconds: 600, verificationUrl: `${verifierOrigin}/check?nonce=${publisherNonce}` });
 });
 api.post(`${publisherPath}/verify`, express.json(), (req, res) => {
+  assert.equal(req.query.privacy, "restricted");
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   publisherVerified = req.body.assertion === "signed.fixture.accepted";
   res.status(publisherVerified ? 200 : 403).json({ ok: publisherVerified });
 });
 api.post(publisherPath, express.json(), (req, res) => {
+  assert.equal(req.query.privacy, "restricted");
   assert.ok(publisherVerified, "search must wait for verified decision");
   assert.equal(req.body.nonce, publisherNonce);
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
@@ -105,6 +109,14 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   if (/^search:(?:pornhub\.com|xvideos\.com)(?: |$)/.test(req.query.q)) {
     return res.json({ status: "empty", results: [], siteFilter: { active: true } });
+  }
+  if (req.query.q === "privacy fixture") {
+    const clean = { title: "Ordinary privacy fixture", url: "https://example.test/ordinary" };
+    const flagged = { title: "Labelled privacy fixture", url: "https://example.test/labelled", adult: true };
+    const reply = () => res.json({ status: "ok", results: req.query.preview === "1"
+      ? [{ ...flagged, thumbnail: "https://upload.wikimedia.org/fixture.jpg" }] : [clean, flagged] });
+    if (req.query.privacy === "unfiltered") return setTimeout(reply, 450);
+    return reply();
   }
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
@@ -293,7 +305,8 @@ try {
       const evidence = page.locator(".search-evidence summary").getByText("Source evidence: Strong", { exact: true });
       await evidence.focus();
       await evidence.press("Enter");
-      await page.getByText(/This rating is not a fact-check or an accuracy percentage/).waitFor();
+      await page.locator(".search-evidence").filter({ hasText: "Source evidence: Strong" })
+        .getByText(/This rating is not a fact-check or an accuracy percentage/).waitFor();
       await page.locator("#searchResults").getByText(/India rail publisher excerpt/).waitFor();
       assert(await page.locator(".search-evidence").first().evaluate(el => el.scrollWidth <= el.clientWidth + 1));
       assert.match(await page.locator("#searchResults .r-url").first().textContent(), /MDN Web Docs/);
@@ -306,7 +319,12 @@ try {
       assert.equal(new URL(google.url()).searchParams.get("gl"), "in");
       assert.equal(new URL(google.url()).searchParams.get("q"), "India rail");
       await google.close();
-      await page.getByRole("button", { name: "More results" }).click();
+      // A short mobile viewport may load this page automatically when the
+      // preceding evidence interaction scrolls the result deck.
+      const moreResults = page.getByRole("button", { name: "More results" });
+      if (await moreResults.isVisible()) {
+        await moreResults.click({ timeout: 3000 }).catch(() => result("More web results").waitFor());
+      }
       await result("More web results").waitFor();
       await page.getByText("Source evidence: Not checked", { exact: true }).waitFor();
       assert.equal(await page.getByText("Source evidence: Strong", { exact: true }).count(), 1);
@@ -675,6 +693,36 @@ try {
       assert.equal(await page.locator(".search-result-media").count(), 0);
       assert.ok(!calls.some(call => call.query.q === "search:nasa.gov" && call.query.preview === "1"));
 
+      await page.goto(`${origin}${prefix}/search/?q=privacy+fixture&type=web&incognito=0`);
+      const modeControl = page.getByLabel("Search privacy", { exact: true });
+      await result("Ordinary privacy fixture").waitFor();
+      assert.equal(await modeControl.inputValue(), "filtered");
+      assert.equal(await result("Labelled privacy fixture").count(), 0);
+      assert.equal(await page.locator("#searchImagePreview img").count(), 0);
+      const early = page.waitForRequest(r => r.url().includes("/api/search/web?") && r.url().includes("privacy=unfiltered"));
+      await modeControl.selectOption("unfiltered");
+      await early;
+      await modeControl.selectOption("blocked");
+      await result("Ordinary privacy fixture").waitFor();
+      assert.equal(await result("Labelled privacy fixture").count(), 0);
+      await modeControl.selectOption("unfiltered");
+      await result("Labelled privacy fixture").waitFor();
+      await page.locator("#searchImagePreview img").waitFor();
+      await page.reload();
+      await result("Labelled privacy fixture").waitFor();
+      assert.equal(await modeControl.inputValue(), "unfiltered");
+      await page.goto(`${origin}${prefix}/settings/search/?incognito=0`);
+      await page.getByRole("radio", { name: /^Blocked/ }).check();
+      await page.goto(`${origin}${prefix}/search/?q=privacy+fixture&type=web&incognito=0`);
+      await result("Ordinary privacy fixture").waitFor();
+      assert.equal(await modeControl.inputValue(), "blocked");
+      await page.locator("#searchInput").fill("(https://www.xvideos.com/fixture), clip");
+      await page.locator("#searchInput").press("Enter");
+      await page.getByText("This search is excluded by the current mode").waitFor();
+      assert.ok(!calls.some(call => call.query.q?.includes("xvideos.com/fixture")), "blocked query never reaches the API");
+      assert.equal(await page.locator("#searchOnGoogle").isVisible(), false);
+      await modeControl.selectOption("restricted");
+
       const restricted = (domain, type = "videos", privateMode = false) =>
         `${origin}${prefix}/search/?${new URLSearchParams({ q: `search:${domain} lunar atlas`, type, incognito: privateMode ? "1" : "0" })}`;
       const panel = page.locator("#publisherSearch");
@@ -687,7 +735,7 @@ try {
       };
       await page.evaluate(user => localStorage.setItem("veyra-auth", JSON.stringify({ token: "preview-test-token", user })), fixtureUser);
       await Promise.all([page.waitForResponse(r => r.url().includes(`${publisherPath}/status`)), page.goto(restricted("pornhub.com"))]);
-      assert.equal(await panel.isVisible(), false, "disabled server leaves public search unchanged");
+      assert.equal(await panel.isVisible(), false, "disabled server does not offer its catalog");
       publisherMode = "on";
       await page.goto(restricted("pornhub.com", "web"));
       await panel.getByRole("button", { name: "Verify age" }).waitFor();
@@ -717,6 +765,14 @@ try {
       assert.equal(await panel.locator("li").count(), 25);
       assert.equal(await panel.locator("img, video, iframe").count(), 0);
       assert.equal(publisherPosterRequests, 0);
+      await modeControl.selectOption("unfiltered");
+      await panel.waitFor({ state: "hidden" });
+      assert.equal(await panel.locator("li").count(), 0);
+      await modeControl.selectOption("restricted");
+      await panel.getByRole("button", { name: "Verify age" }).waitFor();
+      popup = await start();
+      await popup.getByRole("button", { name: "Send approved fixture decision" }).click();
+      await panel.getByText(/^24 of 25 verified catalog results/).waitFor();
       await panel.getByRole("button", { name: "Close publisher results" }).click();
       await panel.getByRole("button", { name: "Verify age" }).waitFor();
       await page.getByRole("tab", { name: "Videos", exact: true }).click();
@@ -743,13 +799,13 @@ try {
       const before = calls.filter(call => call.path.startsWith(publisherPath)).length;
       for (const privateMode of [false, true]) {
         await page.goto(restricted("xvideos.com", "videos", privateMode));
-        await page.getByText("No results within the requested site scope").waitFor();
+        await page.getByText("This search is excluded by the current mode").waitFor();
         assert.equal(await panel.isVisible(), false);
       }
       assert.equal(calls.filter(call => call.path.startsWith(publisherPath)).length, before);
       publisherMode = "off";
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, private search, cited chat, TikTok recovery, and publisher gate lifecycle`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, privacy modes, cited chat, TikTok recovery, and publisher gate lifecycle`);
     } finally { await browser.close(); }
   }
 } finally {

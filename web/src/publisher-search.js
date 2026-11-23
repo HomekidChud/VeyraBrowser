@@ -49,7 +49,8 @@ export function createPublisherSearch({ panel, request }) {
   const el = (tag, text, classname) => Object.assign(document.createElement(tag), { textContent: text, className: classname || "" });
   const button = (label, action) => Object.assign(el("button", label, "btn ghost"), { type: "button", onclick: action });
   const live = s => state === s && s.current() && !s.controller.signal.aborted;
-  const call = (s, suffix = "", json) => request(BASE + suffix, { json, signal: s.controller.signal, timeoutMs: 10000 });
+  const call = (s, suffix = "", json) => request(`${BASE}${suffix}${suffix.includes("?") ? "&" : "?"}privacy=restricted`,
+    { json, signal: s.controller.signal, timeoutMs: 10000 });
   function closePopup(s) {
     clearInterval(s.popupTimer);
     if (s.popup && !s.popup.closed) s.popup.close();

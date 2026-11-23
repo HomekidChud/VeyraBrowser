@@ -3,7 +3,7 @@ import {
   api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
 } from "./core.js?v=8.36.0-workbench";
 import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
-import { initSettings } from "./settings.js?v=8.42.0-search-chat";
+import { initSettings } from "./settings.js?v=8.44.3-search-privacy";
 import { originalSiteUrl } from "./site-recovery.js?v=1";
 import { accountDestination } from "./account-navigation.js?v=2";
 import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
@@ -354,7 +354,7 @@ hooks.onAuthChanged = onAuthChanged;
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
-  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality"]) delete s[key];
+  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality", "searchPrivacy"]) delete s[key];
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
   return {
     v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
@@ -384,7 +384,7 @@ export async function pullSync() {
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
-      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality"]) delete remote[key];
+      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality", "searchPrivacy"]) delete remote[key];
       for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }
@@ -713,7 +713,10 @@ hooks.openClearData = openClearData;
 
 export function initUI(b) {
   B = b;
-  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); B.syncBackgroundDiagnostics(); B.syncAdminAccess(); renderBookmarksBar(); };
+  applyTheme(); hooks.onSettingsChanged = () => {
+    if (B.syncSearchPrivacy()) { omniSeq++; hideOmni(); }
+    applyTheme(); B.syncBackgroundDiagnostics(); B.syncAdminAccess(); renderBookmarksBar();
+  };
   hooks.playStudioSound = playStudioSound;
   for (const id of ["studioBtn", "ntpStudioBtn"]) $(id).onclick = () => B.openInternal("settings", { section: "appearance" });
   $("ntpVelocityBtn").onclick = () => openCommandPalette();
