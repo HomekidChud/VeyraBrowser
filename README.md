@@ -33,13 +33,17 @@ The override is accepted only when the page itself is served from `localhost`, `
 
 ### Veyra Search
 
-Search fills the active browser tab. Web opens a plain list of links and snippets, Images and Videos use a gallery, and News, Shopping, Research, Discussions, and Veyra index have their own views. The browser requests the India region on every page. Providers without a regional filter, such as Crossref and Hacker News, still include global results. Shopping opens Indian merchant pages in Veyra and shows a rupee price only when one is explicitly supplied; prices are not converted and stock is not inferred.
+Search fills the active browser tab. Web combines links and snippets with an optional Images preview; the preview loads separately so it cannot hold up Web results. Images and Videos use a gallery, and News, Shopping, Research, Discussions, and Veyra index have their own views. The browser requests the India region on every page. Providers without a regional filter, such as Crossref and Hacker News, still include global results. Shopping opens Indian merchant pages in Veyra and shows a rupee price only when one is explicitly supplied; prices are not converted and stock is not inferred.
+
+Enter `search:nasa.gov` for Web, Images and Videos scoped to the site and its subdomains. Add words, as in `search:nasa.gov moon landing`, to narrow the search. Web shows image and video previews when available and attaches them to individual Web results only if they point to the same publisher page. A preview may be absent because the providers did not index the media, did not supply a supported thumbnail, or filtered the result. Videos open the publisher's watch page; they do not autoplay in the search feed.
+
+Enter `google.com` to load the real site through Fast Proxy, or `search:google.com` to look up the domain inside Search. With more words, `search:google.com northern lights` asks Google alongside Veyra’s other sources and indicates whether Google results appear. This is different from `site:google.com northern lights`, which limits results to pages hosted at Google. When Google presents a CAPTCHA or an unsupported search interstitial in Fast Proxy, choose **Search with Veyra** to keep the query in the current tab or open the original Google URL directly.
 
 Categories sit side by side; swipe the row on a phone to see the rest. Scrolling near the bottom loads another batch when one is available. The **More results** button remains for short result lists, keyboard navigation, and retry. Web can continue into the Veyra crawler index after provider pages run out.
 
 Open `/search/?q=moon&type=images` under the deployed app base to link directly to a result category. Old `type=deep` links now open Web with the same query. The web and Android shells use the same route. Search requests go to the Veyra API without opening a proxy browsing session first; a proxy session is still required when opening a website.
 
-Signed-in users can request a cited summary below the results. A search never starts a summary automatically. Incognito does not load result thumbnails, and guest and incognito sessions cannot request AI summaries.
+Signed-in users can request a cited summary below the results. A search never starts a summary automatically. Incognito does not request inline image previews or load result thumbnails, and guest and incognito sessions cannot request AI summaries.
 
 Deploy the matching VeyraServer category endpoint first, then ship the Pages and Capacitor client. An older API still supports Web and Veyra index. See [Search smoke checks](FLOWS.md) for browser QA.
 

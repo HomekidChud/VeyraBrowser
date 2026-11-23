@@ -37,6 +37,12 @@ api.post("/api/session", (_req, res) => res.json({ ok: true, sessionId: "browser
 api.get("/api/vpn/session", (_req, res) => vpnMode === "unknown"
   ? res.status(503).json({ ok: false }) : res.json({ ok: true, connected: vpnMode === "on" }));
 api.get("/api/view", (req, res) => {
+  if (req.query.url === "https://google.com/") return res.type("html").send("<h1>Google homepage fixture</h1>");
+  if (req.query.url === "https://www.google.com/search?q=clear") return res.type("html").send("<h1>Google results fixture</h1>");
+  if (req.query.url === "https://www.google.com/search?q=northern+lights") return res.type("html").send(`
+    <h1>Google is asking for a captcha</h1>
+    <button onclick="parent.postMessage({type:'veyra:google-search-fallback',query:'northern lights',sessionId:'wrong_session'},'*')">Invalid session</button>
+    <button onclick="parent.postMessage({type:'veyra:google-search-fallback',query:'northern lights',sessionId:'browser_fixture_session'},'*')">Search with Veyra</button>`);
   if (req.query.url === blankSite) return res.type("html").send(`<div id="app"></div><script>
     setTimeout(() => parent.postMessage({type:"veyra:browser-required",reason:"empty-spa-shell",pageUrl:${JSON.stringify(blankSite)},sessionId:"browser_fixture_session"},"*"),250);
   </script>`);
@@ -66,6 +72,34 @@ api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) =
   const type = req.query.type || (req.path === "/api/search" ? "index" : "web");
   const next = Number(req.query.offset || req.query.page || 0);
   const paged = req.query.q === "India rail";
+  if (req.query.q === "search:nasa.gov") {
+    const watch = { url: "https://www.nasa.gov/watch?id=42", title: "NASA watch fixture", thumbnail: "https://upload.wikimedia.org/fixture.jpg", duration: "2:15" };
+    const image = { url: "https://upload.wikimedia.org/fixture.jpg", title: "NASA image fixture", sourcePageUrl: watch.url,
+      thumbnail: "https://upload.wikimedia.org/fixture.jpg" };
+    const offsite = { url: "https://nasa.gov.other.test/watch", title: "Offsite fixture", thumbnail: image.thumbnail };
+    return res.json({ status: "ok", results: type === "images" ? [image, offsite] : type === "videos" ? [watch, offsite] :
+      [{ title: "NASA watch page", url: `${watch.url}&utm_source=result` },
+        { url: "https://nasa.gov/research", title: "NASA research page" },
+        { url: "https://nasa.gov/direct", title: "NASA direct media page",
+          media: { type: "videos", thumbnail: "https://imgs.search.brave.com/fixture.jpg", duration: "3:35" } }, offsite] });
+  }
+  if (req.query.preview === "1") {
+    if (req.query.q === "slow preview") return setTimeout(() => res.json({ results: [{
+      title: "Stale thumbnail", url: "https://example.test/stale", thumbnail: "https://upload.wikimedia.org/stale.jpg"
+    }] }), 1200);
+    if (!paged && req.query.q !== "site:example.in India rail") return res.json({ results: [], status: "empty" });
+    return res.json({ results: [{ title: "Rail thumbnail", url: "https://example.test/image", sourcePageUrl: "https://example.test/rail-photo",
+      thumbnail: "https://upload.wikimedia.org/fixture.jpg" }, { title: "Untrusted thumbnail", url: "https://example.test/not-shown",
+      thumbnail: "https://untrusted.example/fixture.jpg" }] });
+  }
+  if (type === "web" && req.query.q === "search:google.com") {
+    return res.json({ status: "ok", results: [{ title: "Google", url: "https://www.google.com/", source: "veyra-navigation" }] });
+  }
+  if (type === "web" && req.query.q === "search:google.com northern lights") {
+    return res.json({ status: "ok", preferredEngine: "google", googleIncluded: false, results: [
+      { title: "web result for northern lights", url: "https://example.test/aurora" }
+    ] });
+  }
   if (type === "images" && /^(?:site:doc\.qt\.io )?Python asyncio$/.test(req.query.q)) {
     return res.json({ provider: "reference-images", status: "ok", results: [{
       url: qtDiagram, imageUrl: qtDiagram, thumbnail: qtDiagram, sourcePageUrl: qtSource,
@@ -194,6 +228,9 @@ try {
 
       await page.goto(`${origin}${prefix}/search/?q=India+rail&type=deep`);
       await result("web result for India rail").waitFor();
+      await page.waitForFunction(() => document.querySelector("#searchImagePreview img")?.naturalWidth > 0);
+      assert.equal(await page.getByRole("link", { name: "Rail thumbnail" }).getAttribute("href"), "https://example.test/rail-photo");
+      assert.equal(await page.getByRole("link", { name: "Untrusted thumbnail" }).count(), 0);
       const evidence = page.locator(".search-evidence summary").getByText("Source evidence: Strong", { exact: true });
       await evidence.focus();
       await evidence.press("Enter");
@@ -337,6 +374,8 @@ try {
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
       await page.goto(`${origin}${prefix}/search/?q=private+web&incognito=1`);
       await result("web result for private web").waitFor();
+      assert.equal(await page.locator("#searchImagePreview").isVisible(), false);
+      assert.ok(!calls.some(call => call.query.q === "private web" && call.query.preview === "1"));
       assert.equal(await page.locator(".search-evidence").count(), 0, "incognito ignores any evidence metadata returned by the API");
       assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "private web" && call.query.incognito === "1" && call.query.private === "1"));
       assert.equal(await page.locator("#searchResults .search-site-icon img").count(), 0);
@@ -490,8 +529,72 @@ try {
       assert.equal(await page.locator("#aiAnswer").isVisible(), false);
       assert.equal(await page.locator("#aiAnswer").textContent(), "");
 
+      await page.goto(`${origin}${prefix}/browse/`);
+      await openPost("google.com");
+      await frame.getByRole("heading", { name: "Google homepage fixture" }).waitFor();
+      await openPost("https://www.google.com/search?q=clear");
+      await frame.getByRole("heading", { name: "Google results fixture" }).waitFor();
+      assert.ok(!calls.some(call => call.query.q === "clear"));
+      await openPost("https://www.google.com/search?q=northern+lights");
+      await frame.getByRole("heading", { name: "Google is asking for a captcha" }).waitFor();
+      await frame.getByRole("button", { name: "Invalid session" }).click();
+      await frame.getByRole("heading", { name: "Google is asking for a captcha" }).waitFor();
+      await frame.getByRole("button", { name: "Search with Veyra" }).click();
+      await result("web result for northern lights").waitFor();
+      await page.getByText(/No Google results from the API/).waitFor();
+      assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "search:google.com northern lights"));
+      await openPost("search:google.com");
+      await page.locator("#searchResults").getByRole("link", { name: "Google", exact: true }).waitFor();
+      await page.locator("#searchInput").fill("India rail");
+      await page.locator("#searchInput").press("Enter");
+      await page.getByRole("button", { name: "See all images" }).click();
+      await result("images result for India rail").waitFor();
+      assert.equal(await page.getByRole("tab", { name: "Images" }).getAttribute("aria-selected"), "true");
+
+      await page.goto(`${origin}${prefix}/search/?q=slow+preview`);
+      await result("web result for slow preview").waitFor();
+      assert.equal(await page.locator("#searchImagePreview").isVisible(), false, "Web renders before a slow preview");
+      const aborted = page.waitForEvent("requestfailed", request => request.url().includes("preview=1") && request.url().includes("slow+preview"));
+      await page.locator("#searchInput").fill("search:google.com");
+      await page.locator("#searchInput").press("Enter");
+      await page.locator("#searchResults").getByRole("link", { name: "Google", exact: true }).waitFor();
+      await aborted;
+      await page.locator("#searchInput").fill("site:example.in India rail");
+      const scopedPreview = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.searchParams.get("preview") === "1" && url.searchParams.get("q") === "site:example.in India rail";
+      });
+      await page.locator("#searchInput").press("Enter");
+      await (await scopedPreview).finished();
+      await page.locator("#searchStat").getByText("0 results", { exact: true }).waitFor();
+      assert.equal(await page.locator("#searchImagePreview").isVisible(), false, "Neither a stale nor an out-of-scope image is shown");
+      await openPost("search:nasa.gov");
+      await result("NASA watch page").waitFor();
+      assert.ok(calls.some(call => call.path === "/api/search/web" && call.query.q === "search:nasa.gov" && !call.query.region));
+      assert.equal(await page.locator("#searchResults .search-match").count(), 0, "a domain without keywords does not show a match percentage");
+      await page.locator("#searchImagePreview").getByRole("heading", { name: "Videos", exact: true }).waitFor();
+      await page.locator("#searchImagePreview").getByRole("link", { name: "NASA image fixture" }).waitFor();
+      await page.locator("#searchImagePreview").getByRole("link", { name: /NASA watch fixture/ }).waitFor();
+      const watchPage = page.locator("#searchResults .result").filter({ hasText: "NASA watch page" });
+      await watchPage.getByRole("link", { name: /Watch video/ }).waitFor();
+      await page.locator("#searchResults").getByRole("link", { name: "Image preview" }).waitFor();
+      const directMedia = page.locator("#searchResults .result").filter({ hasText: "NASA direct media page" });
+      assert.equal(await directMedia.getByText("3:35").textContent(), "3:35");
+      assert.equal(await directMedia.locator(".search-result-media img").getAttribute("src"), "https://imgs.search.brave.com/fixture.jpg");
+      assert.equal(await page.getByText("Offsite fixture").count(), 0);
+      assert.equal(await page.locator("#searchResults .result").filter({ hasText: "NASA research page" }).locator(".search-result-media").count(), 0);
+      await page.getByRole("button", { name: "See all videos" }).click();
+      await result("NASA watch fixture").waitFor();
+      assert.equal(await page.locator("#searchInput").inputValue(), "search:nasa.gov");
+      assert.equal(await result("Offsite fixture").count(), 0);
+      calls.length = 0;
+      await page.goto(`${origin}${prefix}/search/?q=search%3Anasa.gov&type=web&incognito=1`);
+      await result("NASA direct media page").waitFor();
+      assert.equal(await page.locator(".search-result-media").count(), 0);
+      assert.ok(!calls.some(call => call.query.q === "search:nasa.gov" && call.query.preview === "1"));
+
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: source evidence, category pagination, responsive image batches, icons, private search, cited chat, and TikTok recovery`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, private search, cited chat, and TikTok recovery`);
     } finally { await browser.close(); }
   }
 } finally {
