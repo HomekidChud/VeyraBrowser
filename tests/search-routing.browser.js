@@ -572,6 +572,10 @@ try {
       await openPost("tiktok.com");
       await frame.getByRole("heading", { name: "TikTok", exact: true }).waitFor();
       assert.equal(await frame.locator("#player iframe").count(), 0);
+      assert.equal(await frame.getByRole("link", { name: "Open on TikTok" }).evaluate(el => {
+        const proxy = el.ownerDocument.getElementById("tryProxy"), view = el.ownerDocument.defaultView;
+        return el.nextElementSibling === proxy && view.getComputedStyle(el).backgroundColor !== view.getComputedStyle(proxy).backgroundColor;
+      }), true, "the recommended action is primary and comes first in keyboard order");
       const [home] = await Promise.all([context.waitForEvent("page"), frame.getByRole("link", { name: "Open on TikTok" }).click()]);
       await home.getByRole("heading", { name: "TikTok home fixture" }).waitFor();
       assert.equal(await home.evaluate(() => document.referrer), "");

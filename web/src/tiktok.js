@@ -49,7 +49,7 @@ export function tiktokTarget(raw) {
 }
 
 export function tiktokPlayerPage() {
-  return new URL("../media/tiktok.html?v=4", import.meta.url).href;
+  return new URL("../media/tiktok.html?v=5", import.meta.url).href;
 }
 
 function makeProfileFrame(doc, post) {

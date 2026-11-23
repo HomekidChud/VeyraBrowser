@@ -15,6 +15,8 @@
     button,a{font:inherit;font-weight:650;min-height:44px}
     button{border:0;padding:.45rem .9rem;border-radius:.5rem;color:#142131;background:#c9deff;cursor:pointer}
     button:disabled{opacity:.6;cursor:default}a{align-content:center;color:#c9deff;text-underline-offset:.18em}
+    #openOriginal:not([hidden]) ~ #tryProxy{background:transparent;border:1px solid #65768e;color:#c9deff}
+    .actions:has(#loadPlayer[hidden]) #openOriginal:not([hidden]){padding:.45rem .9rem;border-radius:.5rem;background:#c9deff;color:#142131;text-decoration:none}
     :is(a,button):focus-visible{outline:2px solid #fff;outline-offset:3px}
     iframe{display:block;width:100%;height:min(60vh,36rem);min-height:15rem;border:0;border-radius:.45rem;background:#080a0d}
     iframe.profile-embed{height:25rem;background:transparent}
@@ -28,8 +30,8 @@
     <div class="actions">
       <button id="loadPlayer" type="button" hidden disabled>Load TikTok player</button>
       <button id="closePlayer" type="button" hidden>Close TikTok player</button>
-      <button id="tryProxy" type="button" disabled>Use Fast Proxy</button>
       <a id="openOriginal" target="_blank" rel="noopener noreferrer" hidden>Open on TikTok</a>
+      <button id="tryProxy" type="button" disabled>Use Fast Proxy</button>
     </div>
     <p id="playerStatus" role="status"></p>
     <div id="player"></div>
