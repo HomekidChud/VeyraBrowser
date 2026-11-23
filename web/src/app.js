@@ -13,7 +13,7 @@ import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=2";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=15";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=16";
 import { annotateResultBatch, querySuggestions } from "./search-match.js?v=2";
 import { createPublisherSearch } from "./publisher-search.js?v=2";
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=1";
@@ -2560,7 +2560,8 @@ function syncSearchAuth() {
   else if (!identity) renderAIAnswerReset();
 }
 async function fetchAIAnswer(t) {
-  if (ephemeralSession() || activeTab() !== t || !t.searchData?.results?.length || t.searchAnswer?.pending) return;
+  if (ephemeralSession() || !auth.user || !auth.token || activeTab() !== t ||
+      !overviewSearchReady(t.searchData, t.searchSource, true) || t.searchAnswer?.pending) return;
   const { searchQuery: query, searchSource: source, searchData } = t;
   const terms = searchEntry(query).query, privacy = currentSearchPrivacy(), scope = siteScope(terms);
   if (!scope.text || scope.invalid || masksSearchScope(privacy, terms, scope)) return;
@@ -2638,7 +2639,9 @@ function overviewAnswerHTML(r, query) {
 }
 function renderAIAnswer(t) {
   const ai = $("aiAnswer"), query = searchEntry(t.searchQuery).query, answer = t.searchAnswer, scope = siteScope(query);
-  if (INCOGNITO || !t.searchData?.results?.length || !scope.text || scope.invalid || masksSearchScope(currentSearchPrivacy(), query, scope)) {
+  const canResearchEmpty = !!auth.user && !!auth.token && !ephemeralSession();
+  if (INCOGNITO || !overviewSearchReady(t.searchData, t.searchSource, canResearchEmpty) ||
+      !scope.text || scope.invalid || masksSearchScope(currentSearchPrivacy(), query, scope)) {
     renderAIAnswerReset();
     return;
   }

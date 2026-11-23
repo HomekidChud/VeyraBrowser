@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
+import { CATEGORIES, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mergeResults, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "../web/src/search-deck.js";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "../web/src/playback-popups.js";
 import { querySuggestions, annotateResultBatch } from "../web/src/search-match.js";
 import { publisherLaunch, publisherPage, publisherScope } from "../web/src/publisher-search.js";
@@ -97,6 +97,18 @@ test("category routing preserves the query and upgrades legacy history", () => {
   assert.deepEqual(readSearchState(`veyra:search-v2:${JSON.stringify(["日本語 site:example.com", "deep"])}`), { query: "日本語 site:example.com", source: "web" });
   assert.deepEqual(readSearchState("veyra:search:old history"), { query: "old history" });
   assert.equal(readSearchState("veyra:search-v2:invalid"), null);
+});
+
+test("signed-in overviews may discover evidence for empty Web and category searches", () => {
+  const empty = { results: [] };
+  for (const category of Object.keys(CATEGORIES).filter(category => category !== "index")) {
+    assert.equal(overviewSearchReady(empty, category, true), true, category);
+    assert.equal(overviewSearchReady(empty, category, false), false, category);
+    assert.equal(overviewSearchReady(null, category, true), false, "wait for the primary search");
+    assert.equal(overviewSearchReady({ ...empty, status: "filtered" }, category, true), false, "never bypass the search filter");
+  }
+  assert.equal(overviewSearchReady(empty, "index", true), false);
+  assert.equal(overviewSearchReady({ results: [{ url: "https://example.com/" }] }, "index", false), true);
 });
 
 test("search commands distinguish a domain lookup, Google preference, and site scoping", () => {
