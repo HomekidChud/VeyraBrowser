@@ -17,10 +17,13 @@ const runnerIds = new Set([...runner.matchAll(/\$\("([A-Za-z][\w-]*)"\)/g)].map(
 
 assert.match(html, /id="accessGate"/);
 assert.match(html, /id="lab" hidden/);
-assert.match(html, /admin-gate\.js\?v=4/);
-assert.match(browserHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(browseHtml, /bootstrap\.js\?v=8\.28\.27-youtube-link-tabs/);
-assert.match(bootstrap, /app\.js\?v=8\.28\.27-youtube-link-tabs/);
+assert.match(html, /admin-gate\.js\?v=5/);
+const bust = (version) => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const appBust = bootstrap.match(/app\.js\?v=([\w.-]+)/)?.[1];
+assert.ok(appBust, "bootstrap.js must load app.js with a cache-bust version");
+assert.match(browserHtml, new RegExp(`bootstrap\\.js\\?v=${bust(appBust)}`), "web/index.html must reference bootstrap.js with the current cache-bust version");
+assert.match(browseHtml, new RegExp(`bootstrap\\.js\\?v=${bust(appBust)}`), "web/browse/index.html must reference bootstrap.js with the current cache-bust version");
+assert.match(bootstrap, new RegExp(`app\\.js\\?v=${bust(appBust)}`), "bootstrap.js must load app.js with the current cache-bust version");
 assert.match(app, /requiresBrowser: false/);
 assert.match(app, /server Chromium is unavailable; keeping the FAST_PROXY page/);
 assert.match(app, /t\.requiresBrowser = true/);
@@ -28,8 +31,8 @@ assert.doesNotMatch(app, /showHttpReaderFallback|httpReaderFallback|\/api\/reade
 assert.doesNotMatch(html, /runner\.js/);
 assert.match(gate, /api\/auth\/config/);
 assert.match(gate, /veyra:console-lab:auth-check/);
-assert.match(gate, /runner\.js\?v=5/);
-assert.match(gate, /window\.parent !== window \? await verifyThroughVeyra\(\) : await verifyDirectSession\(\)/);
+assert.match(gate, /runner\.js\?v=6/);
+assert.match(gate, /window\.parent === window \|\| firstPartyFrame \? await verifyDirectSession\(\) : await verifyThroughVeyra\(\)/);
 assert.ok(gate.indexOf("if (!access.allowed)") < gate.indexOf("loadRunner();"), "the runner must only load after admin verification");
 assert.match(runner, /document\.body\?\.dataset\.consoleLabAccess !== "granted"/);
 assert.match(app, /isConsoleLabPageUrl\(t\.url\)/);
@@ -40,9 +43,13 @@ assert.match(app, /trustedConsoleLabOrigin/);
 assert.match(app, /config\?\.admin === true/);
 assert.match(app, /!isConsoleLabPageUrl\(t\.url\)/);
 assert.match(ui, /isAdmin\(\) \? \[[\s\S]*?menuItem\("i-terminal", "Console Lab"/);
-assert.match(ui, /B\.go\("veyra:\/\/console-labs", \{ newTab: true \}\)/);
-assert.match(app, /"console-labs": \{[^\n]*admin: true/);
-assert.match(app, /r\.view === "console-labs"/);
+assert.match(ui, /B\.go\("veyra:\/\/console-lab", \{ newTab: true \}\)/);
+assert.match(app, /"console-lab": \{[^\n]*admin: true/);
+assert.match(app, /name === "console-labs" \? "console-lab" : name/);
+assert.match(app, /if \(INCOGNITO \|\| !canOpenAdminPanel\(\)\)/);
+assert.match(browserHtml, /id="view-console-lab"/);
+assert.match(browseHtml, /id="view-console-lab"/);
+for (const page of [browserHtml, browseHtml]) assert.match(page, /frame-src 'self' https:\/\/veyraserver-xscy\.onrender\.com/);
 assert.ok(app.includes("new URL(`${APP_BASE}/console-lab/`, location.origin).href"), "Console Labs route must follow the active Veyra app base path");
 assert.match(app, /\^veyra:\\\/\\\/\(\[a-z-\]\+\)/);
 const consoleLabsRoute = "veyra://console-labs".match(/^veyra:\/\/([a-z-]+)(?:\/([a-z-]+))?/i);
@@ -50,11 +57,13 @@ assert.equal(consoleLabsRoute?.[1], "console-labs", "the requested Veyra scheme 
 const resolveConsoleLabsTarget = appBase => new URL(`${appBase}/console-lab/`, "https://homekidchud.github.io").href;
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser/web"), "https://homekidchud.github.io/VeyraBrowser/web/console-lab/");
 assert.equal(resolveConsoleLabsTarget("/VeyraBrowser"), "https://homekidchud.github.io/VeyraBrowser/console-lab/");
-assert.match(app, /ui\.js\?v=8\.28\.18-professional-shell/);
-assert.match(ui, /settings\.js\?v=8\.28\.18-professional-shell/);
-assert.match(settings, /ui\.js\?v=8\.28\.18-professional-shell/);
+const uiBust = app.match(/["']\.\/ui\.js\?v=([\w.-]+)/)?.[1];
+assert.ok(uiBust, "app.js must import ui.js with a cache-bust version");
+assert.match(app, new RegExp(`ui\\.js\\?v=${bust(uiBust)}`), "app.js must import ui.js with the current cache-bust version");
+assert.match(ui, new RegExp(`settings\\.js\\?v=${bust(uiBust)}`), "ui.js must import settings.js with the same cache-bust version as app.js's ui.js import");
+assert.match(settings, new RegExp(`ui\\.js\\?v=${bust(uiBust)}`), "settings.js must import ui.js with the same cache-bust version as app.js's ui.js import");
 
-for (const module of ["overview", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
+for (const module of ["overview", "traffic", "console", "agents", "activity", "analytics", "runs", "fleet", "diagnostics"]) {
   assert.match(html, new RegExp(`data-view="${module}"`), `missing ${module} module`);
 }
 assert.match(html, /id="runFull"/);
@@ -106,7 +115,8 @@ assert.match(runner, /options\.timeoutMs \?\? options\.timeout/);
 assert.match(runner, /timeoutMs: Math\.max\(60000, agent\.maxPages \* 15000\)/);
 assert.match(runner, /health: "status"/);
 assert.match(runner, /command === "refresh"/);
-assert.match(runner, /setInterval\(\(\) => refreshData\(true\), POLL_MS\)/);
+assert.match(runner, /setInterval\(pollVisibleLab, POLL_MS\)/);
+assert.match(runner, /!document\.hidden && \(!window\.frameElement \|\| window\.frameElement\.getClientRects\(\)\.length\)/);
 assert.doesNotMatch(runner, /\/api\/robots\/reset/);
 assert.doesNotMatch(runner, /localStorage\.getItem\([^)]*(?:incognito|private)[^)]*\)/i);
 

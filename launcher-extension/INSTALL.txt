@@ -1,0 +1,31 @@
+Veyra Browser Launcher
+
+The launcher opens any HTTPS website in a regular browser tab. It does not
+read the current tab, credentials, website data, or cookies.
+
+To install locally on desktop:
+
+1. Extract the ZIP into its own folder.
+2. In Chrome open chrome://extensions, or in Edge open edge://extensions.
+3. Enable Developer mode and choose Load unpacked.
+4. Select the extracted folder that contains manifest.json.
+5. Open Veyra Browser Launcher from your browser's extensions menu.
+
+To sign in to a website:
+
+1. Copy its usual HTTPS website address. If the site is open in Veyra, click
+   Site information beside Veyra's address bar, then Copy URL.
+2. Paste the address in Website address and choose Open site directly.
+3. Sign in on the site in the new tab. Your sign-in stays in that browser;
+   it does not sign you in inside Veyra's proxy.
+
+You can also click Site information > Site options > Open original site
+inside Veyra without installing the extension. MSN Play, Google and GitHub
+still have one-click shortcuts in the launcher.
+
+Already installed? Extract the new files over the old unpacked folder, then
+select Reload on the extension's card. If you extracted to a new folder, remove
+the old extension and use Load unpacked to select the new folder instead.
+
+This is an unpacked developer build, not a Chrome Web Store or Edge Add-ons
+release. Chrome and Edge may disallow unpacked extensions on managed devices.

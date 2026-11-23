@@ -1,6 +1,4 @@
-
-
-import { api, API_ORIGIN, uid } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { api, API_ORIGIN, uid } from "./core.js?v=8.36.0-workbench";
 
 const pending = new Map();
 const listeners = new Set();
@@ -19,14 +17,12 @@ export function dtCall(tab, method, params = {}, timeoutMs = 8000) {
     const id = uid();
     const timer = setTimeout(() => { pending.delete(id); reject(new Error("The page did not answer. It may still be loading, or it blocks the Veyra runtime.")); }, timeoutMs);
     pending.set(id, { resolve, reject, timer, tabId: tab.id });
-    
-    
+
     const targetOrigin = frame.sandbox?.contains("allow-same-origin") ? API_ORIGIN : "*";
     try { frame.contentWindow.postMessage({ type: "veyra:dt", id, method, params }, targetOrigin); }
     catch (e) { clearTimeout(timer); pending.delete(id); reject(e); }
   });
 }
-
 
 export function handleBridgeMessage(tab, d) {
   if (d.type === "veyra:dt-result") {

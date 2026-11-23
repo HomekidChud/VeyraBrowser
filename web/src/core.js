@@ -1,5 +1,6 @@
-
-
+import { toast, clearNotifications } from "./notifications.js?v=2";
+import { APPEARANCE, STUDIO_LOCAL_KEYS } from "./studio-model.js?v=3";
+export { toast, clearNotifications };
 
 export function bootParam(name) {
   try {
@@ -9,7 +10,6 @@ export function bootParam(name) {
     return new URLSearchParams(r.slice(r.indexOf("?") + 1).split("#")[0]).get(name);
   } catch { return null; }
 }
-
 
 const DEFAULT_API = "https://veyraserver-xscy.onrender.com";
 function deploymentApi() {
@@ -24,7 +24,9 @@ function deploymentApi() {
 }
 export const API = deploymentApi();
 export const API_ORIGIN = (() => { try { return new URL(API).origin; } catch { return ""; } })();
-export const VERSION = "8.28.27";
+export const VERSION = "8.36.0";
+
+export const CHROMIUM_TRY_DISABLED = false;
 export const $ = id => document.getElementById(id);
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -36,25 +38,22 @@ export const APP_BASE = (() => {
   return withSlash.replace(/\/$/, "");
 })();
 
-
 export const hooks = {};
 
 export function safeJsonParse(raw, fallback) { try { const v = JSON.parse(raw); return v == null ? fallback : v; } catch { return fallback; } }
 
-
-
 export const INCOGNITO = (() => {
+  const q = bootParam("incognito");
   try {
-    const q = bootParam("incognito");
     if (q === "1") sessionStorage.setItem("veyra-incognito", "1");
     else if (q === "0") sessionStorage.removeItem("veyra-incognito");
     return sessionStorage.getItem("veyra-incognito") === "1";
-  } catch { return false; }
+  } catch { return q === "1"; }
 })();
 const EPHEMERAL_KEYS = new Set([
   "veyra-history", "veyra-downloads", "veyra-last-tabs", "veyra-auth", "veyra-notes",
   "veyra-settings", "veyra-bookmarks", "veyra-extensions", "veyra-dev-extensions",
-  "veyra-tab-groups", "veyra-live-session"
+  "veyra-tab-groups", "veyra-live-session", ...STUDIO_LOCAL_KEYS
 ]);
 const memoryStore = new Map();
 const ephemeral = key => INCOGNITO && EPHEMERAL_KEYS.has(key);
@@ -82,26 +81,25 @@ export function letterIcon(url, label = "") {
 export function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-
 export const DEFAULT_SETTINGS = {
-  theme: "dark", accent: "#8fb0f0", fontScale: 1, compact: false, showBookmarksBar: true, showHomeButton: true,
+  ...APPEARANCE, splitRatio: 50, performanceMode: "balanced", streamQuality: "adaptive", youtubeInline: true,
   searchEngine: "veyra", customSearch: "", suggestions: true,
   startup: "newtab", startupUrl: "", homepage: "",
-  ntpShortcuts: true, ntpRecent: true, ntpClock: true,
   blockTrackers: false, doNotTrack: true, clearHistoryOnSessionEnd: false, warnBeforeClose: false,
   sessionWarnings: true, autoRestartSession: false,
   downloadsOpenOnStart: true, downloadsMax: 200, historyMax: 1000,
-  reduceMotion: false, focusRings: false, linkUnderline: false,
+  focusRings: false, linkUnderline: false,
   runtime: "auto", confirmCloseWithCrawl: false, autoStopPrevious: true, requestTimeoutMs: 30000, browserFallback: true, settingsVersion: 6,
   consoleVerbosity: "debug", devRefreshMs: 1500, crawlerGlobalConcurrency: 24, crawlerHostConcurrency: 6,
   devtoolsDock: "bottom", devtoolsSize: 0.42, preserveLog: false, captureBodies: true,
-  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null, zoomDefault: 1,
+  extensionDeveloperMode: false, shortcuts: {}, adminToken: "", vpnAutoProfile: "", ntpTiles: null,
   challengeHandoff: true, searchSource: "web", incognitoShortcutHint: true,
-  
+  signinMode: "ask",
+
   neuralCrawlerEnabled: true, neuralCrawlerPrewarm: true, neuralCrawlerQueryExpansion: true,
   neuralCrawlerParallelSearch: true, neuralCrawlerBlockTrackers: true, neuralCrawlerProgressiveRender: true,
   neuralCrawlerRetrainOnFeedback: true, neuralCrawlerModelPath: "",
-  
+
   internetProfile: "auto", wifiSsid: "", wifiFreq: "auto",
   cellApn: "", cellCarrier: "", cellType: "4g",
   customProxy: "", customDns: "", customGateway: "",
@@ -141,9 +139,7 @@ export function migrateSettings(obj) {
     obj.settingsVersion = 5;
   }
   if (Number(obj.settingsVersion) < 6) {
-    
-    
-    
+
     if (obj.clearHistoryOnSessionEnd == null) obj.clearHistoryOnSessionEnd = false;
     delete obj.clearOnSessionEnd;
     delete obj.wifiPass;
@@ -153,7 +149,7 @@ export function migrateSettings(obj) {
 }
 { const stored = load("veyra-settings", null); if (stored && (Number(stored.settingsVersion) || 0) < 6) { Object.assign(settings, migrateSettings(stored)); delete settings.clearOnSessionEnd; delete settings.wifiPass; save("veyra-settings", settings); } }
 { const stored = load("veyra-settings", null); if (stored && ("wifiPass" in stored || "clearOnSessionEnd" in stored)) save("veyra-settings", settings); }
-export function saveSettings() { save("veyra-settings", settings); hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
+export function saveSettings({ refresh = true } = {}) { save("veyra-settings", settings); if (refresh) hooks.onSettingsChanged?.(); hooks.scheduleSync?.(); }
 export function resetSettings() { for (const k of Object.keys(settings)) delete settings[k]; Object.assign(settings, DEFAULT_SETTINGS); saveSettings(); }
 
 export const SEARCH_ENGINES = {
@@ -161,8 +157,7 @@ export const SEARCH_ENGINES = {
   duckduckgo: { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=%s" },
   bing: { name: "Bing", url: "https://www.bing.com/search?q=%s" },
   brave: { name: "Brave Search", url: "https://search.brave.com/search?q=%s" },
-  
-  
+
   google: { name: "Google", url: "https://www.google.com/search?q=%s", engine: "browser" },
   wikipedia: { name: "Wikipedia", url: "https://en.wikipedia.org/w/index.php?search=%s" },
   custom: { name: "Custom", url: "" }
@@ -173,28 +168,20 @@ export function engineUrl(q) {
   const e = SEARCH_ENGINES[settings.searchEngine]; return e?.url ? e.url.replace("%s", encodeURIComponent(q)) : "";
 }
 
-
-const readSessionAuth = () => {
-  try {
-    const store = INCOGNITO ? sessionStorage : localStorage;
-    return safeJsonParse(store.getItem("veyra-auth"), null);
-  } catch { return null; }
-};
+const readSessionAuth = () => load("veyra-auth", null);
 export const auth = { token: readSessionAuth()?.token || "", user: readSessionAuth()?.user || null, admin: false, config: null };
 export function setAuth(token, user) {
   auth.token = token || ""; auth.user = user || null;
-  try {
-    const store = INCOGNITO ? sessionStorage : localStorage;
-    if (token) store.setItem("veyra-auth", JSON.stringify({ token, user }));
-    else store.removeItem("veyra-auth");
-  } catch {}
+  if (token) save("veyra-auth", { token, user });
+  else remove("veyra-auth");
   hooks.onAuthChanged?.();
 }
 export function isAdmin() { return !!(auth.admin || auth.user?.role === "admin"); }
 
-
 export class ApiError extends Error { constructor(message, status = 0, code = "API_ERROR", requestId = "", body = null) { super(message); this.status = status; this.code = code; this.requestId = requestId; this.body = body; } }
 export const netLog = [];
+
+let apiLastSuccessAt = 0;
 export async function api(path, options = {}) {
   const method = String(options.method || (options.json !== undefined ? "POST" : "GET")).toUpperCase();
   const requestId = uid();
@@ -214,28 +201,33 @@ export async function api(path, options = {}) {
   }
   const start = performance.now();
   const headers = new Headers(options.headers || {});
+  const requestToken = auth.token;
   headers.set("X-Veyra-Request-ID", requestId);
-  if (auth.token) headers.set("Authorization", `Bearer ${auth.token}`);
+  if (requestToken) headers.set("Authorization", `Bearer ${requestToken}`);
   if (settings.adminToken) headers.set("X-Veyra-Admin-Token", settings.adminToken);
   let body = options.body;
   if (options.json !== undefined) { headers.set("content-type", "application/json"); body = JSON.stringify(options.json); }
   try {
-    const response = await rawFetch(API + path, { method, headers, body, signal: controller.signal, credentials: "omit" });
+    const privateTraffic = INCOGNITO || !auth.user || hooks.isEphemeralSession?.();
+    const requestPath = privateTraffic && path.startsWith("/api/search")
+      ? `${path}${path.includes("?") ? "&" : "?"}private=1` : path;
+    const response = await rawFetch(API + requestPath, { method, headers, body, signal: controller.signal, credentials: "omit", ...(privateTraffic ? { cache: "no-store" } : {}) });
+    apiLastSuccessAt = Date.now();
     const rid = response.headers.get("X-Veyra-Request-ID") || requestId;
     const text = await response.text();
     const ct = response.headers.get("content-type") || "";
     const data = text ? (/json/i.test(ct) ? safeJsonParse(text, null) : text) : null;
-    netLog.push({ time: Date.now(), method, path, status: response.status, ms: Math.round(performance.now() - start), requestId: rid }); if (netLog.length > 500) netLog.shift();
+    if (!privateTraffic) { netLog.push({ time: Date.now(), method, path, status: response.status, ms: Math.round(performance.now() - start), requestId: rid }); if (netLog.length > 500) netLog.shift(); }
     if (!response.ok) {
       const err = new ApiError(data?.error || (typeof data === "string" ? data.slice(0, 300) : `HTTP ${response.status}`), response.status, data?.code || "HTTP_ERROR", rid, data);
       if (err.code === "SESSION_EXPIRED") hooks.onSessionExpired?.("server");
-      if (response.status === 401 && auth.token && /^\/api\/auth\/(me|data)/.test(path)) setAuth("", null);
+      if (response.status === 401 && requestToken && auth.token === requestToken && /^\/api\/auth\/(me|data)/.test(path)) setAuth("", null);
       throw err;
     }
     return data;
   } catch (e) {
     if (e instanceof ApiError) throw e;
-    netLog.push({ time: Date.now(), method, path, status: "ERR", ms: Math.round(performance.now() - start), requestId });
+    if (!INCOGNITO && auth.user && !hooks.isEphemeralSession?.()) netLog.push({ time: Date.now(), method, path, status: "ERR", ms: Math.round(performance.now() - start), requestId });
     const callerCancelled = externalSignal?.aborted && !timedOut;
     throw new ApiError(
       e?.name === "AbortError" && timedOut ? `Request timed out after ${Math.round(timeoutMs / 1000)} s.` : (callerCancelled ? "Request cancelled." : (e?.message || String(e))),
@@ -249,60 +241,48 @@ export function proxyUrl(url, mode = "view", sid = "", from = "") {
   const base = API + (mode === "resource" ? "/api/resource?url=" : mode === "download" ? "/api/download?url=" : "/api/view?url=") + encodeURIComponent(url);
   const params = [];
   if (sid) params.push(`sid=${encodeURIComponent(sid)}`);
-  
-  
-  
+
   if (mode === "view" && from && /^https?:\/\//i.test(from)) params.push(`from=${encodeURIComponent(from)}`);
   return params.length ? `${base}&${params.join("&")}` : base;
 }
 
+let apiAwakePromise = null;
+let apiAwakeAt = 0;
+export function ensureApiAwake(onStatus = null) {
+
+  if (Date.now() - apiLastSuccessAt < 120000) return Promise.resolve(true);
+  if (apiAwakePromise && Date.now() - apiAwakeAt < 180000) return apiAwakePromise;
+  const probe = (async () => {
+    const started = Date.now();
+    while (Date.now() - started < 75000) {
+      try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 4000);
+        const t0 = performance.now();
+        try { await rawFetch(`${API}/api/health`, { cache: "no-store", signal: ctl.signal }); } finally { clearTimeout(timer); }
+        if (performance.now() - t0 < 2500) return true;
+      } catch {}
+      onStatus?.("Veyra's server is waking up — the first page can take a minute…");
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    return false;
+  })();
+  apiAwakePromise = probe.then(ok => { apiAwakeAt = Date.now(); return ok; });
+  return apiAwakePromise;
+}
 
 export async function sendNeuralFeedback(url, positive, weight = 1.0) {
-  if (INCOGNITO || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
+  if (INCOGNITO || !auth.user || hooks.isEphemeralSession?.() || !settings.neuralCrawlerEnabled || !settings.neuralCrawlerRetrainOnFeedback) return;
   try { await api("/api/neural/feedback", { json: { url, positive, weight }, timeoutMs: 5000 }); } catch {}
 }
 export async function getNeuralStats() {
   try { return await api("/api/neural/stats", { timeoutMs: 5000 }); } catch { return null; }
 }
 
-
-export async function testAdminLogin() {
-  try {
-    const cfg = await api("/api/auth/config", { timeoutMs: 5000 });
-    if (!cfg.testMode) return { ok: false, reason: "Test mode is off on this server" };
-    const result = await api("/api/auth/test-login", { method: "POST", json: {}, timeoutMs: 10000 });
-    if (result.ok && result.token) {
-      setAuth(result.token, result.user);
-      auth.admin = true;
-    }
-    return result;
-  } catch (e) { return { ok: false, reason: e.message }; }
-}
-
-
 export const logs = [];
 export function addLog(level, message, meta = {}) {
   logs.push({ time: Date.now(), level, message: String(message), meta }); if (logs.length > 3000) logs.splice(0, logs.length - 3000);
   hooks.onLog?.();
-}
-
-
-export function toast(message, { kind = "", action = null, actionLabel = "", ms = 3200 } = {}) {
-  const host = $("toasts");
-  if (!host) return;
-  const el = document.createElement("div");
-  el.className = `toast ${kind}`.trim();
-  el.setAttribute("role", kind === "err" ? "alert" : "status");
-  const text = document.createElement("span"); text.textContent = String(message || ""); el.appendChild(text);
-  let timer = 0;
-  const dismiss = () => { clearTimeout(timer); el.remove(); };
-  if (typeof action === "function" && actionLabel) {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = actionLabel;
-    button.addEventListener("click", () => { dismiss(); try { action(); } catch {} });
-    el.appendChild(button);
-  }
-  host.appendChild(el);
-  timer = setTimeout(dismiss, Math.max(1200, Number(ms) || 3200));
 }
 
 export function promptDialog({ title, description = "", fields = [], ok = "Save" }) {
@@ -333,7 +313,6 @@ export async function copyText(text) {
     return false;
   }
 }
-
 
 let openLayer = null;
 export function openFloating(el, anchor, { align = "right", offset = 6 } = {}) {

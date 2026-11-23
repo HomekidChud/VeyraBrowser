@@ -42,7 +42,6 @@
     runFullButton.disabled = !proxied || state.serverRuns >= MAX_SERVER_RUNS;
   }
 
-  // Controlled fixtures exercise Veyra's regular Console/Network diagnostics.
   function runLocalDiagnostics() {
     const tag = marker("console", "local console-level, object, grouping and duplicate checks");
     console.groupCollapsed(tag);
@@ -123,10 +122,16 @@
   $("clearReport").addEventListener("click", () => { $("results").replaceChildren(); state.rows = 0; updateCount(); setStatus("Report cleared. Existing Veyra Console entries are unchanged."); $("progressBar").style.width = "0%"; });
   const dot = $("proxyDot");
   if (proxied) { dot.classList.add("ok"); $("proxyState").textContent = `Veyra proxy detected · API ${new URL(API_ORIGIN).host}`; }
-  else { $("proxyState").textContent = "Direct page view · live admin data requires a valid Veyra administrator session"; runServerButton.disabled = true; runFullButton.disabled = true; }
+  else {
+    $("proxyState").textContent = "Direct workspace";
+    runServerButton.disabled = true; runFullButton.disabled = true;
+    if (window.frameElement?.id === "consoleLabFrame") {
+      $("openProxyLab").hidden = false;
+      $("openProxyLab").onclick = () => window.parent.postMessage({ type: "veyra:console-lab:open-proxy" }, location.origin);
+    }
+  }
   updateCount();
 
-  // Existing Veyra administrator credentials are read locally and never rendered or logged.
   function adminHeaders() {
     const headers = new Headers();
     try {
@@ -192,6 +197,21 @@
       const model = neural.model || {}, stats = model.stats || {}, trainer = neural.trainer || {};
       text("metricScores", fmt(stats.scored)); text("metricTraining", `${fmt(model.trainingExamples ?? stats.trained)} training examples`);
       text("analyticsScored", fmt(stats.scored)); text("analyticsTrained", fmt(model.trainingExamples ?? stats.trained)); text("analyticsPositive", fmt(stats.positiveFeedback)); text("analyticsAverage", `${Math.round(safeNum(stats.avgScore) * 100)}%`);
+      text("trainingMode", trainer.publicCrawlTraining === true ? "Public crawl on" : trainer.publicCrawlTraining === false ? "Public crawl off" : "Mode unavailable");
+      const sourceList = $("trainingSources");
+      if (sourceList) {
+        sourceList.replaceChildren();
+        if (trainer.bySource && typeof trainer.bySource === "object") {
+          const labels = { "public-document": "Public documents", "public-dead-end": "Public dead ends", "browser-feedback": "Browser feedback", "robot-feedback": "Robot feedback", "offline-fixture": "Online fixture updates", "legacy-feedback": "Legacy feedback" };
+          for (const [key, label] of Object.entries(labels)) {
+            const row = document.createElement("li"), title = document.createElement("span"), count = document.createElement("b");
+            title.textContent = label; count.textContent = fmt(trainer.bySource[key]); row.append(title, count); sourceList.append(row);
+          }
+        }
+        const baseline = neural.baseline;
+        text("trainingSummary", !trainer.bySource ? "Training source counts unavailable." :
+          `${fmt(trainer.trained)} online updates this process · ${fmt(trainer.queueSize)} queued. ${baseline ? `Separate starter baseline: ${fmt(baseline.trainingExamples)} synthetic examples, ${fmt(baseline.optimizerUpdates)} updates.` : "Connected server only; these are not staging counts."}`);
+      }
       const details = $("modelDetails"); if (details) details.textContent = `Enabled: ${model.enabled ? "yes" : "no"} · Features: ${fmt(model.features?.length)} · Feedback history: ${fmt(model.feedbackCount)} · URL feature cache: ${fmt(model.urlCacheSize)} · Negative feedback: ${fmt(stats.negativeFeedback)} · Trainer queue: ${fmt(trainer.queueSize)} · Trainer: ${trainer.running ? "running" : "stopped"}`;
     }
     if (workers) {
@@ -222,7 +242,6 @@
     if (state.sessions) { const chart = $("pulseChart"); if (chart) { chart.replaceChildren(); const max = Math.max(1, ...state.snapshots.map(x => x.active)); state.snapshots.forEach(point => { const el = document.createElement("i"); el.style.height = `${Math.max(6, point.active / max * 100)}%`; el.title = `${point.active} active sessions`; chart.appendChild(el); }); } }
   }
 
-  // Browser-local agent profiles configure the server's existing neural crawler. No hidden schedule is created.
   function readAgents() { try { const parsed = JSON.parse(localStorage.getItem(AGENT_STORE) || "[]"); return Array.isArray(parsed) ? parsed.filter(a => a && typeof a.id === "string") : []; } catch { return []; } }
   function saveAgents(items) { localStorage.setItem(AGENT_STORE, JSON.stringify(items.slice(0, 30))); }
   function readRuns() { try { const parsed = JSON.parse(localStorage.getItem(RUN_STORE) || "[]"); return Array.isArray(parsed) ? parsed.slice(0, 50) : []; } catch { return []; } }
@@ -336,8 +355,40 @@
   $("exportRuns").addEventListener("click", () => downloadJson(`veyra-task-runs-${new Date().toISOString().slice(0, 10)}.json`, { version: 1, exportedAt: new Date().toISOString(), runs: readRuns() }));
   $("clearRuns").addEventListener("click", () => { if (!readRuns().length || !window.confirm("Clear this browser's saved task run history?")) return; saveRuns([]); renderRunHistory(); });
   const tabs = [...document.querySelectorAll(".tab[data-view]")];
-  function activateView(name) { tabs.forEach(tab => { const selected = tab.dataset.view === name; tab.setAttribute("aria-selected", String(selected)); const panel = $(`view-${tab.dataset.view}`); panel?.classList.toggle("active", selected); }); }
-  tabs.forEach(tab => tab.addEventListener("click", () => activateView(tab.dataset.view)));
+  function activateView(name, focus = false) {
+    tabs.forEach(tab => {
+      const selected = tab.dataset.view === name;
+      tab.setAttribute("aria-selected", String(selected)); tab.tabIndex = selected ? 0 : -1;
+      const panel = $(`view-${tab.dataset.view}`); panel?.classList.toggle("active", selected);
+      if (selected && focus) tab.focus();
+    });
+    const pane = $("view-traffic");
+    if (name === "traffic" && !pane.firstElementChild) {
+      const frame = document.createElement("iframe");
+      frame.src = "traffic/index.html?v=1"; frame.title = "Website analytics task desk"; frame.className = "task-frame";
+      frame.addEventListener("load", () => {
+        try {
+          const doc = frame.contentDocument;
+          if (!doc || typeof ResizeObserver !== "function") return;
+          const resize = () => { frame.style.height = `${Math.max(630, doc.body.offsetHeight + 2)}px`; };
+          new ResizeObserver(resize).observe(doc.body); resize();
+        } catch {}
+      });
+      pane.append(frame);
+    }
+  }
+  tabs.forEach((tab, index) => {
+    tab.id = `lab-tab-${tab.dataset.view}`;
+    tab.setAttribute("aria-controls", `view-${tab.dataset.view}`);
+    $(`view-${tab.dataset.view}`).setAttribute("aria-labelledby", tab.id);
+    tab.addEventListener("click", () => activateView(tab.dataset.view));
+    tab.addEventListener("keydown", event => {
+      const target = { ArrowLeft: (index - 1 + tabs.length) % tabs.length, ArrowRight: (index + 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      if (target === undefined) return;
+      event.preventDefault(); activateView(tabs[target].dataset.view, true);
+    });
+  });
+  activateView("overview");
   document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => activateView(button.dataset.go)));
   document.querySelectorAll("[data-refresh]").forEach(button => button.addEventListener("click", () => refreshData(false)));
   renderAgents(); renderRunHistory();
@@ -360,10 +411,13 @@
     if (command === "workers") { if (!state.workers) return addConsole("Worker API is unavailable.", "error"); addConsole(shortJson(state.workers)); }
     if (command === "status") addConsole(shortJson({ activeSessions: state.sessions?.active ?? null, modelScores: state.neural?.model?.stats?.scored ?? null, activeWorkers: state.workers?.active ?? null, workerCount: state.workers?.totalWorkers ?? null, sampledAt: new Date().toISOString() }));
   });
+  const pollVisibleLab = () => {
+    if (!document.hidden && (!window.frameElement || window.frameElement.getClientRects().length)) refreshData(true);
+  };
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) { clearInterval(state.pollTimer); state.pollTimer = null; }
-    else if (!state.pollTimer) { refreshData(true); state.pollTimer = setInterval(() => refreshData(true), POLL_MS); }
+    else if (!state.pollTimer) { pollVisibleLab(); state.pollTimer = setInterval(pollVisibleLab, POLL_MS); }
   });
   addConsole("Console Lab ready. Type help to see commands.");
-  refreshData(true).then(() => { if (!document.hidden && !state.pollTimer) state.pollTimer = setInterval(() => refreshData(true), POLL_MS); });
+  refreshData(true).then(() => { if (!document.hidden && !state.pollTimer) state.pollTimer = setInterval(pollVisibleLab, POLL_MS); });
 })();

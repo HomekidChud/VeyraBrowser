@@ -1,0 +1,142 @@
+:root {
+  color-scheme: light dark;
+  --canvas: #10111b;
+  --surface: #191b29;
+  --hover: #22263a;
+  --line: #333750;
+  --text: #f3f2fb;
+  --muted: #b7bbd2;
+  --accent: #c4baff;
+  --accent-text: #201744;
+  --error: #ffc2ca;
+  --feature: #35305a;
+  --feature-line: #8475d0;
+  --tile: #282b41;
+  --radius: .75rem;
+  font: 100%/1.45 system-ui, sans-serif;
+  background: var(--canvas);
+  color: var(--text);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --canvas: #f7f6fe;
+    --surface: #fff;
+    --hover: #eeebfb;
+    --line: #d6d0ed;
+    --text: #201c33;
+    --muted: #554f69;
+    --accent: #5741a5;
+    --accent-text: #fff;
+    --error: #971f35;
+    --feature: #eee9ff;
+    --feature-line: #ac9ee0;
+    --tile: #efecf8;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; inline-size: min(22rem, 100vw); }
+main { padding: .875rem; }
+p, h1 { margin: 0; }
+
+.masthead { display: flex; align-items: center; gap: .625rem; margin-block-end: .75rem; }
+.brand-mark {
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: .25rem;
+  border: 1px solid var(--feature-line);
+  border-radius: .625rem;
+  color: var(--accent);
+  background: var(--feature);
+}
+.masthead p { font-size: .875rem; font-weight: 700; }
+.version {
+  margin-inline-start: auto;
+  border: 1px solid var(--line);
+  border-radius: 99rem;
+  padding: .125rem .5rem;
+  color: var(--muted);
+  font-size: .75rem;
+}
+h1 { font-size: 1.5rem; letter-spacing: -.035em; line-height: 1.15; }
+h2 { color: var(--muted); font-size: .8125rem; margin: .6875rem 0 .3125rem; }
+.intro { color: var(--muted); font-size: .875rem; line-height: 1.35; margin-block: .375rem .75rem; }
+.destinations { display: grid; gap: .3125rem; }
+
+a { color: inherit; }
+:is(a, button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.open-site {
+  display: grid;
+  gap: .375rem;
+  padding: .625rem;
+  border: 1px solid var(--feature-line);
+  border-radius: var(--radius);
+  background: var(--feature);
+}
+.open-site label { font-size: .8125rem; font-weight: 700; }
+.open-site input, .open-button {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 2.5rem;
+  padding: .4375rem .625rem;
+  border: 1px solid transparent;
+  border-radius: .5rem;
+  font: inherit;
+  font-size: .875rem;
+}
+.open-site input { border-color: var(--line); background: var(--canvas); color: var(--text); }
+.open-site input::placeholder { color: var(--muted); opacity: 1; }
+.open-site input[aria-invalid="true"] { border-color: var(--error); }
+.site-error { color: var(--error); font-size: .75rem; }
+.site-error:empty { position: absolute; }
+.open-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 750;
+  cursor: pointer;
+}
+.open-button:hover { filter: brightness(1.08); }
+.destination {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .625rem;
+  min-block-size: 2.75rem;
+  padding: .3125rem .5625rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+}
+.destination:hover { background: var(--hover); }
+.destination-copy { display: grid; gap: .125rem; }
+.destination strong { font-size: .875rem; line-height: 1.25; }
+.destination small { color: var(--muted); font-size: .75rem; }
+.tile {
+  display: grid;
+  place-items: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: .5rem;
+  color: var(--accent);
+  background: var(--tile);
+  font-size: .9375rem;
+  font-weight: 750;
+}
+.tile svg { inline-size: 1rem; block-size: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.arrow { color: var(--accent); }
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .25rem .5rem;
+  padding-block-start: .375rem;
+  margin-block-start: .625rem;
+  border-block-start: 1px solid var(--line);
+}
+.links a { padding: .3125rem .125rem; color: var(--accent); font-size: .75rem; font-weight: 650; text-underline-offset: .2em; }

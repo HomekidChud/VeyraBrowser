@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#111c45"/><stop offset=".53" stop-color="#626eb2"/><stop offset="1" stop-color="#fec5b9"/></linearGradient>
+    <linearGradient id="rock" x2=".7" y2="1" gradientUnits="objectBoundingBox"><stop stop-color="#9cabc8"/><stop offset=".67" stop-color="#38456e"/><stop offset="1" stop-color="#10172f"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#ffc4bd" stop-opacity=".55"/><stop offset="1" stop-color="#aebbe9" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h1600v900H0z"/>
+  <ellipse fill="url(#halo)" cx="890" cy="382" rx="445" ry="392"/>
+  <circle fill="#fbe0d8" cx="1020" cy="285" r="43"/>
+  <path fill="#b1a4c6" d="M0 538 96 521 216 533 349 487 449 520 609 483 709 518 861 476 998 482 1128 417 1225 462 1330 433 1498 486 1600 466v434H0Z"/>
+  <path fill="#64688c" d="M0 580 244 523 330 560 504 469 638 510 730 487 887 557 1058 491 1147 518 1339 479 1498 492 1600 586v314H0Z"/>
+  <path fill="url(#rock)" d="M0 716 191 605 314 543 420 457 479 472 576 384 648 431 709 417 836 506 978 592 1148 551 1242 479 1298 495 1425 402 1508 471 1600 476v424H0Z"/>
+  <path fill="#a9b9db" fill-opacity=".54" d="m576 384 72 47 61-14 127 89-116-62-53 26-51-47-45 20-79 52 20-37-55 47-39 5zM1425 402l83 69 92 5v31l-84-20-30-6-33-31-42 14-26-2-87 33z"/>
+  <path fill="#222e52" d="m0 757 198-53 122-61 90 26 158-87 173 56 93-19 154 88 191-17 127-70 149 33 145-57v304H0z"/>
+  <path fill="#101930" d="m0 779 157 4 154-76 139 42 107 3 157 71 274-24 167 39 176-54 119 5 150-42v153H0z"/>
+</svg>

@@ -18,23 +18,24 @@
   <style>
     .console-quick{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 10px}.console-quick .btn{font:10px var(--mono);padding:7px 9px}.console-toolbar{flex-wrap:wrap}.console-search{width:min(220px,35vw);padding:7px 9px;font-size:11px}.console-level{width:112px;padding:7px 8px;font-size:11px}.console-toolbar .btn{padding:7px 9px}@media(max-width:760px){.console-search{order:5;width:calc(100% - 125px);flex:1}.console-level{order:6;flex:1}.console-toolbar #copyConsole{order:7}.console-toolbar #clearConsole{order:8}}
   </style>
-  <script src="admin-gate.js?v=4" defer></script>
+  <link rel="stylesheet" href="workbench.css?v=1">
+  <script src="admin-gate.js?v=5" defer></script>
 </head>
 <body>
   <main id="accessGate" aria-live="polite">
     <div class="eyebrow">Veyra · administrator tools</div><h1>Administrator access required</h1>
     <p class="lead" id="accessState">Verifying your Veyra administrator session…</p>
-    <section class="notice"><strong>How to open the lab</strong><p>Sign in to Veyra with an administrator account, then open the menu and choose <b>Console Lab</b>. Access is administrator-only.</p></section>
+    <section class="notice"><strong>How to open the lab</strong><p>Sign in with a Veyra administrator account. Enter <code>veyra://console-lab</code> in Veyra’s address bar, or choose <b>Console Lab</b> from its menu.</p></section>
     <div class="actions"><button class="btn" id="retryAccess" type="button" hidden>Retry administrator check</button></div>
   </main>
 
   <main id="lab" hidden>
-    <div class="eyebrow">Veyra · administrator workspace</div><h1>Console Lab</h1>
-    <p class="lead">A browser operations workbench: inspect diagnostic output, configure bounded neural crawler agents, watch aggregate platform activity, and review model and worker health.</p>
-    <div class="status" aria-live="polite"><i class="dot" id="proxyDot"></i><span id="proxyState">Connecting to VeyraServer…</span></div>
-    <section class="notice"><strong>Admin-only, bounded operations</strong><p>Activity is aggregate-only: active session totals and request counts, without browsing URLs or page content. Analytics and live status use VeyraServer’s existing admin/model/robot APIs. Agent jobs make outbound requests to the seed URLs you configure; each run is limited to 50 pages and depth 5. Saved agent profiles stay in this browser. Diagnostic probes remain capped at 20 requests per run and 3 server batches per page load.</p></section>
+    <header class="workbench-head"><div><div class="eyebrow">Veyra / Operations</div><h1>Console Lab</h1>
+    <p class="lead">Run website analysis, inspect training, and manage browser operations.</p></div>
+    <div class="status" aria-live="polite"><i class="dot" id="proxyDot"></i><span id="proxyState">Connecting to VeyraServer…</span></div></header>
     <nav class="tabs" aria-label="Console Lab modules" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-view="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="traffic">Website Analytics</button>
       <button class="tab" role="tab" aria-selected="false" data-view="console">Console</button>
       <button class="tab" role="tab" aria-selected="false" data-view="agents">Agent Studio</button>
       <button class="tab" role="tab" aria-selected="false" data-view="activity">Live Activity</button>
@@ -53,10 +54,12 @@
       </div>
       <div class="grid2">
         <section class="panel"><div class="panel-head"><h2>Platform pulse</h2><button class="btn" data-refresh>Refresh</button></div><div class="chart" id="pulseChart" aria-label="Recent active session snapshots"></div><p class="small muted" id="lastUpdated">Waiting for first status snapshot.</p></section>
-        <section class="panel"><div class="panel-head"><h2>Quick actions</h2></div><div class="actions"><button class="btn primary" data-go="agents">Configure an agent</button><button class="btn" data-go="activity">Open live activity</button><button class="btn" data-go="diagnostics">Run diagnostics</button></div><p class="small muted">Status cards update while this page is open. Polling pauses when the page is hidden.</p></section>
+        <section class="panel"><div class="panel-head"><h2>Start a task</h2></div><div class="actions"><button class="btn primary" data-go="traffic">Analyze website traffic</button><button class="btn" data-go="agents">Configure an agent</button><button class="btn" data-go="activity">Open live activity</button><button class="btn" data-go="diagnostics">Run diagnostics</button></div><p class="small muted">Website analytics reads your own CSV. Live activity uses server telemetry.</p></section>
       </div>
       <section class="panel"><div class="panel-head"><h2>Recent worker events</h2><span class="pill" id="workerStatus">Connecting</span></div><ul class="event-list" id="recentEvents"><li class="empty">Loading worker events…</li></ul></section>
     </section>
+
+    <section class="view" id="view-traffic" role="tabpanel"></section>
 
     <section class="view" id="view-console" role="tabpanel">
       <section class="panel"><div class="panel-head"><div><h2>Veyra command console</h2><p class="small muted">Commands: help, status, sessions, neural, workers, agents, clear. Commands read current VeyraServer status; they do not execute arbitrary page JavaScript.</p></div><button class="btn" id="exportConsole">Export output</button></div>
@@ -99,6 +102,7 @@
     <section class="view" id="view-analytics" role="tabpanel">
       <div class="metrics"><article class="metric"><span>URLs scored</span><b id="analyticsScored">—</b></article><article class="metric"><span>Training examples</span><b id="analyticsTrained">—</b></article><article class="metric"><span>Positive feedback</span><b id="analyticsPositive">—</b></article><article class="metric"><span>Average relevance score</span><b id="analyticsAverage">—</b></article></div>
       <div class="grid2"><section class="panel"><div class="panel-head"><h2>Neural model health</h2><button class="btn" data-refresh>Refresh</button></div><div id="modelDetails" class="small muted">Loading model telemetry…</div></section><section class="panel"><div class="panel-head"><h2>Worker pool</h2></div><div id="workerDetails" class="small muted">Loading worker telemetry…</div></section></div>
+      <section class="panel"><div class="panel-head"><h2>Training sources</h2><span class="pill" id="trainingMode">Waiting</span></div><p id="trainingSummary" class="small muted" aria-live="polite">Waiting for training telemetry.</p><ul id="trainingSources" class="training-sources"></ul></section>
       <section class="panel"><div class="panel-head"><h2>Recent neural robot events</h2><span class="pill" id="analyticsQueue">Queue —</span></div><ul class="event-list" id="analyticsEvents"><li class="empty">Loading events…</li></ul></section>
     </section>
 
@@ -106,11 +110,11 @@
 
     <section class="view" id="view-diagnostics" role="tabpanel">
       <section class="panel"><div class="panel-head"><div><h2>Bounded diagnostics</h2><p class="small muted">One controlled local run, or up to 20 sequential resource probes. No crawler starts from this panel.</p></div></div>
-        <div class="actions"><button class="btn" id="runLocal" type="button">Run local diagnostics</button><button class="btn" id="runServer" type="button">Run 20 server probes</button><button class="btn primary" id="runFull" type="button">Run full lab</button><button class="btn danger" id="stopRun" type="button" disabled>Stop remaining probes</button><button class="btn" id="clearReport" type="button">Clear report</button></div>
+        <div class="actions"><button class="btn" id="runLocal" type="button">Run local diagnostics</button><button class="btn" id="runServer" type="button">Run 20 server probes</button><button class="btn primary" id="runFull" type="button">Run full lab</button><button class="btn danger" id="stopRun" type="button" disabled>Stop remaining probes</button><button class="btn" id="clearReport" type="button">Clear report</button><button class="btn" id="openProxyLab" type="button" hidden>Open Fast Proxy diagnostics</button></div>
         <div class="panel-head" style="margin:16px 0 0"><strong id="runState">Ready — nothing runs until you choose a test.</strong><span class="small muted" id="counts">0 cases recorded</span></div><div class="progress" aria-hidden="true"><i id="progressBar"></i></div><ol class="results" id="results" aria-live="polite"></ol>
       </section>
     </section>
-    <p class="footer">Admin-only workspace. Agent profiles are stored in this browser; server actions use the existing VeyraServer APIs. Live session details are intentionally limited to aggregate operational signals.</p>
+    <details class="footer"><summary>Scope and limits</summary><p>Platform activity is aggregate-only, without browsing URLs or page content. Agents crawl the seed URLs you configure, up to 50 pages and depth 5; profiles stay in this browser. Diagnostics allow up to 20 requests per batch and 3 batches per page load. Website CSVs are not uploaded or used for training.</p></details>
   </main>
 </body>
 </html>

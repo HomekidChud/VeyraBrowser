@@ -10,7 +10,9 @@
     return;
   }
   try {
-    const saved = JSON.parse(localStorage.getItem("veyra-settings") || "{}");
+    const privateParam = new URLSearchParams(location.search).get("incognito");
+    const privateWindow = privateParam === "1" || (privateParam !== "0" && sessionStorage.getItem("veyra-incognito") === "1");
+    const saved = privateWindow ? {} : JSON.parse(localStorage.getItem("veyra-settings") || "{}");
     let theme = saved.theme || "dark";
     if (theme === "system") theme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
     document.documentElement.dataset.theme = theme;
@@ -18,14 +20,34 @@
     if (saved.fontScale) document.documentElement.style.setProperty("--ui-scale", saved.fontScale);
   } catch {}
   const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.28.27-youtube-link-tabs`; document.head.appendChild(stylesheet);
+  stylesheet.rel = "stylesheet"; stylesheet.href = `${base}styles/style.css?v=8.36.0-workbench`; document.head.appendChild(stylesheet);
+  const studioStyle = document.createElement("link");
+  studioStyle.rel = "stylesheet"; studioStyle.href = `${base}styles/studio.css?v=3`; document.head.appendChild(studioStyle);
+  const deckStyle = document.createElement("link");
+  deckStyle.rel = "stylesheet"; deckStyle.href = `${base}styles/settings-deck.css?v=3`; document.head.appendChild(deckStyle);
+  const velocityStyle = document.createElement("link");
+  velocityStyle.rel = "stylesheet"; velocityStyle.href = `${base}styles/velocity.css?v=2`; document.head.appendChild(velocityStyle);
+  const searchStyle = document.createElement("link");
+  searchStyle.rel = "stylesheet"; searchStyle.href = `${base}styles/search-deck.css?v=16`; document.head.appendChild(searchStyle);
+  const qrStyle = document.createElement("link");
+  qrStyle.rel = "stylesheet"; qrStyle.href = `${base}styles/qr-open.css?v=1`; document.head.appendChild(qrStyle);
   [["icon", "assets/favicon.svg", "image/svg+xml"], ["icon", "assets/favicon.ico", ""], ["apple-touch-icon", "assets/apple-touch-icon.png", ""]].forEach(([rel, href, type]) => {
     const link = document.createElement("link"); link.rel = rel; link.href = base + href; if (type) link.type = type; document.head.appendChild(link);
   });
-  window.addEventListener("DOMContentLoaded", () => {
-    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.28.27-youtube-link-tabs`; document.body.appendChild(app);
-  }, { once: true });
-  if (location.protocol === "https:" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
-  }
+
+  const gateScript = document.createElement("script");
+  gateScript.src = `${base}src/gate.js?v=8.37.3-search-routing`;
+  gateScript.onload = async () => {
+    const unlocked = await (window.veyraGateCheck ? window.veyraGateCheck() : Promise.resolve(true));
+    if (!unlocked) return;
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.44.9-live-routing`; document.body.appendChild(app);
+    if (location.protocol === "https:" && "serviceWorker" in navigator) {
+      const privateWindow = new URLSearchParams(location.search).get("incognito") === "1";
+      if (!privateWindow) navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {});
+    }
+  };
+  gateScript.onerror = () => {
+    const app = document.createElement("script"); app.type = "module"; app.src = `${base}src/app.js?v=8.44.9-live-routing`; document.body.appendChild(app);
+  };
+  document.head.appendChild(gateScript);
 })();

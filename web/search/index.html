@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <title>Veyra Search</title>
+</head>
+<body>
+  <a href="../?veyra_route=search">Open Veyra Search</a>
+  <script>
+    const shell = new URL("../", location.href);
+    shell.search = location.search;
+    shell.searchParams.set("veyra_route", "search");
+    shell.hash = location.hash;
+    location.replace(shell.href);
+  </script>
+</body>
+</html>

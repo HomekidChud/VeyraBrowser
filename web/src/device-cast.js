@@ -13,7 +13,7 @@
  *   - Network quality indicator
  */
 
-import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.28.27-youtube-link-tabs";
+import { $, esc, hostOf, uid, api, addLog, toast, hooks, settings, saveSettings, VERSION, API } from "./core.js?v=8.36.0-workbench";
 import { qrSvg } from "./qr.js";
 
 let B;
@@ -26,13 +26,6 @@ let renderLoop = null;
 let inputLoop = false;
 let lastFrameTime = 0;
 let fpsCounter = { count: 0, lastReset: 0, fps: 0 };
-
-
-
-
-
-
-
 
 let castPollTimer = null;
 let castSessionId = null;
@@ -66,12 +59,33 @@ function startPollingFallback(sessionId = "", generation = castConnectionGenerat
       castPollInFlight = true;
       try {
         const msgs = await api(`/api/cast/poll/${encodeURIComponent(castSession.id)}`, { timeoutMs: 5000 });
-        if (generation === castConnectionGeneration && msgs.ok && msgs.messages) for (const msg of msgs.messages) handleMessage(msg);
-      } catch {} finally { castPollInFlight = false; }
+        if (generation === castConnectionGeneration && msgs.ok && msgs.messages) {
+
+          for (const msg of msgs.messages) {
+            try { handleMessage(msg); } catch {}
+          }
+        }
+      } catch (e) {
+        if (generation === castConnectionGeneration && (e?.status === 404 || e?.code === "CAST_SESSION_NOT_FOUND")) {
+
+          castPollInFlight = false;
+          stopPollingFallback();
+          castFallbackStarted = false;
+          castSession = null;
+          castSessionId = null;
+          renderCastView();
+          toast("Cast session ended", { kind: "err" });
+          return;
+        }
+      } finally { castPollInFlight = false; }
     }, 500);
   }).catch(e => {
     if (generation !== castConnectionGeneration) return;
     castFallbackStarted = false;
+
+    castSession = null;
+    castSessionId = null;
+    renderCastView();
     toast("Cast polling failed: " + e.message, { kind: "err" });
   });
 }
@@ -101,7 +115,7 @@ function connectCastServer(sessionId = "") {
       const msg = JSON.parse(event.data);
       handleMessage(msg);
     } catch (e) {
-      
+
       addLog("debug", "CAST", `Frame received (${event.data?.length || 0} bytes)`);
     }
   };
@@ -117,7 +131,8 @@ function connectCastServer(sessionId = "") {
     addLog("info", "CAST", `WebSocket closed (code ${event.code})`);
     if (event.code !== 1000 && event.code !== 1001) {
       startPollingFallback(sessionId, generation);
-    } else {
+    } else if (!castFallbackStarted) {
+
       if (castSession?.status === "streaming") stopStreaming();
       castWs = null;
       stopPollingFallback();
@@ -164,8 +179,7 @@ function handleMessage(msg) {
       if (castSession) {
         castSession.frameCount++;
         castSession.lastFrame = Date.now();
-        
-        
+
         frameBuffer = [msg.data];
         fpsCounter.count++;
         const now = Date.now();
@@ -205,7 +219,7 @@ function handleMessage(msg) {
       break;
 
     case "pong":
-      
+
       if (castSession) {
         castSession.latency = Date.now() - (msg.timestamp || Date.now());
       }
@@ -224,7 +238,10 @@ function disconnectCastSession(reason = "client_closed") {
   castSession = null;
   castSessionId = null;
   castFallbackStarted = false;
+  castPollInFlight = false;
   frameBuffer = [];
+  fpsCounter = { count: 0, lastReset: 0, fps: 0 };
+  lastDrawnFrame = null;
   stopRenderLoop();
   castCanvas = null;
   castCtx = null;
@@ -234,14 +251,15 @@ function cleanupCastResources() {
   if (castSession || castSessionId || castWs) disconnectCastSession("view_left");
 }
 
+let lastDrawnFrame = null;
 
 function renderFrame() {
   if (!castCanvas) return;
   const ctx = castCtx;
   const frame = frameBuffer[frameBuffer.length - 1];
-  if (!frame) return;
 
-  
+  if (!frame || frame === lastDrawnFrame) return;
+
   if (typeof frame === "string" && frame.startsWith("data:")) {
     const img = new Image();
     img.onload = () => {
@@ -251,10 +269,11 @@ function renderFrame() {
       }
       ctx.clearRect(0, 0, castCanvas.width, castCanvas.height);
       ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+      lastDrawnFrame = frame;
     };
     img.src = frame;
   } else if (typeof frame === "string") {
-    
+
     ctx.clearRect(0, 0, castCanvas.width, castCanvas.height);
     ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, castCanvas.width, castCanvas.height);
@@ -263,7 +282,14 @@ function renderFrame() {
     ctx.fillText("Streaming from " + (castSession?.deviceName || "device"), 20, 30);
     ctx.fillText(`Frame ${castSession?.frameCount || 0} · ${fpsCounter.fps} FPS`, 20, 50);
     ctx.fillText(`Connection: ${castSession?.connectionType || "unknown"} (${castSession?.networkStrength || 0}%)`, 20, 70);
+    lastDrawnFrame = frame;
   }
+}
+
+function updateCastStats() {
+  const frames = $("castStatFrames"), fps = $("castStatFps");
+  if (frames) frames.textContent = String(castSession?.frameCount || 0);
+  if (fps) fps.textContent = String(fpsCounter.fps || 0);
 }
 
 function sendCastMessage(msg) {
@@ -279,6 +305,7 @@ function sendCastMessage(msg) {
 function startRenderLoop() {
   if (renderLoop) cancelAnimationFrame(renderLoop);
   renderLoop = requestAnimationFrame(function loop() {
+    updateCastStats();
     renderFrame();
     renderLoop = requestAnimationFrame(loop);
   });
@@ -289,10 +316,11 @@ function stopRenderLoop() {
   renderLoop = null;
 }
 
-
 function startStreaming() {
   if (!castSession || castSession.status !== "paired") return toast("No device paired", { kind: "err" });
-  if (!sendCastMessage({ type: "start_streaming" })) return toast("Not connected to cast server", { kind: "err" });
+
+  const started = sendCastMessage({ type: "start_streaming", quality: castSession.quality || "auto", fps: castSession.fps || 30 });
+  if (!started) return toast("Not connected to cast server", { kind: "err" });
   castSession.status = "streaming";
   startRenderLoop();
   renderCastView();
@@ -311,13 +339,10 @@ function setQuality(q, fps) {
   toast(`Quality set to ${q} (${fps} FPS)`, { ms: 2000 });
 }
 
-
 function renderCastView() {
   const view = $("view-cast");
   if (!view) return;
-  
-  
-  
+
   const joinParams = new URLSearchParams(location.search);
   const joinSession = joinParams.get("session"), joinCode = joinParams.get("code");
   if (joinSession && joinCode) { renderDeviceJoinView(view, joinSession, joinCode); return; }
@@ -330,13 +355,14 @@ function renderCastView() {
   } else if (castSession.status === "paired" || castSession.status === "streaming") {
     view.innerHTML = castStreamingView();
     wireCastStreaming();
-    
+
     if (castSession.status === "paired" && !castSession._autoStarted) {
       castSession._autoStarted = true;
       setTimeout(() => { if (castSession?.status === "paired") startStreaming(); }, 800);
     }
   } else if (castSession.status === "disconnected") {
     view.innerHTML = castDisconnectedView();
+    wireCastDisconnected();
   }
 }
 
@@ -379,14 +405,30 @@ function castWaitingView() {
   </div>`;
 }
 
+function castConnName(type) {
+  return { wifi: "Wi-Fi", lan: "LAN", cellular: "Cellular", custom: "Custom", bridge: "Bridge", mesh: "Mesh", unknown: "Unknown" }[type] || type || "Unknown";
+}
+
+function renderCastStatus() {
+  const s = castSession;
+  if (!s) return;
+  const connName = castConnName(s.connectionType);
+  const sub = $("castHeaderSub");
+  if (sub) sub.textContent = `${s.deviceType || "phone"} · ${connName} · ${s.networkStrength || 0}% signal`;
+  const sig = $("castStatSignal");
+  if (sig) sig.textContent = `${s.networkStrength || 0}%`;
+  const conn = $("castConnType");
+  if (conn) conn.textContent = connName;
+}
+
 function castStreamingView() {
   const s = castSession;
   const streaming = s.status === "streaming";
   const connIcon = { wifi: "i-vpn", lan: "i-layers", cellular: "i-globe", custom: "i-settings", bridge: "i-link", mesh: "i-grid" }[s.connectionType] || "i-globe";
-  const connName = { wifi: "Wi-Fi", lan: "LAN", cellular: "Cellular", custom: "Custom", bridge: "Bridge", mesh: "Mesh", unknown: "Unknown" }[s.connectionType] || s.connectionType;
+  const connName = castConnName(s.connectionType);
   return `<div class="cast-page">
     <div class="cast-header">
-      <div><h2>${esc(s.deviceName || "Device")}</h2><p class="muted small">${esc(s.deviceType || "phone")} · ${esc(connName)} · ${s.networkStrength || 0}% signal</p></div>
+      <div><h2>${esc(s.deviceName || "Device")}</h2><p class="muted small" id="castHeaderSub">${esc(s.deviceType || "phone")} · ${esc(connName)} · ${s.networkStrength || 0}% signal</p></div>
       <div class="cast-controls">
         ${streaming ? `<button class="btn ghost sm" id="castStopBtn">Stop</button>` : `<button class="btn primary sm" id="castStartStreamBtn">Start mirroring</button>`}
         <button class="btn ghost sm" id="castDisconnectBtn">Disconnect</button>
@@ -398,10 +440,10 @@ function castStreamingView() {
         ${!streaming ? `<div class="cast-mirror-overlay"><p>Click "Start mirroring" to receive the screen</p></div>` : ""}
       </div>
       <div class="cast-side-panel">
-        <div class="cast-stat-card"><b>${s.frameCount || 0}</b><span>Frames received</span></div>
-        <div class="cast-stat-card"><b>${fpsCounter.fps || 0}</b><span>FPS</span></div>
-        <div class="cast-stat-card"><b>${s.networkStrength || 0}%</b><span>Signal strength</span></div>
-        <div class="cast-stat-card"><b>${esc(connName)}</b><span>Connection type</span></div>
+        <div class="cast-stat-card"><b id="castStatFrames">${s.frameCount || 0}</b><span>Frames received</span></div>
+        <div class="cast-stat-card"><b id="castStatFps">${fpsCounter.fps || 0}</b><span>FPS</span></div>
+        <div class="cast-stat-card"><b id="castStatSignal">${s.networkStrength || 0}%</b><span>Signal strength</span></div>
+        <div class="cast-stat-card"><b id="castConnType">${esc(connName)}</b><span>Connection type</span></div>
         <div class="cast-quality-section">
           <h4>Quality</h4>
           <div class="cast-quality-btns">
@@ -423,7 +465,6 @@ function castDisconnectedView() {
     <button class="btn primary lg" id="castReconnectBtn">Reconnect</button>
   </div></div>`;
 }
-
 
 let deviceWs = null;
 let deviceStream = null;
@@ -450,18 +491,24 @@ function renderDeviceJoinView(view, sessionId, code) {
     try { deviceWs && deviceWs.close(); } catch {}
     stopDeviceStream();
     stopDevicePolling();
-    deviceWs = null; deviceJoined = false;
+    deviceWs = null; deviceJoined = false; deviceSessionId = null; devicePollId = null;
     try { history.replaceState({}, "", (window.VEYRA_BASE || "./") + "cast"); } catch {}
     renderCastView();
   };
 }
 
+function deviceConnectionType() {
+
+  const t = String(navigator.connection?.effectiveType || "");
+  return t.includes("2") || t.includes("3") || t.includes("4") ? "cellular" : "wifi";
+}
+
 function connectDevice(sessionId, code, body) {
-  deviceSessionId = sessionId; 
+  deviceSessionId = sessionId;
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((isMobile ? "Phone" : "Device"))}&type=phone&connection=${navigator.connection?.effectiveType?.includes("2") || navigator.connection?.effectiveType?.includes("3") || navigator.connection?.effectiveType?.includes("4") ? "cellular" : "wifi"}`;
+  const wsUrl = API.replace(/^http/, "ws") + `/ws/cast?role=device&session=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}&deviceId=${encodeURIComponent(uid())}&name=${encodeURIComponent((isMobile ? "Phone" : "Device"))}&type=phone&connection=${encodeURIComponent(deviceConnectionType())}`;
   try { deviceWs = new WebSocket(wsUrl); } catch (e) {
-    
+
     deviceWs = null;
     body.innerHTML = `<p class="muted">WebSocket unavailable. Trying HTTP fallback…</p>`;
     startDevicePolling(sessionId, code, body);
@@ -481,6 +528,7 @@ function connectDevice(sessionId, code, body) {
       if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
       else if (msg.type === "stop_streaming") stopDeviceStream();
       else if (msg.type === "set_quality") { if (deviceTimer) setDeviceFrameRate(msg.fps || 15); }
+      else if (msg.type === "input") showDeviceInput(msg);
     } catch {}
   };
   deviceWs.onerror = () => {
@@ -508,10 +556,10 @@ function connectDevice(sessionId, code, body) {
 function renderDevicePaired(body) {
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
-  
+
   let shareButtons = '';
   if (isMobile && !hasDisplayMedia) {
-    
+
     shareButtons = `<div style="display:grid;gap:10px;justify-items:center">
       <p class="muted small" style="max-width:320px;text-align:center">Screen capture is not available on mobile browsers. You can mirror your camera instead.</p>
       <button class="btn primary lg" id="djShareBack">Share back camera</button>
@@ -533,23 +581,22 @@ function renderDevicePaired(body) {
   if (frontBtn) frontBtn.onclick = () => startDeviceStream(15, true, "user");
 }
 
-
 let devicePollTimer = null;
 let devicePollInFlight = false;
 function startDevicePolling(sessionId, code, body) {
   if (devicePollTimer) clearInterval(devicePollTimer);
-  deviceSessionId = sessionId; 
-  
-  api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone" }, timeoutMs: 10000 }).then(result => {
+  deviceSessionId = sessionId;
+
+  api("/api/cast/device/join", { method: "POST", json: { sessionId, code, deviceId: uid(), name: /Mobile|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Phone" : "Device", type: "phone", connection: deviceConnectionType() }, timeoutMs: 10000 }).then(result => {
     if (!result.ok) { body.innerHTML = `<p class="muted">Could not join: ${esc(result.error || "unknown error")}</p>`; return; }
-    devicePollId = result.deviceId; 
+    devicePollId = result.deviceId;
     deviceJoined = true;
     const t = $("djTitle"), s = $("djSub");
     if (t) t.textContent = "Paired with Veyra";
     if (s) s.textContent = "Your screen can now be mirrored into the Veyra browser.";
     renderDevicePaired(body);
     addLog("info", "CAST", "Device joined cast session via HTTP polling");
-    
+
     devicePollTimer = setInterval(async () => {
       if (devicePollInFlight) return;
       devicePollInFlight = true;
@@ -560,6 +607,7 @@ function startDevicePolling(sessionId, code, body) {
             if (msg.type === "start_streaming") startDeviceStream(msg.fps || 15);
             else if (msg.type === "stop_streaming") stopDeviceStream();
             else if (msg.type === "set_quality") { if (deviceTimer) setDeviceFrameRate(msg.fps || 15); }
+            else if (msg.type === "input") showDeviceInput(msg);
           }
         }
       } catch {} finally { devicePollInFlight = false; }
@@ -573,6 +621,10 @@ function stopDevicePolling() {
   if (devicePollTimer) { clearInterval(devicePollTimer); devicePollTimer = null; }
 }
 
+function showDeviceInput(msg) {
+  const st = $("djStatus");
+  if (st) st.textContent = `Input from Veyra: ${msg.action || "tap"} @ ${Math.round((Number(msg.x) || 0) * 100)}%,${Math.round((Number(msg.y) || 0) * 100)}%`;
+}
 
 let deviceSessionId = null;
 let devicePollId = null;
@@ -581,8 +633,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
   if (deviceStream) { if (manual) { const st = $("djStatus"); if (st) st.textContent = "Already sharing."; } return; }
   const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
   const hasDisplayMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
-  
-  
+
   if (facingMode) {
     try {
       deviceStream = await navigator.mediaDevices.getUserMedia({
@@ -595,7 +646,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
       return;
     }
   } else if (hasDisplayMedia && !isMobile) {
-    
+
     try {
       deviceStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: fps }, audio: false });
     } catch (e) {
@@ -605,7 +656,7 @@ async function startDeviceStream(fps = 15, manual = false, facingMode = null) {
       return;
     }
   } else {
-    
+
     try {
       deviceStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", frameRate: fps, width: { ideal: 720 }, height: { ideal: 1280 } },
@@ -660,7 +711,6 @@ function stopDeviceStream() {
   const st = $("djStatus"); if (st) st.textContent = "";
   if (deviceCanvas) deviceCanvas.style.display = "none";
 }
-
 
 function renderInternetView() {
   const view = $("view-internet");
@@ -734,7 +784,6 @@ function showInternetConfig(profileId) {
   });
 }
 
-
 function wireCastWaiting() {
   const start = $("castStartBtn");
   if (start) start.onclick = () => { connectCastServer(""); };
@@ -744,9 +793,41 @@ function wireCastWaiting() {
   if (copy) copy.onclick = () => { navigator.clipboard?.writeText(castSession?.pairingCode || "").then(() => toast("Code copied")); };
 }
 
+let inputPointerStart = null;
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+function wireCastInput() {
+  if (!castCanvas) return;
+  castCanvas.addEventListener("pointerdown", e => {
+    inputPointerStart = { x: e.clientX, y: e.clientY, t: Date.now() };
+    e.preventDefault();
+  });
+  castCanvas.addEventListener("pointerup", e => {
+    const start = inputPointerStart;
+    inputPointerStart = null;
+    if (!start || !castCanvas) return;
+    const rect = castCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    const input = {
+      action: Math.hypot(dx, dy) > 24 ? "swipe" : "tap",
+      x: clamp01((e.clientX - rect.left) / rect.width),
+      y: clamp01((e.clientY - rect.top) / rect.height),
+      dx: dx / rect.width,
+      dy: dy / rect.height,
+      duration: Date.now() - start.t,
+    };
+    sendCastMessage({ type: "input", input });
+  });
+  castCanvas.addEventListener("pointercancel", () => { inputPointerStart = null; });
+}
+
 function wireCastStreaming() {
   castCanvas = $("castCanvas");
   castCtx = castCanvas?.getContext("2d");
+
+  lastDrawnFrame = null;
+  wireCastInput();
   const startStream = $("castStartStreamBtn");
   if (startStream) startStream.onclick = startStreaming;
   const stop = $("castStopBtn");
@@ -756,6 +837,15 @@ function wireCastStreaming() {
   document.querySelectorAll("[data-q]").forEach(b => b.onclick = () => setQuality(b.dataset.q, parseInt(b.dataset.fps)));
 }
 
+function wireCastDisconnected() {
+  const btn = $("castReconnectBtn");
+  if (btn) btn.onclick = () => {
+
+    disconnectCastSession("reconnect");
+    renderCastView();
+    connectCastServer("");
+  };
+}
 
 export function initCast(b) {
   B = b;

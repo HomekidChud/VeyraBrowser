@@ -1,30 +1,79 @@
-
 import {
   API, $, qsa, esc, hostOf, displayUrl, uid, fmtClock, timeAgo, letterIcon, debounce, isMac, settings, saveSettings, load, save,
-  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
-} from "./core.js?v=8.28.27-youtube-link-tabs";
-import { initExtensions } from "./extensions.js";
-import { initSettings } from "./settings.js?v=8.28.18-professional-shell";
+  api, auth, setAuth, isAdmin, hooks, toast, promptDialog, openFloating, closeFloating, ctxMenu, engineName, addLog, copyText, VERSION, migrateSettings, INCOGNITO, APP_BASE
+} from "./core.js?v=8.36.0-workbench";
+import { initExtensions } from "./extensions.js?v=8.36.0-workbench";
+import { initSettings } from "./settings.js?v=8.44.3-search-privacy";
+import { originalSiteUrl } from "./site-recovery.js?v=1";
+import { accountDestination } from "./account-navigation.js?v=2";
+import { WORKSPACE_PRESETS, validColour, tabLayout, clampNumber } from "./workspace.js?v=3";
+import { DEVICE_APPEARANCE_KEYS } from "./studio-model.js?v=3";
+import { applyStudioVisuals, playStudioSound } from "./studio.js?v=5";
+import { openLauncher, openQuickTools } from "./velocity.js?v=2";
+import { performanceMode } from "./velocity-model.js?v=2";
+import { assignableBinding, shortcutKeys, shortcutMap } from "./shortcuts-model.js?v=2";
+import { openQrScanner } from "./qr-open.js?v=1";
 
 let B;
 
+function initPrivacyCover() {
+  if (!INCOGNITO) return;
+  const cover = document.createElement("dialog");
+  cover.className = "privacy-cover";
+  cover.setAttribute("aria-labelledby", "privacyCoverTitle");
+  cover.innerHTML = `<div class="privacy-cover-content"><svg aria-hidden="true"><use href="#i-shield"/></svg><h2 id="privacyCoverTitle">Incognito screen hidden</h2><p>Reveal the screen only when it’s safe to view. This cover can’t block operating-system capture or an external camera while the screen is visible.</p><button class="btn primary" autofocus>Reveal screen</button></div>`;
+  document.body.append(cover);
+  const lock = () => {
+    if (cover.open) return;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    cover.showModal();
+  };
+  cover.addEventListener("cancel", event => event.preventDefault());
+  cover.querySelector("button").onclick = () => { if (!document.hidden) cover.close(); };
+  hooks.lockPrivacyCover = lock;
+  hooks.privacyCoverOpen = () => cover.open;
+  document.addEventListener("visibilitychange", () => { if (document.hidden) lock(); });
+  window.addEventListener("blur", () => {
+    setTimeout(() => { if (!document.hasFocus()) lock(); }, 0);
+  });
+  window.addEventListener("pagehide", lock);
+  if (document.hidden) lock();
+}
 
 export function applyTheme() {
   let t = settings.theme || "dark"; if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   const root = document.documentElement; root.dataset.theme = t;
-  if (settings.accent) root.style.setProperty("--accent", settings.accent); else root.style.removeProperty("--accent");
+  const preset = Object.hasOwn(WORKSPACE_PRESETS, settings.workspacePreset) ? WORKSPACE_PRESETS[settings.workspacePreset] : WORKSPACE_PRESETS.glacier;
+  root.style.setProperty("--accent", validColour(settings.accent) ? settings.accent : preset.accent);
+  const neutral = t === "light" ? "#f4f6fa" : "#10151c";
+  const tint = validColour(settings.chromeTint) ? `color-mix(in srgb, ${neutral}, ${settings.chromeTint} ${clampNumber(settings.chromeTintStrength, 0, 60, 22)}%)` :
+    preset.mode === t ? preset.palette : neutral;
+  root.style.setProperty("--workspace-tint", tint);
   root.style.setProperty("--ui-scale", settings.fontScale || 1);
   document.body.classList.toggle("compact", !!settings.compact || !!load("veyra-extensions", {}).compact);
   document.body.classList.toggle("reduce-motion", !!settings.reduceMotion);
   document.body.classList.toggle("focus-rings", !!settings.focusRings);
+  document.body.classList.toggle("game-focus", !!settings.gameFocus);
+  document.body.classList.toggle("velocity-boost", performanceMode(settings.performanceMode) === "boost");
+  const app = $("app"), strip = $("tabsList").parentElement;
+  app.dataset.tabLayout = tabLayout(settings.tabLayout);
+  app.dataset.railCompact = String(!!settings.tabRailCompact);
+  app.dataset.shape = ["soft", "sharp", "round"].includes(settings.chromeShape) ? settings.chromeShape : "soft";
+  app.dataset.backdrop = ["glow", "grid", "plain"].includes(settings.newTabBackdrop) ? settings.newTabBackdrop : "glow";
+  app.style.setProperty("--tab-rail-width", `${clampNumber(settings.tabRailWidth, 160, 320, 212)}px`);
+  const top = app.querySelector(".chrome");
+  const parent = app.dataset.tabLayout === "top" ? top : app;
+  if (strip.parentElement !== parent) parent.prepend(strip);
+  $("tabsList").setAttribute("aria-orientation", parent === top ? "horizontal" : "vertical");
   document.body.classList.toggle("link-underline", !!settings.linkUnderline);
   $("bookmarksBar").classList.toggle("hidden", !settings.showBookmarksBar);
   $("homeBtn").classList.toggle("hidden", !settings.showHomeButton);
+  applyStudioVisuals(app, root);
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "light" ? "#f6f7f9" : "#0d0f13");
 }
+hooks.updateStudioPreview = () => applyStudioVisuals($("app"), document.documentElement);
+hooks.applyStudioTheme = applyTheme;
 matchMedia("(prefers-color-scheme: light)").addEventListener?.("change", () => settings.theme === "system" && applyTheme());
-
-
 
 export function openIncognitoWindow() {
   const w = window.open(`${APP_BASE}/browse?incognito=1`, "_blank", "noopener");
@@ -34,7 +83,7 @@ export function exitIncognito() {
   try { sessionStorage.removeItem("veyra-incognito"); } catch {}
   B.endSession?.("manual").catch?.(() => {});
   window.close();
-  
+
   setTimeout(() => location.replace(`${APP_BASE}/browse?incognito=0`), 150);
 }
 hooks.openIncognitoWindow = () => openIncognitoWindow();
@@ -53,7 +102,7 @@ export const COMMANDS = [
   { id: "back", label: "Back", group: "Navigation", keys: ["Alt+Left"], run: () => B.back() },
   { id: "forward", label: "Forward", group: "Navigation", keys: ["Alt+Right"], run: () => B.forward() },
   { id: "home", label: "Home", group: "Navigation", keys: ["Alt+Home"], run: () => B.goHome() },
-  { id: "stop", label: "Stop loading", group: "Navigation", keys: ["Esc"], run: escape },
+  { id: "stop", label: "Stop loading", group: "Navigation", keys: ["Esc"], run: () => B.stopLoad() },
   { id: "find", label: "Find in page", group: "Page", keys: ["Mod+F"], run: () => B.openFind() },
   { id: "print", label: "Print page", group: "Page", keys: ["Mod+P"], run: () => B.printPage() },
   { id: "bookmark", label: "Bookmark this tab", group: "Page", keys: ["Mod+D"], run: () => B.toggleBookmark() },
@@ -64,17 +113,50 @@ export const COMMANDS = [
   { id: "history", label: "History", group: "Veyra", keys: ["Mod+H"], run: () => B.openInternal("history") },
   { id: "bookmarksBar", label: "Show bookmarks bar", group: "Veyra", keys: ["Mod+Shift+B"], run: () => { settings.showBookmarksBar = !settings.showBookmarksBar; saveSettings(); } },
   { id: "search", label: "Veyra Search", group: "Veyra", keys: ["Mod+K"], run: () => B.showSearch("") },
-  { id: "commandPalette", label: "Command palette", group: "Veyra", keys: ["Mod+Shift+P"], run: () => openCommandPalette() },
+  { id: "commandPalette", label: "Command palette", group: "Veyra", keys: ["F2", "Mod+Shift+P"], run: () => openCommandPalette() },
   { id: "vpn", label: "Veyra VPN", group: "Veyra", keys: ["Mod+Shift+V"], run: () => B.openInternal("vpn") },
   { id: "settings", label: "Settings", group: "Veyra", keys: ["Mod+,"], run: () => B.openInternal("settings") },
   { id: "clearData", label: "Clear browsing data", group: "Veyra", keys: ["Mod+Shift+Delete"], run: () => openClearData() },
   { id: "devtools", label: "Developer tools", group: "Developer", keys: ["Mod+Shift+I", "F12"], run: () => hooks.dt?.toggle() },
   { id: "console", label: "DevTools console", group: "Developer", keys: ["Mod+Shift+J"], run: () => hooks.dt?.open("console") },
   { id: "picker", label: "Inspect element", group: "Developer", keys: ["Mod+Shift+C"], run: () => hooks.dt?.inspect() },
-  { id: "viewSource", label: "View source resources", group: "Developer", keys: ["Mod+U"], run: () => B.openInternal("resources") }
+  { id: "viewSource", label: "View source resources", group: "Developer", keys: ["Mod+U"], run: () => B.openInternal("resources") },
+  { id: "findTab", label: "Find open tab", group: "Quick access", keys: ["Alt+Shift+T"], run: () => openCommandPalette("tab") },
+  { id: "performance", label: "Performance", group: "Quick access", keywords: "velocity boost anti lag parking", keys: ["Alt+Shift+P"], run: () => B.openInternal("settings", { section: "performance" }) },
+  { id: "quickTools", label: "Quick Tools", group: "Quick access", keywords: "unit converter json text word counter", keys: ["Alt+Shift+U"], run: () => openQuickTools({ browser: B, copyText }) },
+  { id: "studio", label: "Customization Studio", group: "Quick access", keywords: "appearance theme wallpaper", keys: ["Alt+Shift+A"], run: () => B.openInternal("settings", { section: "appearance" }) },
+  { id: "split", label: "Toggle split screen", group: "Quick access", keys: ["Alt+Shift+S"], run: () => B.toggleSplitScreen() },
+  { id: "group", label: "Create tab group", group: "Quick access", keys: ["Alt+Shift+G"], run: () => B.groupActiveTab() },
+  { id: "calculator", label: "Open Calculator", group: "Quick access", keys: ["Alt+Shift+C"], run: () => B.openInternal("calculator") },
+  { id: "shortcutSettings", label: "Keyboard shortcuts", group: "Quick access", keys: ["Alt+Shift+K"], run: () => B.openInternal("settings", { section: "shortcuts" }) },
+  { id: "extensions", label: "Extensions", group: "Quick access", keys: ["Alt+Shift+E"], run: () => B.openInternal("extensions") },
+  { id: "gameFocus", label: "Toggle Game Focus", group: "Quick access", keys: ["Alt+Shift+F"], run: toggleGameFocus },
+  { id: "duplicateTab", label: "Duplicate current tab", group: "Quick access", keys: ["Alt+Shift+D"], run: () => { const t = B.activeTab(); if (t) B.duplicateTab(t); } },
+  { id: "copyPageAddress", label: "Copy page address", group: "Quick access", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().url) },
+  { id: "copyPageTitle", label: "Copy page title", group: "Page", keys: [], available: () => !INCOGNITO && !!B.activeTab()?.url, run: () => copyText(B.activeTab().title) },
+  { id: "findNext", label: "Find next match", group: "Page", keys: [], run: () => { if ($("findBar").classList.contains("hidden")) B.openFind(); else $("findNext").click(); } },
+  { id: "findPrevious", label: "Find previous match", group: "Page", keys: [], run: () => { if ($("findBar").classList.contains("hidden")) B.openFind(); else $("findPrev").click(); } },
+  { id: "pinTab", label: "Pin or unpin tab", group: "Tabs", keys: ["Alt+Shift+Y"], run: () => B.toggleTabPin() },
+  { id: "moveTabEarlier", label: "Move tab earlier", group: "Tabs", keys: [], run: () => B.shiftActiveTab(-1) },
+  { id: "moveTabLater", label: "Move tab later", group: "Tabs", keys: [], run: () => B.shiftActiveTab(1) },
+  { id: "newTabNext", label: "New tab beside current", group: "Tabs", keys: [], run: () => B.newTab({ index: B.state.tabs.indexOf(B.activeTab()) + 1 }) },
+  { id: "settingsSearch", label: "Search Settings", group: "Quick access", keys: ["Alt+Shift+O"], run: () => {
+    if (B.activeTab()?.view !== "settings") B.openInternal("settings");
+    $("settingsSearch").focus(); $("settingsSearch").select();
+  } },
+  ...[["privacySettings","Privacy and security","privacy"],["systemSettings","System and engine","system"],
+    ["accessibilitySettings","Accessibility","accessibility"],["sessionsSettings","Session settings","sessions"],
+    ["videoGuides","Video guides","guides"]].map(([id, label, section]) => ({
+    id, label, group: "Quick access", keys: [], run: () => B.openInternal("settings", { section })
+  })),
+  ...["standard","balanced","boost"].map(mode => ({
+    id: `profile-${mode}`, label: `Performance profile: ${mode[0].toUpperCase()}${mode.slice(1)}`, group: "Performance", keys: [],
+    run: () => { B.setPerformanceMode(mode); if (B.activeTab()?.section === "performance") B.renderActive({ push: false }); toast(`Performance profile: ${mode}`); }
+  }))
 ];
-export const cmd = id => COMMANDS.find(c => c.id === id);
-export function keysFor(id) { const o = settings.shortcuts?.[id]; return Array.isArray(o) ? o : cmd(id)?.keys || []; }
+const commandsById = new Map(COMMANDS.map(command => [command.id, command]));
+export const cmd = id => commandsById.get(id);
+export function keysFor(id) { return shortcutKeys(cmd(id), settings.shortcuts); }
 export function prettyCombo(c) { return String(c).replace(/Mod/g, isMac ? "⌘" : "Ctrl").replace(/Alt/g, isMac ? "⌥" : "Alt").replace(/Shift\+=/, "Shift+=").replace(/\+(?=.)/g, isMac ? "" : "+").replace(/^⌘(.)/, "⌘$1"); }
 export const kbdFor = id => { const k = keysFor(id)[0]; return k ? prettyCombo(k) : ""; };
 const CODE_KEYS = { Equal: "=", NumpadAdd: "=", Minus: "-", NumpadSubtract: "-", Comma: ",", Period: ".", Slash: "/", Backslash: "\\", Semicolon: ";", Quote: "'", BracketLeft: "[", BracketRight: "]", Backquote: "`", ArrowLeft: "Left", ArrowRight: "Right", ArrowUp: "Up", ArrowDown: "Down", Escape: "Esc", Numpad0: "0" };
@@ -92,55 +174,65 @@ export function comboFromEvent(e) {
   if (e.altKey) parts.push("Alt"); if (e.shiftKey) parts.push("Shift"); parts.push(key);
   return parts.join("+");
 }
-function commandForCombo(combo) { if (!combo) return null; return COMMANDS.find(c => keysFor(c.id).includes(combo)) || null; }
+let bindingsSource, bindingsMap;
+function activeBindings() {
+  if (!bindingsMap || bindingsSource !== settings.shortcuts) {
+    bindingsSource = settings.shortcuts;
+    bindingsMap = shortcutMap(COMMANDS, bindingsSource);
+  }
+  return bindingsMap;
+}
 function isEditable(el) { return el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); }
-export let recordingShortcut = null; export function setRecording(fn) { recordingShortcut = fn; }
-function runCombo(combo, { fromPage = false, editable = false } = {}) {
-  if (!$("landing").classList.contains("hidden")) return false;
-  const c = commandForCombo(combo); if (!c) return false;
-  const bare = !/Mod|Alt|Ctrl|Meta/.test(combo) && !/^F\d/.test(combo) && combo !== "Esc";
-  if (bare) return false;
+const repeatableCommands = new Set(["nextTab", "prevTab", "back", "forward", "zoomIn", "zoomOut", "findNext", "findPrevious"]);
+function runCombo(combo, { fromPage = false, editable = false, repeat = false } = {}) {
+  if (combo !== "Esc" && !assignableBinding(combo)) return false;
+  const c = activeBindings().get(combo);
+  if (!c || hooks.privacyCoverOpen?.() || document.querySelector("dialog[open]") || !$("landing").classList.contains("hidden") || c.available?.() === false) return false;
+  if (repeat && !repeatableCommands.has(c.id)) return true;
   if (editable && ["back", "forward"].includes(c.id)) return false;
   if (c.id === "stop" && editable && !fromPage) return false;
   try { c.run(); } catch (err) { addLog("error", `Shortcut ${c.id} failed: ${err.message}`); }
   return true;
 }
 function onKeyDown(e) {
-  if (recordingShortcut) { e.preventDefault(); e.stopPropagation(); const combo = comboFromEvent(e); if (combo) recordingShortcut(combo, e); return; }
-  if (e.defaultPrevented) return;
+  if (e.defaultPrevented || e.isComposing || e.getModifierState("AltGraph")) return;
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key !== "Escape" && !/^F\d{1,2}$/.test(e.key)) return;
   const combo = comboFromEvent(e);
-  if (combo === "Esc") { if (escape()) e.preventDefault(); return; }
-  if (runCombo(combo, { editable: isEditable(e.target) })) { e.preventDefault(); e.stopPropagation(); }
+  if (combo === "Esc") {
+    if (!hooks.privacyCoverOpen?.() && !document.querySelector("dialog[open]") && escape()) e.preventDefault();
+    return;
+  }
+  if (runCombo(combo, { editable: isEditable(e.target), repeat: e.repeat })) { e.preventDefault(); e.stopPropagation(); }
 }
 function escape() {
-  if (document.querySelector(".command-palette")) { closeCommandPalette(); return true; }
   if (!$("mainMenu").classList.contains("hidden") || !$("popover").classList.contains("hidden") || !$("ctxMenu").classList.contains("hidden")) { closeFloating(); return true; }
   if (!$("omniPop").classList.contains("hidden")) { hideOmni(); B.updateIdentity(); return true; }
   if (hooks.dt?.cancelPicking?.()) return true;
   if (!$("findBar").classList.contains("hidden")) { B.closeFind(); return true; }
-  if ($("reloadBtn").dataset.loading === "1") { B.stopLoad(); return true; }
+  if ($("reloadBtn").dataset.loading === "1" && activeBindings().get("Esc")?.id === "stop") { B.stopLoad(); return true; }
   const t = B.activeTab(); if (t?.readerOpen) { hooks.closeReader?.(); return true; }
   return false;
 }
-let commandPalette;
-function closeCommandPalette() { commandPalette?.remove(); commandPalette = null; }
-function openCommandPalette() {
-  closeFloating();
-  const wrap = document.createElement("div"); commandPalette = wrap; wrap.className = "command-palette";
-  wrap.innerHTML = `<div class="command-backdrop" data-close></div><section class="command-card" role="dialog" aria-modal="true" aria-label="Command palette"><header><svg><use href="#i-search"/></svg><input id="commandSearch" autocomplete="off" placeholder="Search commands…" aria-label="Search commands"><kbd>Esc</kbd></header><div class="command-results" id="commandResults"></div><footer><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></footer></section>`;
-  document.body.appendChild(wrap);
-  const input = wrap.querySelector("#commandSearch"), results = wrap.querySelector("#commandResults"); let selected = 0;
-  const draw = () => { const q = input.value.trim().toLowerCase(); const list = COMMANDS.filter(c => !c.hidden && (!q || `${c.label} ${c.group}`.toLowerCase().includes(q))).slice(0, 18); selected = Math.min(selected, Math.max(0, list.length - 1)); results.innerHTML = list.length ? list.map((c, i) => `<button class="command-item ${i === selected ? "on" : ""}" data-command="${esc(c.id)}"><span class="command-item-icon"><svg><use href="#${c.group === "Developer" ? "i-code" : c.group === "Navigation" ? "i-globe" : "i-bolt"}"/></svg></span><span><b>${esc(c.label)}</b><small>${esc(c.group)}</small></span><span class="command-keys">${keysFor(c.id).slice(0, 1).map(k => `<kbd>${esc(prettyCombo(k))}</kbd>`).join("")}</span></button>`).join("") : `<div class="command-empty">No matching commands</div>`; };
-  const run = () => { const b = results.querySelectorAll("[data-command]")[selected]; if (!b) return; const c = cmd(b.dataset.command); closeCommandPalette(); c?.run(); };
-  input.addEventListener("input", () => { selected = 0; draw(); });
-  input.addEventListener("keydown", e => { const n = results.querySelectorAll("[data-command]").length; if (e.key === "ArrowDown") { e.preventDefault(); selected = n ? (selected + 1) % n : 0; draw(); } else if (e.key === "ArrowUp") { e.preventDefault(); selected = n ? (selected - 1 + n) % n : 0; draw(); } else if (e.key === "Enter") { e.preventDefault(); run(); } else if (e.key === "Escape") { e.preventDefault(); closeCommandPalette(); } });
-  results.addEventListener("click", e => { const b = e.target.closest("[data-command]"); if (!b) return; selected = [...results.querySelectorAll("[data-command]")].indexOf(b); run(); });
-  wrap.addEventListener("click", e => { if (e.target.matches("[data-close]")) closeCommandPalette(); }); draw(); input.focus();
+function toggleGameFocus() {
+  settings.gameFocus = !settings.gameFocus; saveSettings();
+  toast(settings.gameFocus ? "Game Focus on. Background diagnostics are paused." : "Game Focus off.");
 }
-hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true }); };
-hooks.forwardableCombos = () => COMMANDS.flatMap(c => keysFor(c.id));
+function openCommandPalette(scope = "all") {
+  closeFloating();
+  openLauncher({ isPrivate: INCOGNITO, scope, esc, rows: () => [
+    ...COMMANDS.filter(c => !c.hidden && !["commandPalette", "findTab", "stop"].includes(c.id) && c.available?.() !== false)
+      .map(c => ({ kind: "command", label: c.label, detail: c.group, keywords: c.keywords, key: kbdFor(c.id), run: c.run, priority: c.group === "Quick access" ? 6 : 0 })),
+    ...B.state.tabs.map(t => ({ kind: "tab", label: t.title || "New tab", detail: INCOGNITO ? "Open tab" : hostOf(t.url) || "Open tab", keywords: INCOGNITO ? "" : t.url,
+      priority: t.id === B.state.activeId ? 2 : 10, run: () => B.switchTab(t.id) })),
+    ...(!INCOGNITO ? [
+      ...B.state.bookmarks.slice(0, 300).map(b => ({ kind: "bookmark", label: b.title || hostOf(b.url) || "Bookmark", detail: hostOf(b.url), keywords: b.url, run: () => openBookmark(b, true) })),
+      ...B.state.history.slice(0, 300).filter(h => /^https?:\/\//i.test(h.url)).map(h => ({ kind: "history", label: h.title || hostOf(h.url), detail: hostOf(h.url), keywords: h.url, run: () => B.go(h.url, { newTab: true }) }))
+    ] : [])
+  ] });
+}
+hooks.handleForwardedShortcut = d => { const combo = comboFromEvent(d); runCombo(combo, { fromPage: true, repeat: !!d.repeat, editable: !!d.editable }); };
+hooks.forwardableCombos = () => [...activeBindings().keys()];
 function focusAddress() { const a = $("address"); if (B.activeTab()?.view === "newtab" && document.activeElement !== a) { $("ntpInput")?.focus(); return; } a.focus(); a.select(); }
-
 
 const EXPLORE = [
   { url: "https://en.wikipedia.org/wiki/Cardiff", title: "Wikipedia", sub: "The free encyclopedia, fully rewritten through the proxy.", cat: "Reference" },
@@ -177,50 +269,79 @@ function renderLandActions() {
 }
 const initials = () => { const n = auth.user?.name || auth.user?.email || ""; return (n.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(s => s[0]).join("") || "?").toUpperCase(); };
 
-
 let authMode = "login";
+let authPending = false;
+function updateAuthPolicy() {
+  const signup = authMode === "signup";
+  const closed = signup && auth.config?.signupEnabled === false;
+  $("authSignupKeyRow").classList.toggle("hidden", !signup || auth.config?.signupKeyRequired !== true);
+  $("authSubmit").disabled = authPending || closed;
+  if (closed && !authPending) $("authError").textContent = "Sign-ups are turned off on this server.";
+}
 export function openAuth(mode = "login") {
+  if (authPending) return;
   authMode = mode; const dlg = $("authDialog"); const f = $("authForm");
   qsa(".seg button", f).forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
   $("authTitle").textContent = mode === "signup" ? "Create your Veyra account" : "Welcome back";
   $("authSub").textContent = mode === "signup" ? "Sync settings, bookmarks, shortcuts and extensions across devices." : "Sign in to sync your Veyra settings.";
   $("authNameRow").classList.toggle("hidden", mode !== "signup");
-  $("authSignupKeyRow")?.classList.toggle("hidden", mode !== "signup" || auth.config?.signupKeyRequired !== true);
   $("authSubmit").textContent = mode === "signup" ? "Create account" : "Sign in";
   f.password.autocomplete = mode === "signup" ? "new-password" : "current-password";
   $("authError").textContent = "";
-  if (auth.config && auth.config.signupEnabled === false && mode === "signup") $("authError").textContent = "Sign-ups are turned off on this server.";
+  updateAuthPolicy();
   if (!dlg.open) dlg.showModal(); setTimeout(() => (mode === "signup" ? f.name : f.email).focus(), 30);
 }
 async function submitAuth(e) {
   e.preventDefault(); const f = $("authForm"); const err = $("authError");
-  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim(), signupKey = f.signupKey?.value || "";
+  const mode = authMode;
+  if (authPending || (mode === "signup" && auth.config?.signupEnabled === false)) return;
+  const email = f.email.value.trim(), password = f.password.value, name = f.name.value.trim(), signupKey = f.signupKey.value;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = "Enter a valid email address."; f.email.focus(); return; }
-  if (authMode === "signup" && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) { err.textContent = "Use at least 8 characters with a letter and a number."; f.password.focus(); return; }
+  if (mode === "signup" && !(password.length >= 8 && /[a-z]/i.test(password) && /\d/.test(password))) { err.textContent = "Use at least 8 characters with a letter and a number."; f.password.focus(); return; }
   if (!password) { err.textContent = "Enter your password."; f.password.focus(); return; }
-  const btn = $("authSubmit"); btn.disabled = true; btn.textContent = authMode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
+  if (mode === "signup" && auth.config?.signupKeyRequired && !signupKey.trim()) { err.textContent = "Enter the signup key provided by your server owner."; f.signupKey.focus(); return; }
+  const btn = $("authSubmit");
+  authPending = true;
+  f.setAttribute("aria-busy", "true");
+  qsa("button", f).forEach(button => { button.disabled = true; });
+  btn.textContent = mode === "signup" ? "Creating account…" : "Signing in…"; err.textContent = "";
   try {
-    const r = await api(`/api/auth/${authMode}`, { json: authMode === "signup" ? { email, password, name, signupKey } : { email, password } });
-    setAuth(r.token, r.user); auth.admin = r.user?.role === "admin";
+    const r = await api(`/api/auth/${mode}`, { json: mode === "signup" ? { email, password, name, signupKey } : { email, password } });
+    setAuth(r.token, r.user);
     f.reset(); $("authDialog").close();
-    await pullSync({ initial: authMode === "login" });
-    if (authMode === "signup") await pushSync();
-    onAuthChanged();
-    toast(authMode === "signup" ? `Welcome to Veyra, ${r.user.name || r.user.email}` : `Signed in as ${r.user.email}`);
+    toast(mode === "signup" ? `Welcome to Veyra, ${r.user.name || r.user.email}` : `Signed in as ${r.user.email}`);
     if (!$("landing").classList.contains("hidden")) B.goRoute("/browse");
-  } catch (ex) { err.textContent = ex.message; }
-  finally { btn.disabled = false; btn.textContent = authMode === "signup" ? "Create account" : "Sign in"; }
+    if (mode === "signup") void pushSync().catch(() => toast("Account created, but your settings haven’t synced yet.", { kind: "warn" }));
+    else void pullSync();
+  } catch (ex) {
+    if (ex.code === "AUTH_SIGNUP_KEY_REQUIRED" || ex.code === "AUTH_SIGNUP_DISABLED") {
+      auth.config = { ...auth.config, ...(ex.code === "AUTH_SIGNUP_KEY_REQUIRED" ? { signupKeyRequired: true } : { signupEnabled: false }) };
+      updateAuthPolicy();
+      if (ex.code === "AUTH_SIGNUP_KEY_REQUIRED") f.signupKey.focus();
+    }
+    err.textContent = ex.message;
+  } finally {
+    authPending = false; f.removeAttribute("aria-busy");
+    qsa("button", f).forEach(button => { button.disabled = false; });
+    btn.textContent = mode === "signup" ? "Create account" : "Sign in";
+    updateAuthPolicy();
+  }
 }
 export async function signOut({ everywhere = false, forgetLocal = false } = {}) {
-  let remoteSignedOut = true;
-  try { await api("/api/auth/logout", { json: { everywhere } }); } catch (e) { remoteSignedOut = false; addLog("warn", `Remote sign-out was not confirmed: ${e.message}`); }
+  const revoke = api("/api/auth/logout", { json: { everywhere } }).then(() => true, e => {
+    addLog("warn", `Remote sign-out was not confirmed: ${e.message}`);
+    return false;
+  });
   if (forgetLocal) B.clearLocalAccountData?.();
-  setAuth("", null); auth.admin = false;
-  try { const c = await api("/api/auth/config"); auth.config = c; auth.admin = !!c.admin; } catch {}
-  onAuthChanged(); toast(remoteSignedOut ? (forgetLocal ? "Signed out and local account data removed" : "Signed out") : "Signed out locally. Server sign-out was not confirmed.", { kind: remoteSignedOut ? "" : "warn", ms: 5000 });
+  setAuth("", null);
   const v = B.activeTab()?.view; if (v === "dev" || v === "console") B.goHome();
+  const remoteSignedOut = await revoke;
+  toast(remoteSignedOut ? (forgetLocal ? "Signed out and local account data removed" : "Signed out") : "Signed out locally. Server sign-out was not confirmed.", { kind: remoteSignedOut ? "" : "warn", ms: 5000 });
 }
 function onAuthChanged() {
+  B.syncAdminAccess();
+  B.syncSearchAuth();
+  updateAuthPolicy();
   const a = $("profileBtn"); a.classList.toggle("signed", !!auth.user && !INCOGNITO); a.classList.toggle("incog", INCOGNITO);
   $("avatarText").innerHTML = INCOGNITO ? `<svg><use href="#i-incognito"/></svg><span class="incog-label">Incognito</span>` : auth.user ? esc(initials()) : `<svg><use href="#i-user"/></svg>`;
   a.title = INCOGNITO ? "You're incognito" : auth.user ? `${auth.user.name || ""} ${auth.user.email}`.trim() : "Sign in";
@@ -230,11 +351,10 @@ function onAuthChanged() {
 }
 hooks.onAuthChanged = onAuthChanged;
 
-
-
 let syncing = false;
 function syncPayload() {
   const s = { ...settings };
+  for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality", "searchPrivacy"]) delete s[key];
   for (const key of ["adminToken", "wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete s[key];
   return {
     v: 3, settings: s, bookmarks: B.state.bookmarks.slice(0, 300),
@@ -258,11 +378,13 @@ const pushSoon = debounce(() => { void pushSync().catch(e => addLog("warn", `Bac
 hooks.scheduleSync = () => { if (auth.token && !syncing) pushSoon(); };
 export async function pullSync() {
   if (!auth.token) return;
+  const token = auth.token;
   try {
-    const r = await api("/api/auth/data"); const d = r.data; if (!d || typeof d !== "object") return;
+    const r = await api("/api/auth/data"); const d = r.data; if (auth.token !== token || !d || typeof d !== "object") return;
     syncing = true;
     if (d.settings) {
       const keep = settings.adminToken, remote = migrateSettings({ ...d.settings });
+      for (const key of [...DEVICE_APPEARANCE_KEYS, "performanceMode", "streamQuality", "searchPrivacy"]) delete remote[key];
       for (const key of ["wifiPass", "wifiSsid", "wifiFreq", "cellApn", "cellCarrier", "cellType", "customProxy", "customDns", "customGateway", "bridgeInterface", "bridgeFrom", "internetProfile"]) delete remote[key];
       Object.assign(settings, remote, { adminToken: keep }); delete settings.wifiPass; save("veyra-settings", settings);
     }
@@ -274,16 +396,23 @@ export async function pullSync() {
     if (d.extensions) save("veyra-extensions", d.extensions);
     if (Array.isArray(d.devExtensions)) save("veyra-dev-extensions", d.devExtensions);
     if (d.notes) save("veyra-notes", d.notes);
-    applyTheme(); B.renderActive({ push: false }); hooks.lastSync = Date.now();
+    applyTheme(); renderBookmarksBar(); B.renderActive({ push: false }); hooks.lastSync = Date.now();
   } catch (e) { addLog("warn", `Couldn't load synced data: ${e.message}`); }
   finally { syncing = false; }
 }
 async function verifyAuth() {
-  if (!auth.token) return;
-  try { const r = await api("/api/auth/me"); setAuth(auth.token, r.user); auth.admin = r.user?.role === "admin" || auth.admin; onAuthChanged(); }
-  catch (e) { if (e.status === 401) { setAuth("", null); onAuthChanged(); } }
+  const token = auth.token;
+  if (!token) return false;
+  try {
+    const r = await api("/api/auth/me");
+    if (auth.token !== token) return false;
+    setAuth(token, r.user);
+    return true;
+  } catch (e) {
+    if (e.status === 401 && auth.token === token) setAuth("", null);
+    return false;
+  }
 }
-
 
 const DEFAULT_TILES = [
   { url: "https://en.wikipedia.org", title: "Wikipedia" }, { url: "https://news.ycombinator.com", title: "Hacker News" },
@@ -354,7 +483,6 @@ async function editTile(i, anchor) {
   if (i >= 0) toast("Shortcut saved", { action: async () => { const L = [...tiles()]; L.splice(i, 1); settings.ntpTiles = L; saveSettings(); renderNewTab(); }, actionLabel: "Remove it" });
 }
 
-
 let omniItems = [], omniSel = -1, omniSeq = 0;
 function hideOmni() { $("omniPop").classList.add("hidden"); omniItems = []; omniSel = -1; }
 async function updateOmni(q) {
@@ -392,24 +520,49 @@ function wireOmnibox() {
   $("heroForm").onsubmit = e => { e.preventDefault(); const v = $("heroInput").value.trim(); B.goRoute(v ? `/browse?q=${encodeURIComponent(v)}` : "/browse"); };
 }
 
+function openBookmark(bookmark, newTab = false, background = false) {
+  if (!bookmark) return;
+  const account = accountDestination(bookmark.url);
+  if (account) { window.open(account.url, "_blank", "noopener,noreferrer"); return; }
+  if (background) B.newTab({ url: bookmark.url, background: true });
+  else B.go(bookmark.url, { newTab });
+}
 
 function renderBookmarksBar() {
   const bar = $("bookmarksBar"); if (!settings.showBookmarksBar) { bar.classList.add("hidden"); return; }
+  const adminShortcut = !INCOGNITO && B.canOpenAdminPanel();
+  const bookmarks = B.state.bookmarks.map((b, i) => ({ b, i })).filter(({ b }) => !/^veyra:\/\/admin(?:[/?#]|$)/i.test(b.url));
+  const openAdmin = (newTab, background = false) => {
+    if (!B.canOpenAdminPanel()) return;
+    if (newTab) B.newTab({ view: "admin", background });
+    else B.openInternal("admin");
+  };
   bar.classList.remove("hidden");
-  bar.classList.toggle("empty", !B.state.bookmarks.length);
-  bar.innerHTML = B.state.bookmarks.length ? B.state.bookmarks.map((b, i) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")
+  bar.classList.toggle("empty", !adminShortcut && !bookmarks.length);
+  bar.innerHTML = adminShortcut || bookmarks.length ? `${adminShortcut ? '<button type="button" class="bm" data-admin-bookmark title="Admin panel"><svg aria-hidden="true"><use href="#i-shield"/></svg><span>Admin panel</span></button>' : ""}${bookmarks.map(({ b, i }) => { const li = letterIcon(b.url); return `<button class="bm" data-i="${i}" title="${esc(b.title)}\n${esc(b.url)}"><b style="display:grid;place-items:center;width:14px;height:14px;border-radius:4px;background:${li.color};color:#fff;font-size:9px">${esc(li.letter)}</b><span>${esc(b.title || hostOf(b.url))}</span></button>`; }).join("")}`
     : `<span class="muted" style="font-size:.84em;padding:0 10px">Bookmark pages with ${esc(kbdFor("bookmark"))} and they'll appear here.</span>`;
-  bar.onclick = e => { const b = e.target.closest("[data-i]"); if (b) B.go(B.state.bookmarks[Number(b.dataset.i)].url, { newTab: e.ctrlKey || e.metaKey }); };
-  bar.onauxclick = e => { const b = e.target.closest("[data-i]"); if (b && e.button === 1) B.newTab({ url: B.state.bookmarks[Number(b.dataset.i)].url, background: true }); };
-  bar.oncontextmenu = e => { const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
-    import("./core.js").then(({ ctxMenu }) => ctxMenu(e.clientX, e.clientY, [
-      { label: "Open in new tab", action: () => B.newTab({ url: bm.url }) },
+  bar.onclick = e => {
+    if (e.target.closest("[data-admin-bookmark]")) return openAdmin(e.ctrlKey || e.metaKey);
+    const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], e.ctrlKey || e.metaKey);
+  };
+  bar.onauxclick = e => {
+    if (e.button !== 1) return;
+    if (e.target.closest("[data-admin-bookmark]")) return openAdmin(true, true);
+    const b = e.target.closest("[data-i]"); if (b) openBookmark(B.state.bookmarks[Number(b.dataset.i)], true, true);
+  };
+  bar.oncontextmenu = e => {
+    if (e.target.closest("[data-admin-bookmark]")) {
+      e.preventDefault();
+      return ctxMenu(e.clientX, e.clientY, [{ label: "Open in new tab", action: () => openAdmin(true) }]);
+    }
+    const el = e.target.closest("[data-i]"); if (!el) return; e.preventDefault(); const i = Number(el.dataset.i), bm = B.state.bookmarks[i];
+    ctxMenu(e.clientX, e.clientY, [
+      { label: "Open in new tab", action: () => openBookmark(bm, true) },
       { label: "Edit…", action: async () => { const r = await promptDialog({ title: "Edit bookmark", fields: [{ name: "title", label: "Name", value: bm.title }, { name: "url", label: "URL", value: bm.url }] }); if (r) { bm.title = r.title; bm.url = r.url; B.saveBookmarks(); renderBookmarksBar(); } } },
       { label: "Copy link", action: () => copyText(bm.url) }, "-",
-      { label: "Delete", action: () => { B.state.bookmarks.splice(i, 1); B.saveBookmarks(); renderBookmarksBar(); B.updateIdentity(); } }])); };
+      { label: "Delete", action: () => { B.state.bookmarks.splice(i, 1); B.saveBookmarks(); renderBookmarksBar(); B.updateIdentity(); } }]); };
 }
 hooks.renderBookmarksBar = renderBookmarksBar;
-
 
 function menuItem(icon, label, id, action, { kbd = "", badge = "", disabled = false } = {}) { return { icon, label, id, action, kbd: kbd || (id ? kbdFor(id) : ""), badge, disabled }; }
 function openMainMenu() {
@@ -418,10 +571,17 @@ function openMainMenu() {
   const items = [
     menuItem("i-tab", "New tab", "newTab", () => B.newTab()),
     menuItem("i-incognito", "New incognito window", "newIncognito", () => openIncognitoWindow()),
-    ...(INCOGNITO ? [menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
+    ...(onPage && originalSiteUrl(t.url) ? [menuItem("i-external", "Site not working?", "", () => B.showSiteRecovery(t))] : []),
+    ...(INCOGNITO ? [menuItem("i-shield", "Hide incognito screen", "", () => hooks.lockPrivacyCover?.()), menuItem("i-x", "Exit incognito", "", () => exitIncognito())] : []),
     menuItem("i-search", "New Veyra tab", "search", () => B.newTab({ view: "search" }), { kbd: " " }),
-    menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.()),
-    menuItem("i-grid", "Tab groups", "", () => { const t = B.activeTab(); if (t) B.createTabGroup?.(t.title || "Group"); }),
+    menuItem("i-qr", "Scan QR code", "", () => openQrScanner({ openLink: url => B.go(url), returnFocus: $("menuBtn") })),
+    menuItem("i-layers", "Split screen", "", () => B.toggleSplitScreen?.(), { badge: B.state.splitScreen?.active ? "ON" : "" }),
+    menuItem("i-grid", "Create tab group…", "", () => B.groupActiveTab()),
+    menuItem("i-sliders", "Customization Studio", "", () => B.openInternal("settings", { section: "appearance" })),
+    menuItem("i-bolt", settings.gameFocus ? "Turn off Game Focus" : "Turn on Game Focus", "gameFocus", toggleGameFocus, { badge: settings.gameFocus ? "ON" : "" }),
+    menuItem("i-keyboard", "Command palette", "commandPalette", () => openCommandPalette()),
+    menuItem("i-gauge", "Performance", "performance", () => cmd("performance").run()),
+    menuItem("i-calc", "Quick Tools", "quickTools", () => cmd("quickTools").run()),
     "-",
     menuItem("i-history", "History", "history", () => B.openInternal("history")),
     menuItem("i-download", "Downloads", "downloads", () => B.openInternal("downloads")),
@@ -431,10 +591,12 @@ function openMainMenu() {
     menuItem("i-find", "Find in page", "find", () => B.openFind(), { disabled: !onPage || t?.browserMode === "BROWSER_ENGINE" }),
     "-",
     menuItem("i-vpn", "Veyra VPN", "vpn", () => B.openInternal("vpn"), { badge: B.state.vpn.connected ? "ON" : "" }),
+    menuItem("i-link", "Google sign-in options", "", () => B.showAccountOptions()),
     menuItem("i-puzzle", "Extensions", "", () => B.openInternal("extensions")),
+    menuItem("i-puzzle", "Extension actions", "", () => hooks.openExtensionActions?.()),
     menuItem("i-calc", "Open Calculator", "", () => B.openInternal("calculator")),
     menuItem("i-search", "Open Veyra Search", "", () => B.showSearch("")),
-    menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast")),
+    ...(!INCOGNITO ? [menuItem("i-globe", "Cast a Device", "", () => B.openInternal("cast"))] : []),
     menuItem("i-vpn", "Internet Connection", "", () => B.openInternal("internet")),
     "-",
     menuItem("i-inspect", "Inspect element", "picker", () => hooks.dt?.inspect(), { disabled: !onPage }),
@@ -442,7 +604,7 @@ function openMainMenu() {
     menuItem("i-file", "View source resources", "viewSource", () => B.openInternal("resources"), { disabled: !onPage }),
     menuItem("i-link", "View all links", "", () => B.openInternal("links"), { disabled: !onPage }),
     menuItem("i-platform", "Developer platform", "", () => B.openInternal("platform")),
-    ...(isAdmin() ? ["-", menuItem("i-terminal", "Console Lab", "", () => B.go("veyra://console-labs", { newTab: true }), { badge: "ADMIN" }), menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
+    ...(isAdmin() ? ["-", menuItem("i-terminal", "Console Lab", "", () => B.go("veyra://console-lab", { newTab: true }), { badge: "ADMIN" }), menuItem("i-shield", "Admin panel", "", () => B.openInternal("admin"), { badge: "ADMIN" }), menuItem("i-terminal", "Open #console", "", () => B.openInternal("console"), { badge: "ADMIN" }), menuItem("i-gauge", "Open /dev", "", () => B.openInternal("dev"), { badge: "ADMIN" })] : []),
     "-",
     menuItem("i-settings", "Settings", "settings", () => B.openInternal("settings")),
     menuItem("i-user", auth.user ? "Sign out" : "Sign in", "", () => auth.user ? signOut() : openAuth("login")),
@@ -463,19 +625,29 @@ function menuKeys(e) {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); btns[(i + (e.key === "ArrowDown" ? 1 : -1) + btns.length) % btns.length]?.focus(); }
 }
 
-
 function pop(html, anchor, wire) { const p = $("popover"); p.innerHTML = html; openFloating(p, anchor, { align: anchor.getBoundingClientRect().left < innerWidth / 2 ? "left" : "right" }); wire?.(p); }
+
 async function openSiteInfo() {
   const t = B.activeTab(); const anchor = $("siteChip");
   if (!(t?.view === "page" && t.url)) { pop(`<h4>${esc(B.INTERNAL[t?.view]?.title || "New tab")}</h4><p class="pop-sub">This is a built-in Veyra page. Nothing on it is sent to other sites.</p>`, anchor); return; }
+  if (t.localPage) {
+    const note = t.localPage === "youtube" ? "The official YouTube player connects directly, outside Veyra’s proxy and VPN."
+      : t.localPage === "tiktok" ? "The TikTok panel is local. If you choose to connect to TikTok, it connects directly outside Veyra’s proxy and VPN."
+      : "The launch panel is local. Opening now.gg starts a separate browser tab outside Veyra’s proxy and VPN.";
+    pop(`<h4>${esc(hostOf(t.url))}</h4><p class="pop-sub">${note}</p><button class="btn ghost sm" id="popDirect">Site options</button>`, anchor, p => {
+      p.querySelector("#popDirect").onclick = () => { closeFloating(); B.showSiteRecovery(t); };
+    });
+    return;
+  }
   const host = hostOf(t.url); const s = B.state.session; const secure = /^https:/.test(t.url);
   pop(`<h4>${esc(host)}</h4><p class="pop-sub">${secure ? "Connection between Veyra and this site is encrypted." : "This site doesn't use HTTPS. Don't enter passwords."}</p>
     <dl class="kv"><dt>Engine</dt><dd>${t.browserMode === "BROWSER_ENGINE" ? "Chromium (streamed)" : t.failoverReason ? `Fast proxy (limited — ${esc(t.failoverReason)})` : "Fast proxy"}</dd><dt>Session</dt><dd>${s ? `${esc(s.id.slice(0, 8))} · ${fmtClock(B.sessionRemaining())} left` : "none"}</dd><dt>VPN</dt><dd>${B.state.vpn.connected ? esc(B.state.vpn.profile?.name || "connected") : "off"}</dd><dt>Cookies</dt><dd id="popCookies">…</dd></dl>
     <div class="s-card" style="margin-top:12px"><div class="s-row" style="padding:10px 12px;min-height:0"><div class="s-label"><b>Block trackers</b><span>For this session</span></div><div class="s-ctl"><input type="checkbox" class="switch" id="popTrackers" ${settings.blockTrackers ? "checked" : ""}></div></div></div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button><button class="btn ghost sm" id="popDirect">Open directly</button><button class="btn ghost sm" id="popCopy">Copy URL</button></div>`, anchor, p => {
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn ghost sm" id="popClear">Clear cookies</button>${originalSiteUrl(t.url) ? `<button class="btn ghost sm" id="popDirect">Site options</button>` : ""}<button class="btn ghost sm" id="popCopy">Copy URL</button></div>
+    <p class="pop-sub" style="margin-top:10px">Sign in to sites inside Veyra when they support Fast Proxy. Google and GitHub account pages open directly for verification.</p>`, anchor, p => {
     p.querySelector("#popTrackers").onchange = async e => { settings.blockTrackers = e.target.checked; saveSettings(); try { await hooks.updateSessionPreferences?.(); hooks.applyExtensionsToTab?.(t); toast(e.target.checked ? "Trackers blocked. Reload to apply" : "Tracker blocking off", { action: () => B.reload(), actionLabel: "Reload" }); } catch (err) { e.target.checked = !e.target.checked; settings.blockTrackers = e.target.checked; saveSettings(); toast(`Couldn't change tracker blocking: ${err.message}`, { kind: "err" }); } };
     p.querySelector("#popClear").onclick = async () => { if (!s) return; try { const first = await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host.replace(/^www\./, ""))}`, { method: "DELETE" }); const second = host === host.replace(/^www\./, "") ? { deleted: 0 } : await api(`/api/session/${s.id}/cookies?domain=${encodeURIComponent(host)}`, { method: "DELETE" }); toast(`Cleared ${(first?.deleted || 0) + (second?.deleted || 0)} cookies`); closeFloating(); } catch (err) { toast(`Couldn't clear cookies: ${err.message}`, { kind: "err" }); } };
-    p.querySelector("#popDirect").onclick = () => { window.open(t.url, "_blank", "noopener"); closeFloating(); };
+    p.querySelector("#popDirect")?.addEventListener("click", () => { closeFloating(); B.showSiteRecovery(t); });
     p.querySelector("#popCopy").onclick = () => { copyText(t.url); closeFloating(); };
     if (s) api(`/api/session/${s.id}/cookies?host=${encodeURIComponent(host)}`).then(r => { const el = p.querySelector("#popCookies"); if (el) el.textContent = `${r.cookies.length} in use`; }).catch(() => { const el = p.querySelector("#popCookies"); if (el) el.textContent = "—"; });
     else p.querySelector("#popCookies").textContent = "0";
@@ -494,17 +666,22 @@ function openSessionPop() {
   });
 }
 async function openVpnPop() {
-  pop(`<h4>Veyra VPN</h4><p class="pop-sub">Loading…</p>`, $("vpnBtn"));
-  const v = await B.refreshVpnStatus(); const st = v.status; const p = $("popover"); if (p.classList.contains("hidden")) return;
+  pop(`<div id="vpnPopoverContent"><h4>Veyra VPN</h4><p class="pop-sub">Loading exits…</p></div>`, $("vpnBtn"));
+  const outer = $("popover"), p = $("vpnPopoverContent");
+  const render = v => {
+  if (!p.isConnected || outer.classList.contains("hidden")) return;
+  const st = v.status;
   const profiles = st?.profiles || [];
-  p.innerHTML = `<h4>Veyra VPN · ${v.connected ? "On" : "Off"}</h4><p class="pop-sub">${!st ? esc(v.error || "Unavailable") : v.connected ? `Using ${esc(v.profile?.name || "")}${v.profile?.region ? ` (${esc(v.profile.region)})` : ""}` : !st.enabled ? "VPN is disabled on this server." : profiles.length ? "Pick an exit for this session." : "No exits configured on the server."}</p>
-    <div class="vpn-list">${profiles.slice(0, 6).map(x => `<div class="ext-pop-row"><span class="pill ${x.health?.healthy === false ? "err" : x.health?.healthy ? "ok" : ""}">${esc(x.protocol || x.type || "")}</span><div class="n"><b>${esc(x.name)}</b><small>${esc(x.region || x.country || "")}${x.health?.latencyMs ? ` · ${x.health.latencyMs} ms` : ""}</small></div>${v.profile?.id === x.id ? `<button class="btn ghost sm" data-off>Disconnect</button>` : `<button class="btn ghost sm" data-c="${esc(x.id)}" ${st.enabled ? "" : "disabled"}>Connect</button>`}</div>`).join("")}</div>
+  p.innerHTML = `<h4>Veyra VPN${v.sessionError ? "" : v.connected ? " · On" : " · Off"}</h4><p class="pop-sub">${!st || v.error ? esc(v.error || "Unavailable") : v.connected ? `Using ${esc(v.profile?.name || "")}${v.profile?.region ? ` (${esc(v.profile.region)})` : ""}` : st.enabled === false ? "VPN is disabled on this server." : v.sessionError ? esc(v.sessionError) : profiles.length ? "Pick an exit for this session." : "No exits configured on the server."}</p>
+    <div class="vpn-list">${profiles.slice(0, 6).map(x => `<div class="ext-pop-row"><span class="pill ${x.health?.healthy === false ? "err" : x.health?.healthy ? "ok" : ""}">${esc(x.protocol || x.type || "")}</span><div class="n"><b>${esc(x.name)}</b><small>${esc(x.region || x.country || "")}${x.health?.latencyMs ? ` · ${x.health.latencyMs} ms` : ""}</small></div>${v.profile?.id === x.id ? `<button class="btn ghost sm" data-off>Disconnect</button>` : `<button class="btn ghost sm" data-c="${esc(x.id)}" ${st.enabled !== false && x.health?.healthy !== false ? "" : "disabled"}>Connect</button>`}</div>`).join("")}</div>
     <div style="margin-top:10px"><button class="btn ghost sm block" data-go="/vpn">Open VPN page</button></div>`;
   p.onclick = async e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.go) { closeFloating(); return; } b.disabled = true; try { if (b.dataset.c) await B.connectVpn(b.dataset.c); else if ("off" in b.dataset) await B.disconnectVpn(); closeFloating(); } catch (err) { toast(err.message, { kind: "err" }); b.disabled = false; } };
+  };
+  render(await B.refreshVpnStatus(render));
 }
 function openProfilePop() {
   if (INCOGNITO) {
-    pop(`<h4>You're incognito</h4><p class="pop-sub">History, downloads, notes and sign-in stay in this window's memory only. The server marks your session incognito: it isn't logged by site and pages aren't kept in the shared cache.</p><div style="display:flex;gap:8px"><button class="btn primary sm" id="ppExitIncog">Exit incognito</button><button class="btn ghost sm" id="ppNewIncog">New incognito window</button></div>`, $("profileBtn"), p => { p.querySelector("#ppExitIncog").onclick = () => { closeFloating(); exitIncognito(); }; p.querySelector("#ppNewIncog").onclick = () => { closeFloating(); openIncognitoWindow(); }; });
+    pop(`<h4>You're incognito</h4><p class="pop-sub">Veyra doesn’t keep a browsing history or cache pages for this session. Device Cast is off. The screen hides when this window loses focus.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" id="ppHideIncog">Hide screen</button><button class="btn ghost sm" id="ppExitIncog">Exit incognito</button></div>`, $("profileBtn"), p => { p.querySelector("#ppHideIncog").onclick = () => { closeFloating(); hooks.lockPrivacyCover?.(); }; p.querySelector("#ppExitIncog").onclick = () => { closeFloating(); exitIncognito(); }; });
     return;
   }
   if (!auth.user) {
@@ -521,7 +698,6 @@ function openProfilePop() {
 }
 hooks.openVpnPopover = openVpnPop; hooks.openSessionPopover = openSessionPop;
 
-
 export async function openClearData() {
   const dlg = $("promptDialog"); $("promptTitle").textContent = "Clear browsing data"; $("promptOk").textContent = "Clear data";
   $("promptFields").innerHTML = `<label class="field"><span>Time range</span><select class="input" name="range"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="0" selected>All time</option></select></label>
@@ -535,10 +711,15 @@ export async function openClearData() {
 }
 hooks.openClearData = openClearData;
 
-
 export function initUI(b) {
   B = b;
-  applyTheme(); hooks.onSettingsChanged = () => { applyTheme(); renderBookmarksBar(); };
+  applyTheme(); hooks.onSettingsChanged = () => {
+    if (B.syncSearchPrivacy()) { omniSeq++; hideOmni(); }
+    applyTheme(); B.syncBackgroundDiagnostics(); B.syncAdminAccess(); renderBookmarksBar();
+  };
+  hooks.playStudioSound = playStudioSound;
+  for (const id of ["studioBtn", "ntpStudioBtn"]) $(id).onclick = () => B.openInternal("settings", { section: "appearance" });
+  $("ntpVelocityBtn").onclick = () => openCommandPalette();
   document.addEventListener("keydown", onKeyDown, true);
   wireOmnibox();
   $("menuBtn").onclick = () => $("mainMenu").classList.contains("hidden") ? openMainMenu() : closeFloating();
@@ -546,14 +727,22 @@ export function initUI(b) {
   $("mainMenu").addEventListener("keydown", menuKeys);
   $("siteChip").onclick = openSiteInfo; $("profileBtn").onclick = openProfilePop;
   $("authForm").addEventListener("submit", submitAuth);
-  $("authSubmit").addEventListener("click", e => { e.preventDefault(); submitAuth(e); });
+  $("authForm").querySelector('button[value="cancel"]').onclick = () => $("authDialog").close();
+  $("authDialog").addEventListener("cancel", e => { if (authPending) e.preventDefault(); });
   qsa("#authForm .seg button").forEach(b => b.onclick = () => openAuth(b.dataset.mode));
   document.addEventListener("click", e => { const a = e.target.closest("[data-auth]"); if (a) { e.preventDefault(); openAuth(a.dataset.auth); } const x = e.target.closest("[data-explore]"); if (x) B.goRoute(`/browse?url=${encodeURIComponent(x.dataset.explore)}`); });
-  setInterval(() => { if (B.activeTab()?.view === "newtab" && settings.ntpClock) { $("ntpClock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } }, 10000);
+  const updateNtpClock = () => {
+    if (document.hidden || B.activeTab()?.view !== "newtab" || !settings.ntpClock) return;
+    const clock = $("ntpClock"), text = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (clock.textContent !== text) clock.textContent = text;
+  };
+  setInterval(updateNtpClock, 10000);
+  document.addEventListener("visibilitychange", updateNtpClock);
   window.addEventListener("beforeunload", e => { if (settings.warnBeforeClose && B.state.tabs.filter(t => t.view === "page").length > 1) { e.preventDefault(); e.returnValue = ""; } });
   if (INCOGNITO) { document.body.classList.add("incognito"); document.title = "Incognito — Veyra"; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#1a1622"); }
+  initPrivacyCover();
   initExtensions(B); initSettings(B);
-  onAuthChanged(); verifyAuth().then(() => auth.token && pullSync());
+  onAuthChanged(); verifyAuth().then(verified => verified && pullSync());
   addLog("debug", `UI ready (${COMMANDS.length} commands)`);
 }
 export { B as browser };
