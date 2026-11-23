@@ -6,7 +6,7 @@ export const SEARCH_PRIVACY = Object.freeze({
 });
 
 // Keep in step with VeyraServer's public search rules. This list is not a classifier.
-const ADULT_HOSTS = ["pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "youporn.com", "redtube.com",
+const ADULT_HOSTS = ["porn.com", "pornhub.com", "xvideos.com", "xnxx.com", "xhamster.com", "youporn.com", "redtube.com",
   "tube8.com", "spankbang.com", "phncdn.com", "others-cdn.com"];
 const URL_FIELDS = ["url", "canonical", "canonicalUrl", "sourcePageUrl", "imageUrl", "thumbnail", "thumbnailUrl", "posterUrl", "embedUrl", "favicon"];
 

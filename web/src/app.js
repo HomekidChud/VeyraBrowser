@@ -16,7 +16,7 @@ import { siteScope, scopedUrl } from "./search-site-scope.js?v=2";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=16";
 import { annotateResultBatch, matchSignal, querySuggestions } from "./search-match.js?v=3";
 import { createPublisherSearch } from "./publisher-search.js?v=2";
-import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=1";
+import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=2";
 import { blockPlaybackPopup, playbackPopupDecision, xhamsterPlaybackKey } from "./playback-popups.js?v=2";
 import { canPark, diagnosticsAllowed, performanceMode } from "./velocity-model.js?v=2";
 import { makeRemoteFrames, streamPreset } from "./remote-frames.js?v=1";
@@ -40,8 +40,8 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, resolveSharedTikTokPost, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=8";
-import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
+import { mountTikTokPlayer, resolveSharedTikTokPost, tiktokTarget, tiktokPlayerPage, normalizeTikTokNavigation } from "./tiktok.js?v=9";
+import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=3";
 
 const oldBookmarks = load("veyra-bookmarks", []);
 export const state = {
@@ -1194,7 +1194,7 @@ async function routeBrowserRequired(t, url, key, reason) {
   const offerRecovery = () => {
     if (reason === "empty-spa-shell" && activeTab() === t && t.proxyRecoveryLoad !== load) {
       t.proxyRecoveryLoad = load;
-      showSiteRecovery(t, "This page appears blank in Fast Proxy. Try reloading it or open it separately.");
+      showSiteRecovery(t, "This page appears blank in Fast Proxy.");
     }
   };
   const explicitBrowser = String(settings.runtime || "auto") === "browser";
@@ -1642,7 +1642,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
 export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true, displayUrl = "" } = {}) {
   if (interceptAccount(url, (tab || activeTab())?.url)) { updateAddress(); return; }
   url = normalizeYouTubeUrl(url);
-  url = normalizeTikTokHome(url);
+  url = normalizeTikTokNavigation(url);
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { if (t.view === "search") stopSearch(t); t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
@@ -1786,7 +1786,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
-  url = normalizeTikTokHome(url);
+  url = normalizeTikTokNavigation(url);
   resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
   t.pendingProxyNotice = null;
@@ -2075,6 +2075,13 @@ export function recordHistory(kind, url, title, sid = state.session?.id) {
   saveHistory();
 }
 let dismissSiteRecovery, siteRecoveryFor;
+const canReturnToTikTok = t => t?.view === "page" && t.localPage !== "tiktok"
+  && (settings.runtime || "auto") === "auto" && !!tiktokTarget(t.url);
+function returnToTikTok(t, load) {
+  if (activeTab() === t && t.pageLoad === load && canReturnToTikTok(t)) {
+    void loadInTab(t, t.url, { trackHistory: false });
+  }
+}
 function showSiteRecovery(t = activeTab(), reason = "") {
   const url = t?.view === "page" ? originalSiteUrl(t.url) : "";
   if (!url || activeTab() !== t) return;
@@ -2083,7 +2090,8 @@ function showSiteRecovery(t = activeTab(), reason = "") {
   const tiktok = tiktokTarget(url);
   const directUrl = tiktok?.url || url;
   dismissSiteRecovery?.(true);
-  siteRecoveryFor = { tab: t, load: t.pageLoad, slow: reason === SLOW_PROXY_NOTICE };
+  const load = t.pageLoad;
+  siteRecoveryFor = { tab: t, load, slow: reason === SLOW_PROXY_NOTICE };
   // The local TikTok panel has already checked session privacy. A generic
   // recovery menu must not expose the direct action that the panel hid.
   const offerDirect = !tiktok || (t.localPage === "tiktok" && t.tiktokDirectVerified && directTikTokAllowed() && t.tiktokSession === state.session);
@@ -2097,10 +2105,8 @@ function showSiteRecovery(t = activeTab(), reason = "") {
         t.compatFallbackTried?.delete(`${t.url}|blank-shell`);
         void reload({ hard: true });
       } },
-      ...(offerDirect ? [{ label: "Open original site", href: directUrl, primary: true }] : tiktok && t.tiktokProxyUrl === url && (settings.runtime || "auto") === "auto" ? [{
-        label: "Return to TikTok options", onClick: () => {
-          if (activeTab() === t && t.view === "page" && originalSiteUrl(t.url) === url) void loadInTab(t, t.url, { trackHistory: false });
-        }
+      ...(offerDirect ? [{ label: "Open original site", href: directUrl, primary: true }] : canReturnToTikTok(t) ? [{
+        label: "Return to TikTok options", onClick: () => returnToTikTok(t, load)
       }] : [])
     ]
   });
@@ -2116,9 +2122,14 @@ function renderError(t, kind, error) {
   f.setAttribute("data-site-error", "");
   f.setAttribute("sandbox", "allow-same-origin allow-popups allow-popups-to-escape-sandbox");
   f.removeAttribute("allow");
-  f.srcdoc = siteLoadErrorMarkup(titles[kind] || "The page could not be displayed", error, t.url);
+  const load = t.pageLoad;
+  f.srcdoc = siteLoadErrorMarkup(titles[kind] || "The page could not be displayed", error, t.url, {
+    offerDirect: !tiktokTarget(t.url), returnToTikTok: canReturnToTikTok(t)
+  });
   f.addEventListener("load", () => {
-    localFrameDocument(f)?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
+    const doc = localFrameDocument(f);
+    doc?.getElementById("veyra-local-options")?.addEventListener("click", () => returnToTikTok(t, load));
+    doc?.getElementById("veyra-local-retry")?.addEventListener("click", () => {
       if (frameFor(t) !== f || !state.tabs.includes(t)) return;
       t.escapeRecoveries = 0;
       if (activeTab() !== t) switchTab(t.id);

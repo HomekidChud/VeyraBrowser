@@ -31,6 +31,7 @@
 ## Search privacy
 - On a fresh device, Search privacy defaults to **Filtered**. Select each of the four modes in Search and Settings > Search engine. Reload the page and check the same device preference is selected. Verify that the mobile selector, label and help text fit the viewport and are usable by keyboard.
 - Filtered and Restricted hide known adult sources in public results, and stop explicit site scopes. Blocked also stops searches for exact adult host or URL tokens before any search request is sent. None of these modes offers an outside-search handoff for those explicit destinations.
+- Try `site:porn.com`, `site:pornhub.com`, `site:xvideos.com`, and `site:xhamster.com` in Filtered. Each should display the exclusion message without sending a search or offering an external search.
 - A normal `search:nasa.gov Hubble` search still works in all four modes. Unfiltered can show eligible public rows excluded by the Veyra filter, does not override any provider filters or age gates, and cannot access the catalog. Changing the mode must clear current and inactive results, including previews and protected rows, and ignore late replies.
 
 ## Surrounding browser shell
@@ -46,6 +47,7 @@
 - In a regular tab, paste a public TikTok video or photo URL. The panel opens without connecting to TikTok. Load it, use its official controls, and close it. Check that a silent iframe does not imply readiness, an unavailable post stays unavailable despite late events, and photo navigation identifies the visible slide.
 - Paste a TikTok share link. It should offer **Open on TikTok** and **Use Fast Proxy**, with no player or automatic third-party request. Check the official link opens a separate tab without a referrer, and that **Use Fast Proxy** replaces the panel in the same Veyra tab.
 - Type `tiktok.com` or select it from search. The local panel must render without contacting TikTok. **Open on TikTok** should explicitly open the official site in a separate tab, with no referrer. **Use Fast Proxy** stays in the Veyra tab, and site options allow returning to the panel.
+- Paste `http://tiktok.com/` or a legacy HTTP post link. It should use the same HTTPS options panel. In an Auto runtime failure, **Return to TikTok options** must restore the panel without adding a history entry or exposing a direct link from the proxy error.
 - Paste a public creator profile. Click **Load TikTok profile**; verify that the actual creator card and recent posts are visible, then close it. Unrelated sites and lookalike hosts must not be treated as TikTok.
 - In incognito, with a VPN, or when VPN status is unknown, TikTok’s panel must not expose a direct player, profile preview, or direct launch. **Use Fast Proxy** stays in the same privacy mode.
 - Open a Fast Proxy site that stays blank. If Chromium is disabled, Veyra should keep the page and offer site options with a retry and explicit direct link. A populated site, a different tab, and a stale message after navigation should not get that notice.
