@@ -96,7 +96,7 @@ api.post("/api/search/answer", express.json(), (req, res) => {
   res.locals.call.body = req.body;
   const { query, source, vertical, results } = req.body;
   if (vertical) { assert.equal(vertical, source); assert.equal(results, undefined); }
-  else assert.ok(results.length && results.every(row => Object.keys(row).join() === "url"));
+  else assert.ok(Array.isArray(results) && results.every(row => Object.keys(row).join() === "url"));
   const sources = [
     { id: "S1", url: "https://example.test/fixture", title: "Research fixture", passages: [{ text: "A quoted source excerpt." }] },
     { id: "S2", url: "https://second.example/fixture", title: "Second fixture source" },
@@ -311,6 +311,23 @@ try {
         await result("images result for moon").waitFor();
         assert.equal(new URL(page.url()).searchParams.get("type"), "images");
       }
+      await page.getByRole("tab", { name: "Videos", exact: true }).click();
+      await result("videos result for moon").waitFor();
+      assert.equal(new URL(page.url()).searchParams.get("q"), "moon");
+      assert.equal(new URL(page.url()).searchParams.get("type"), "videos");
+      await page.reload();
+      await result("videos result for moon").waitFor();
+      await page.locator("#searchInput").fill("guest route");
+      await page.locator("#searchInput").press("Enter");
+      await result("videos result for guest route").waitFor();
+      assert.equal(new URL(page.url()).search, "", "new guest queries stay out of the address");
+      assert.equal(JSON.stringify(await page.evaluate(() => history.state)).includes("guest route"), false);
+      await page.getByRole("tab", { name: "News", exact: true }).click();
+      await result("news result for guest route").waitFor();
+      await page.goBack();
+      await result("videos result for guest route").waitFor();
+      await page.goForward();
+      await result("news result for guest route").waitFor();
       assert.equal(calls.filter(call => call.path === "/api/session").length, 0);
       assert.ok(calls.filter(call => call.path === "/api/search/vertical").every(call => call.query.private === "1"));
 
@@ -445,6 +462,10 @@ try {
       assert.match(await (await loaded).text(), /Fixture website/);
       await page.locator("#frame-t1").waitFor();
       assert.equal(calls.filter(call => call.path === "/api/session").length, 1);
+      await page.goBack();
+      await result("web result for moon").waitFor();
+      await page.goForward();
+      await page.locator("#frame-t1").waitFor();
       await page.locator("#address").fill("veyra://settings");
       await page.locator("#address").press("Enter");
       await page.locator("#view-settings").waitFor();
@@ -616,6 +637,8 @@ try {
         && request.postDataJSON()?.query === query && request.postDataJSON()?.source === source;
       const slow = page.waitForRequest(req => isAnswer(req, "slow overview", "research"));
       await submit("slow overview");
+      assert.equal(new URL(page.url()).searchParams.get("q"), "slow overview");
+      assert.equal(new URL(page.url()).searchParams.get("type"), "research");
       await slow;
       await overview.getByText("Checking sources for an answer…").waitFor();
       await result("research result for slow overview").waitFor();

@@ -43,9 +43,9 @@ Enter `google.com` to load the real site through Fast Proxy, or `search:google.c
 
 Categories sit side by side; swipe the row on a phone to see the rest. Scrolling near the bottom loads another batch when one is available. The **More results** button remains for short result lists, keyboard navigation, and retry. Web can continue into the Veyra crawler index after provider pages run out.
 
-Open `/search/?q=moon&type=images` under the deployed app base to link directly to a result category. Old `type=deep` links now open Web with the same query. The web and Android shells use the same route. Search requests go to the Veyra API without opening a proxy browsing session first; a proxy session is still required when opening a website.
+Open `/search/?q=moon&type=images` under the deployed app base to link directly to a result category. Old `type=deep` links now open Web with the same query. Switching categories preserves a query already present in a shared link. Newly typed guest queries are not added to the address or saved by the app: browser Back and Forward within the loaded app restore them from memory, but a full reload clears them. The web and Android shells use the same route. Search requests go to the Veyra API without opening a proxy browsing session first; a proxy session is still required when opening a website.
 
-Signed-in users can request a cited summary below the results. A search never starts a summary automatically. Incognito does not request inline image previews or load result thumbnails, and guest and incognito sessions cannot request AI summaries.
+Signed-in users get a cited AI overview above the results when Veyra can verify an answer from its sources. Incognito does not request inline image previews or load result thumbnails, and neither guests nor incognito sessions request AI overviews.
 
 Deploy the matching VeyraServer category endpoint first, then ship the Pages and Capacitor client. An older API still supports Web and Veyra index. See [Search smoke checks](FLOWS.md) for browser QA.
 

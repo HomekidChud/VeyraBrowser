@@ -1,6 +1,17 @@
 const PLAYER_ORIGIN = "https://www.tiktok.com";
 const MAIN_HOSTS = ["www.tiktok.com", "tiktok.com", "m.tiktok.com"];
 const SHARE_HOSTS = ["vm.tiktok.com", "vt.tiktok.com"];
+export function normalizeTikTokHome(raw) {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "https:" && url.hostname === "tiktok.com" && url.pathname === "/" &&
+        !url.username && !url.password && !url.port) {
+      url.hostname = "www.tiktok.com";
+      return url.href;
+    }
+  } catch {}
+  return raw;
+}
 const PLAYER_STATES = new Map([
   [-1, "TikTok is initializing the player…"], [0, "TikTok playback ended."],
   [1, "Playing in the TikTok player."], [2, "TikTok playback paused."], [3, "TikTok is buffering…"]

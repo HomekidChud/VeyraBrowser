@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { publicTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
+import { normalizeTikTokHome, publicTikTokPost, tiktokTarget } from "../web/src/tiktok.js";
 
+test("canonicalises only the HTTPS TikTok homepage", () => {
+  assert.equal(normalizeTikTokHome("https://tiktok.com/"), "https://www.tiktok.com/");
+  for (const input of ["https://tiktok.com/@artist", "https://vm.tiktok.com/code/", "https://tiktok.com.example/", "http://tiktok.com/"]) {
+    assert.equal(normalizeTikTokHome(input), input);
+  }
+});
 test("recognises supported TikTok posts without passing through query or fragment", () => {
   for (const type of ["video", "photo"]) {
     assert.deepEqual(publicTikTokPost(`https://tiktok.com/@sample/${type}/6718335390845095173/?ref=test#share`), {
