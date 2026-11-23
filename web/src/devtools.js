@@ -1,5 +1,6 @@
 import { $, esc, hostOf, pathOf, fmtBytes, fmtMs, settings, saveSettings, hooks, toast, api, proxyUrl, rawFetch, copyText, isMac, uid } from "./core.js?v=8.36.0-workbench";
 import { dtCall, onBridgeEvent, isRemote } from "./bridge.js?v=8.36.0-workbench";
+import { shareableHar } from "./diagnostics-export.js?v=1";
 
 let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
@@ -648,8 +649,9 @@ function asCurl(r) { return [`curl ${JSON.stringify(r.url)}`, r.method !== "GET"
 function asFetch(r) { return `fetch(${JSON.stringify(r.url)}, ${JSON.stringify({ method: r.method, headers: r.requestHeaders || {}, ...(r.requestBody ? { body: String(r.requestBody) } : {}) }, null, 2)});`; }
 function exportHar() {
   const t = tab(); if (!t) return; const rows = netRows(t);
-  const har = { log: { version: "1.2", creator: { name: "Veyra DevTools", version: "8.13" }, pages: [{ id: "page_1", title: t.url, startedDateTime: new Date(rows[0]?.startedAt || Date.now()).toISOString(), pageTimings: {} }], entries: rows.map(r => ({ pageref: "page_1", startedDateTime: new Date(r.startedAt || Date.now()).toISOString(), time: r.duration || 0, request: { method: r.method, url: r.url, httpVersion: r.protocol || "HTTP/1.1", headers: Object.entries(r.requestHeaders || {}).map(([name, value]) => ({ name, value: String(value) })), queryString: [], cookies: [], headersSize: -1, bodySize: r.requestBody ? String(r.requestBody).length : 0, ...(r.requestBody ? { postData: { mimeType: "", text: String(r.requestBody) } } : {}) }, response: { status: r.status || 0, statusText: "", httpVersion: r.protocol || "HTTP/1.1", headers: Object.entries(r.responseHeaders || {}).map(([name, value]) => ({ name, value: String(value) })), cookies: [], content: { size: r.size || 0, mimeType: r.mime || "" }, redirectURL: "", headersSize: -1, bodySize: r.size || -1 }, cache: {}, timings: { send: 0, wait: r.duration || 0, receive: 0 } })) } };
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(har, null, 2)], { type: "application/json" })), download: `${hostOf(t.url) || "veyra"}.har` }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  const har = shareableHar(t.url, rows);
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(har, null, 2)], { type: "application/json" })), download: "veyra-shareable.har" }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast("Exported a shareable HAR. Review hostnames before sharing.");
 }
 
 let remoteTimer = 0;
