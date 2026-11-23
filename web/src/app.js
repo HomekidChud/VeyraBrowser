@@ -40,7 +40,7 @@ function ensureAdminModule() {
 }
 import { isYouTubeUrl, normalizeYouTubeUrl, youtubeEmbedUrl, youtubeFallbackHtml, youtubeWatchId, wireYouTubeDesk } from "./youtube.js?v=5";
 import { nowGameMarkup, nowGameUrl } from "./game-launch.js?v=2";
-import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage } from "./tiktok.js?v=4";
+import { mountTikTokPlayer, tiktokTarget, tiktokPlayerPage, normalizeTikTokHome } from "./tiktok.js?v=5";
 import { DIRECT_SITE_NOTICE, SLOW_PROXY_NOTICE, originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "./site-recovery.js?v=2";
 
 const oldBookmarks = load("veyra-bookmarks", []);
@@ -562,7 +562,7 @@ export function newTab({ url = "", view = "", index = -1, background = false, se
   if (!background) setTimeout(() => { if (activeTab() === t && t.view === "newtab") $("ntpInput")?.focus(); }, 30);
   return t;
 }
-function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
+function duplicateTab(t) { const i = state.tabs.indexOf(t); if (t.view === "page" && t.url) newTab({ url: t.url, index: i + 1 }); else if (t.view === "search") showSearch(t.searchQuery, { tab: newTab({ index: i + 1 }), source: t.searchSource, engine: t.searchEngine }); else newTab({ view: t.view, index: i + 1, section: t.section }); }
 function teardownTab(t) {
   t.pageLoad = null; t.localPage = ""; t.youtubeEmbed = false;
   clearTimeout(t.proxySlowTimer);
@@ -632,6 +632,10 @@ export function cycleTab(delta) { if (state.tabs.length < 2) return; const i = s
 export function selectTabIndex(n) { const t = n === 9 ? state.tabs[state.tabs.length - 1] : state.tabs[n - 1]; if (t) switchTab(t.id); }
 
 function routeUrl(path, query = "") { return `${APP_BASE}${path}${query}`; }
+// Browser history can persist its state to disk. Store only an opaque key
+// there for guest queries and proxied destinations; keep their values in RAM.
+const transientRoutes = new Map();
+const currentTransientRoute = () => transientRoutes.get(history.state?.transientRoute);
 function currentRoute() {
   const pathname = String(location.pathname || "/");
   let p = pathname;
@@ -659,7 +663,8 @@ function routeForTab(t) {
   return [INTERNAL[t.view]?.path || "/browse", ""];
 }
 function syncRoute({ replace = false } = {}) {
-  const [p, q] = routeForTab(activeTab());
+  const t = activeTab();
+  const [p, q] = routeForTab(t);
   if (INCOGNITO) {
     const privateRoute = routeUrl(p) + `?incognito=1&private=${encodeURIComponent(incognitoToken || incognitoAddressToken())}`;
     if (location.pathname !== new URL(privateRoute, location.href).pathname) {
@@ -667,9 +672,21 @@ function syncRoute({ replace = false } = {}) {
     }
     return;
   }
-  const next = routeUrl(p, ephemeralSession() ? "" : q);
-  if (next === location.pathname + location.search + location.hash) return;
-  try { history[replace ? "replaceState" : "pushState"]({ veyra: true }, "", next); } catch {}
+  // A query already present in a deliberately opened shared link is public.
+  // Preserve it on category switches, but never expose a new guest query.
+  const publicSearch = t?.view === "search" && currentRoute() === "/search" &&
+    new URLSearchParams(location.search).get("q") === t.searchQuery;
+  const hiddenSearch = t?.view === "search" && ephemeralSession() && !publicSearch;
+  const transient = hiddenSearch ? searchStateKey(t.searchQuery, t.searchSource) : t?.view === "page" ? t.url : "";
+  const next = routeUrl(p, ephemeralSession() && !publicSearch ? "" : q);
+  if (next === location.pathname + location.search + location.hash && (currentTransientRoute() || "") === transient) return;
+  const state = { veyra: true };
+  if (transient) {
+    state.transientRoute = uid();
+    transientRoutes.set(state.transientRoute, transient);
+    if (transientRoutes.size > 128) transientRoutes.delete(transientRoutes.keys().next().value);
+  }
+  try { history[replace ? "replaceState" : "pushState"](state, "", next); } catch {}
 }
 export function showLanding(on) {
   $("landing").classList.toggle("hidden", !on); $("app").classList.toggle("hidden", on);
@@ -682,7 +699,7 @@ export function goRoute(path, { push = true } = {}) {
   if (push) try { history.pushState({ veyra: true }, "", APP_BASE + p + url.search + url.hash); } catch {}
   applyRoute();
 }
-function applyRoute() {
+function applyRoute({ startup = false } = {}) {
   const route = currentRoute(); const params = new URLSearchParams(location.search);
   if (route === "/" && location.hash !== "#console") { showLanding(true); return; }
   showLanding(false);
@@ -705,22 +722,33 @@ function applyRoute() {
     return;
   }
   if (view === "newtab") {
+    const transient = currentTransientRoute();
+    if (transient && t.view === "page" && t.url === transient) return renderActive({ push: false });
+    if (transient && /^https?:\/\//.test(transient)) return navigate(transient, { tab: t, push: false, pushHist: false });
     const u = params.get("url"); const q = params.get("q");
     if (u) {
       try { history.replaceState({ veyra: true }, "", routeUrl("/browse")); } catch {}
       if (!(t.view === "page" && t.url === u)) go(u, { tab: reuse(t) ? t : null, push: false }); else renderActive({ push: false });
     }
     else if (q) go(q, { tab: reuse(t) ? t : null, push: false });
-    else renderActive({ push: false });
+    else if (!startup && (t.view === "search" || t.view === "page" && t.url)) {
+      // In-document Back to /browse must reveal the start page, not leave the
+      // preceding Search or proxy page on screen.
+      if (t.view === "search") stopSearch(t); else teardownTab(t);
+      Object.assign(t, { view: "newtab", url: "", title: "New tab", favicon: "", loading: false });
+      renderTabs(); renderActive({ push: false });
+    } else renderActive({ push: false });
     return;
   }
   if (view === "search") {
-    const source = searchCategory(params.get("type"));
+    const transient = !INCOGNITO && currentTransientRoute();
+    const memory = transient ? readSearchState(transient) : null;
+    const source = searchCategory(params.get("type") || memory?.source);
     if (params.has("type") && source === "web" && params.get("type") !== "web") {
       params.delete("type");
       try { history.replaceState(history.state, "", routeUrl("/search/") + (params.size ? `?${params}` : "") + location.hash); } catch {}
     }
-    showSearch(params.get("q") || "", { push: false, source });
+    showSearch(params.get("q") ?? memory?.query ?? "", { push: false, source });
     return;
   }
   if (view === "calculator") { openInternal("calculator", { push: false, calc: params.get("q") || "" }); return; }
@@ -1612,6 +1640,7 @@ export async function go(input, { tab = null, push = true, newTab: inNew = false
 export async function navigate(url, { tab = null, push = true, pushHist = true, record = null, activate = true, displayUrl = "" } = {}) {
   if (interceptAccount(url, (tab || activeTab())?.url)) { updateAddress(); return; }
   url = normalizeYouTubeUrl(url);
+  url = normalizeTikTokHome(url);
   let t = tab || activeTab(); if (!t) return;
   if (t.view !== "page") { if (t.view === "search") stopSearch(t); t.view = "page"; t.title = hostOf(url) || "Loading"; }
   if (activate) state.activeId = t.id;
@@ -1624,8 +1653,9 @@ export async function navigate(url, { tab = null, push = true, pushHist = true, 
     return;
   }
   if (!localPageKind(url)) sendNeuralFeedback(url, true, 0.5);
-  await loadInTab(t, url, { loadFrame: true, record, displayUrl });
+  const load = loadInTab(t, url, { loadFrame: true, record, displayUrl });
   if (push && activeTab() === t) syncRoute();
+  await load;
 }
 async function capability(url) {
   if (settings.runtime === "proxy") return "FAST_PROXY";
@@ -1754,6 +1784,7 @@ async function loadInTab(t, url, { loadFrame = true, record = null, forceBrowser
   t.velocityState = ""; t.pendingNavigation = null; t.queuedCrawler = null; t.crawlToken = null;
   if (interceptAccount(url, t.url)) return;
   url = normalizeYouTubeUrl(url);
+  url = normalizeTikTokHome(url);
   resetPlaybackHandoff(t, url);
   const load = t.pageLoad = Symbol();
   t.pendingProxyNotice = null;
@@ -2480,7 +2511,7 @@ async function runSearch(query, offset = 0, opts = {}) {
     let b;
     try { b = await fetchResults(); }
     catch (e) {
-      if (offset || !current() || !recoverableApiError(e)) throw e;
+      if (offset || !current() || !recoverableApiError(e) || source === "shopping" && e.code === "API_TIMEOUT") throw e;
       t.searchConnecting = true;
       if (visible()) renderSearch();
       if (!(await waitForApi())) throw new ApiError("Could not reach the Veyra server. Try again in a moment.", 0, "SERVER_ASLEEP");
@@ -3023,9 +3054,8 @@ function renderSearch() {
   $("searchRetry")?.addEventListener("click", () => void runSearch(t.searchQuery));
   const canMore = vertical ? Number.isInteger(d.nextPage) : Number.isInteger(d.nextOffset);
   more.classList.toggle("hidden", !canMore);
-  more.textContent = !shown && canMore ? "Check next page" : "More results";
   more.disabled = !!t.searchLoading;
-  more.textContent = t.searchLoading ? "Loading more…" : t.searchFeedError ? "Retry more results" : "More results";
+  more.textContent = t.searchLoading ? "Loading more…" : t.searchFeedError ? "Retry more results" : !shown && canMore ? "Check next page" : "More results";
   feedStatus.textContent = t.searchLoading ? "Loading more results…" : t.searchFeedError ? "Couldn’t load the next page." :
     canMore && d.noNew ? "No new links on that page. You can try the next one." : !canMore && shown ? "End of available results" : "";
   more.onclick = () => loadNextSearchPage();
@@ -4204,7 +4234,7 @@ async function boot() {
     restoreTabState();
     renderTabs(); tickSession();
     if (!/^\/admin(?:\/|$)/.test(currentRoute())) await revisitSavedSession();
-    applyRoute();
+    applyRoute({ startup: true });
     applyStartup(params);
     startIncognitoAddressRotation();
 
