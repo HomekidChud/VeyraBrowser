@@ -28,7 +28,8 @@ const publisherPath = "/api/search/publisher";
 api.use((req, res, next) => {
   res.set({ "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type,x-veyra-request-id,authorization,x-veyra-gate" });
   if (req.method === "OPTIONS") return res.sendStatus(204);
-  calls.push({ path: req.path, query: { ...req.query } });
+  res.locals.call = { path: req.path, query: { ...req.query } };
+  calls.push(res.locals.call);
   next();
 });
 api.get("/api/gate/status", (_req, res) => res.json({ ok: true, gated: false }));
@@ -90,18 +91,33 @@ api.get("/api/acquisition/status", (_req, res) => res.json({ ok: true, chromiumE
 api.post("/api/search/answer", express.json(), (req, res) => {
   assert.equal(req.headers.authorization, "Bearer preview-test-token");
   assert.equal(req.body.region, "IN");
-  assert.equal(req.body.vertical, "research");
-  const sources = [{ id: "S1", url: "https://example.test/fixture", title: "Research fixture" }];
-  calls.at(-1).body = req.body;
-  if (req.body.followUp) {
-    assert.equal(req.body.query, "railway");
-    assert.equal(req.body.results, undefined);
-    const { question } = req.body.followUp;
-    const reply = () => res.json({ hasAnswer: true, followUp: true, answer: `Follow-up fixture: ${question} [S1]`, sources });
-    if (question === "Slow fixture?") return setTimeout(reply, 500);
-    return reply();
+  assert.equal(req.query.private, undefined);
+  assert.equal(req.body.followUp, undefined);
+  res.locals.call.body = req.body;
+  const { query, source, vertical, results } = req.body;
+  if (vertical) { assert.equal(vertical, source); assert.equal(results, undefined); }
+  else assert.ok(results.length && results.every(row => Object.keys(row).join() === "url"));
+  const sources = [
+    { id: "S1", url: "https://example.test/fixture", title: "Research fixture", passages: [{ text: "A quoted source excerpt." }] },
+    { id: "S2", url: "https://second.example/fixture", title: "Second fixture source" },
+    { id: "S3", url: "https://third.example/fixture", title: "Third fixture source" }
+  ];
+  if (query === "no evidence") return res.json({ hasAnswer: false, reason: "No readable source evidence found" });
+  if (query === "bad citation") return res.json({ hasAnswer: true, answer: "Unmapped citation fixture. [S1] [S9]", sources });
+  if (query === "site:example.test scoped fixture") return res.json({ hasAnswer: true, answer: "Out of scope. [S1]",
+    sources: [{ ...sources[0], canonicalUrl: "https://outside.example/redirect" }] });
+  if (query === "retry overview" && calls.filter(call => call.body?.query === query).length === 1) {
+    return res.json({ hasAnswer: false, diagnosticCode: "http_503" });
   }
-  res.json({ hasAnswer: true, answer: "This is a cited fixture summary. [S1]\n\nThis is a second cited paragraph. [S1]", sources });
+  const reply = () => res.json({ hasAnswer: true,
+    answer: query === "railway" ? `This is a cited ${source} overview. [S1]\n\nThis is a second cited paragraph. [S2] [S3]`
+      : `Cited fixture for ${query}. [S1]`, sources, observationId: "obs_abcdefghijabcdefghij" });
+  if (query === "slow overview" || query === "railway" && source === "news") return setTimeout(reply, 1200);
+  return reply();
+});
+api.post("/api/search/answer/feedback", express.json(), (req, res) => {
+  assert.deepEqual(req.body, { observationId: "obs_abcdefghijabcdefghij", rating: "helpful" });
+  res.json({ ok: true });
 });
 api.get(["/api/search/web", "/api/search/vertical", "/api/search"], (req, res) => {
   if (req.query.q === "recover" && calls.filter(call => call.query.q === "recover" && call.path === "/api/search/web").length === 1)
@@ -314,7 +330,7 @@ try {
       assert.equal(new URL(page.url()).searchParams.has("type"), false);
       assert.equal(await page.locator("#searchTabs").getByRole("tab").count(), 8);
       assert.equal(await page.getByRole("tab", { name: "Web" }).getAttribute("aria-selected"), "true");
-      assert.equal(await page.getByRole("button", { name: "Summarize sources with AI" }).isVisible(), false);
+      assert.equal(await page.getByRole("button", { name: "Sign in to use Veyra AI" }).isVisible(), true);
       const [google] = await Promise.all([context.waitForEvent("page"), page.getByRole("button", { name: "Open Google in a new tab outside Veyra" }).click()]);
       await google.waitForURL("https://www.google.co.in/search?**");
       assert.equal(new URL(google.url()).searchParams.get("gl"), "in");
@@ -577,46 +593,85 @@ try {
       await page.locator('#authDialog input[name="password"]').fill("fixture-only");
       await page.locator("#authSubmit").click();
       await page.locator("#authDialog").waitFor({ state: "hidden" });
-      const summary = page.getByRole("button", { name: "Summarize sources with AI" });
-      assert.equal(await summary.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector("#searchResults")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+      const overview = page.locator("#aiAnswer");
+      const body = overview.locator(".ai-answer-body");
+      await body.getByText(/^This is a cited research overview\./).waitFor();
+      assert.equal(await overview.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector("#searchResults")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
       assert.equal(await page.locator("#view-search").evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
-      await summary.click();
-      await page.locator(".ai-answer-body").getByText(/^This is a cited fixture summary\./).waitFor();
-      await page.locator(".ai-answer-body").getByText(/^This is a second cited paragraph\./).waitFor();
-      assert.equal(await page.locator("#aiAnswer .ai-answer-body > p").count(), 2);
-      assert.equal(await page.locator("#aiAnswer .ai-answer-body .ai-source-cite").count(), 2);
-      const ask = page.getByRole("textbox", { name: "Ask Veyra AI" });
-      await page.getByRole("button", { name: "What are the key facts?" }).click();
-      await page.locator(".ai-answer-body").getByText(/Follow-up fixture:/).waitFor();
-      await ask.fill("What evidence is strongest?");
-      await ask.press("Enter");
-      await page.getByRole("heading", { name: "You: What evidence is strongest?" }).waitFor();
-      await page.locator(".ai-answer-body").getByText(/evidence is strongest/).waitFor();
-      assert.deepEqual(calls.filter(call => call.body?.followUp).at(-1).body.followUp, {
-        question: "What evidence is strongest?", previousQuestion: "What are the key facts?"
-      });
-      const slow = page.waitForRequest(request => request.url().endsWith("/api/search/answer") && request.postData()?.includes("Slow fixture?"));
-      await ask.fill("Slow fixture?");
-      await ask.press("Enter");
+      assert.equal(await overview.locator("form,input,textarea,[data-ai-prompt]").count(), 0);
+      assert.equal(await body.locator(":scope > p").count(), 2);
+      assert.equal(await body.locator(".ai-source-cite").count(), 3);
+      await overview.getByText("A quoted source excerpt.").waitFor();
+      const sourcePanel = overview.getByRole("complementary", { name: "Sources" });
+      const sourceBox = await sourcePanel.boundingBox(), answerBox = await body.boundingBox();
+      assert.ok(mobile ? sourceBox.y >= answerBox.y + answerBox.height : sourceBox.x > answerBox.x + answerBox.width);
+      await sourcePanel.getByText("Show 1 more source").click();
+      await sourcePanel.getByRole("link", { name: /Third fixture source/ }).waitFor();
+      await overview.getByRole("button", { name: "Helpful", exact: true }).click();
+      await overview.getByText("Feedback saved.").waitFor();
+      assert.equal(calls.filter(call => call.path === "/api/search/answer" && call.body?.source === "research").length, 1);
+      const input = page.locator("#searchInput");
+      const submit = async q => { await input.fill(q); await input.press("Enter"); };
+      const isAnswer = (request, query, source) => new URL(request.url()).pathname === "/api/search/answer"
+        && request.postDataJSON()?.query === query && request.postDataJSON()?.source === source;
+      const slow = page.waitForRequest(req => isAnswer(req, "slow overview", "research"));
+      await submit("slow overview");
       await slow;
-      await page.getByRole("button", { name: "Start over" }).click();
-      await summary.waitFor();
-      assert.equal(await page.locator(".ai-chat-turn").count(), 0);
-      await summary.click();
-      await page.locator(".ai-answer-body").getByText(/^This is a cited fixture summary\./).waitFor();
+      await overview.getByText("Checking sources for an answer…").waitFor();
+      await result("research result for slow overview").waitFor();
+      const cancelledQuery = page.waitForEvent("requestfailed", req => isAnswer(req, "slow overview", "research"));
+      await submit("no evidence");
+      await cancelledQuery;
+      await overview.getByText("Veyra couldn’t verify an answer from the available sources.").waitFor();
+      assert.equal(await body.count(), 0);
+      await result("research result for no evidence").waitFor();
+      await submit("bad citation");
+      await result("research result for bad citation").waitFor();
+      await overview.getByText("Veyra couldn’t verify an answer from the available sources.").waitFor();
+      assert.equal(await body.count(), 0);
+      await submit("site:example.test scoped fixture");
+      await result("research result for site:example.test scoped fixture").waitFor();
+      await overview.getByText("Veyra couldn’t verify an answer from the available sources.").waitFor();
+      assert.equal(await body.count(), 0);
+      await submit("retry overview");
+      const retryOverview = overview.getByRole("button", { name: "Retry overview" });
+      await retryOverview.click();
+      await body.getByText(/^Cited fixture for retry overview/).waitFor();
+      assert.equal(calls.filter(call => call.body?.query === "retry overview").length, 2);
+      await submit("railway");
+      await body.getByText(/^This is a cited research overview\./).waitFor();
+      const slowCategory = page.waitForRequest(req => isAnswer(req, "railway", "news"));
+      await page.getByRole("tab", { name: "News" }).click();
+      await slowCategory;
+      const cancelledCategory = page.waitForEvent("requestfailed", req => isAnswer(req, "railway", "news"));
+      await page.getByRole("tab", { name: "Research" }).click();
+      await cancelledCategory;
+      await body.getByText(/^This is a cited research overview\./).waitFor();
       const [cited] = await Promise.all([
         page.waitForResponse(response => response.url().startsWith(`${apiOrigin}/api/view?`)),
-        page.getByRole("link", { name: "Source Research fixture" }).first().click()
+        body.getByRole("link", { name: "Source Research fixture" }).click()
       ]);
       assert.match(await cited.text(), /Fixture website/);
+      await page.goto(`${origin}${prefix}/search/?q=dense+photos&type=images`);
+      await body.getByText(/^Cited fixture for dense photos/).waitFor();
+      await page.locator("#view-search").evaluate(el => { el.scrollTop = el.scrollHeight; });
+      await result("Dense photos 47").waitFor();
+      assert.equal(calls.filter(call => call.path === "/api/search/answer" && call.body?.query === "dense photos").length, 1,
+        "pagination does not request the same overview again");
+      const signedInIncognito = await context.newPage();
+      await signedInIncognito.goto(`${origin}${prefix}/search/?q=private+overview&type=research&incognito=1`);
+      await signedInIncognito.locator("#searchResults").getByText("research result for private overview").waitFor();
+      assert.equal(await signedInIncognito.locator("#aiAnswer").isVisible(), false);
+      assert.ok(!calls.some(call => call.body?.query === "private overview"));
+      await signedInIncognito.close();
       await page.goto(`${origin}${prefix}/search/?q=railway&type=research`);
-      await summary.waitFor();
+      await body.getByText(/^This is a cited research overview\./).waitFor();
       await page.evaluate(async base => {
         const { setAuth } = await import(`${base}/src/core.js?v=8.36.0-workbench`);
         setAuth("", null);
       }, prefix);
       await signInAI.waitFor();
-      assert.equal(await page.locator("#aiAnswer .ai-chat-turn").count(), 0);
+      assert.equal(await body.count(), 0);
 
       await page.goto(`${origin}${prefix}/browse/`);
       await openPost("google.com");
@@ -817,7 +872,7 @@ try {
       assert.equal(calls.filter(call => call.path.startsWith(publisherPath)).length, before);
       publisherMode = "off";
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, privacy modes, cited chat, TikTok recovery, and publisher gate lifecycle`);
+      console.log(`${engine} ${mobile ? "mobile" : "desktop"}: Google Fast Proxy and fallback, site-scoped media, category pagination, privacy modes, automatic cited overviews, TikTok recovery, and publisher gate lifecycle`);
     } finally { await browser.close(); }
   }
 } finally {

@@ -1,4 +1,4 @@
-import { siteScope } from "./search-site-scope.js?v=1";
+import { siteScope } from "./search-site-scope.js?v=2";
 
 export const CATEGORIES = Object.freeze({
   web: { label: "Web", icon: "i-globe", description: "Pages from across the web" },

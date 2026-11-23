@@ -12,8 +12,8 @@ import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
-import { siteScope, scopedUrl } from "./search-site-scope.js?v=1";
-import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=14";
+import { siteScope, scopedUrl } from "./search-site-scope.js?v=2";
+import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=15";
 import { annotateResultBatch, querySuggestions } from "./search-match.js?v=2";
 import { createPublisherSearch } from "./publisher-search.js?v=2";
 import { SEARCH_PRIVACY, searchPrivacy, masksSearchScope, allowsSearchResult } from "./search-privacy.js?v=1";
@@ -1415,6 +1415,7 @@ function adoptSession(body, resumed = false) {
   startSessionTimer(); startSessionHeartbeat();
   updateSessionPreferences({ silent: true }).catch(e => addLog("warn", `Could not apply session privacy preferences: ${e.message}`));
   hooks.onSessionChanged?.();
+  syncSearchAuth();
   return state.session;
 }
 async function startNewSession() {
@@ -2442,7 +2443,7 @@ async function runSearch(query, offset = 0, opts = {}) {
   t.searchError = "";
   t.searchFeedError = false;
   if (!offset) {
-    resetSearchChat(t);
+    resetSearchAnswer(t);
     t.searchMedia?.request.abort();
     Object.assign(t, { searchData: null, searchMedia: null, searchCorrection: null });
     if (visible()) $("view-search").scrollTop = 0;
@@ -2531,79 +2532,58 @@ async function runSearch(query, offset = 0, opts = {}) {
     if (visible()) renderSearch();
   }
 }
-const CHAT_MAX_TURNS = 5;
-const CHAT_QUESTION_LIMIT = 200;
 let paintedAI = null, searchAIIdentity = "";
-function renderAIAnswerReset() { paintedAI = null; $("aiAnswer")?.replaceChildren(); }
-function resetSearchChat(t) {
+function renderAIAnswerReset() {
+  paintedAI = null;
+  const ai = $("aiAnswer");
+  ai?.classList.add("hidden");
+  ai?.replaceChildren();
+}
+function resetSearchAnswer(t) {
   t.searchAnswerRequest?.abort();
   t.searchAnswerRequest = null;
   t.searchAnswer = null;
-  t.searchChatDraft = "";
 }
 function stopSearch(t) {
   t.searchRequest?.abort();
   t.searchMedia?.request.abort();
-  resetSearchChat(t);
+  resetSearchAnswer(t);
 }
 function syncSearchAuth() {
   syncPublisherSearch();
   const identity = ephemeralSession() ? "" : auth.token;
   if (identity !== searchAIIdentity || !identity) {
     searchAIIdentity = identity;
-    for (const tab of state.tabs) resetSearchChat(tab);
+    for (const tab of state.tabs) resetSearchAnswer(tab);
   }
   if (activeTab()?.view === "search") renderAIAnswer(activeTab());
   else if (!identity) renderAIAnswerReset();
 }
-async function fetchAIAnswer(t, input = "", { retry = false } = {}) {
+async function fetchAIAnswer(t) {
   if (ephemeralSession() || activeTab() !== t || !t.searchData?.results?.length || t.searchAnswer?.pending) return;
-  const question = input.trim();
-  const privacy = currentSearchPrivacy();
-  if (hidesSearchText(privacy, question)) {
-    $("searchAIStatus").textContent = "This question is excluded by the current search filter.";
-    return;
-  }
-  if (question && (question.length > CHAT_QUESTION_LIMIT || siteScope(question).active)) {
-    $("searchAIStatus").textContent = "Ask up to 200 characters. Use the main search bar to change the site filter.";
-    return;
-  }
   const { searchQuery: query, searchSource: source, searchData } = t;
+  const terms = searchEntry(query).query, privacy = currentSearchPrivacy(), scope = siteScope(terms);
+  if (!scope.text || scope.invalid || masksSearchScope(privacy, terms, scope)) return;
   const vertical = isVertical(source) ? source : "";
-  const past = t.searchAnswer?.turns || [];
-  const previous = retry ? past.slice(0, -1) : past;
-  const priorQuestion = [...previous].reverse().find(turn => turn.question && turn.response?.followUp && turn.response?.hasAnswer)?.question;
   const request = t.searchAnswerRequest = new AbortController(), token = auth.token;
-  const turn = { question };
-  const turns = [...previous, turn].slice(-CHAT_MAX_TURNS);
   const current = () => state.tabs.includes(t) && t.view === "search" && t.searchQuery === query && t.searchSource === source &&
-    t.searchAnswerRequest === request && !request.signal.aborted && !ephemeralSession() && auth.token === token;
-  t.searchChatDraft = "";
-  t.searchAnswer = { pending: true, turns };
+    t.searchAnswerRequest === request && !request.signal.aborted && !ephemeralSession() &&
+    auth.token === token && currentSearchPrivacy() === privacy;
+  t.searchAnswer = { pending: true };
   renderAIAnswer(t);
-  if (question) $("searchAIQuestion")?.focus({ preventScroll: true });
-  const json = { query: searchEntry(query).query, source, privacy, ...(vertical ? { vertical } : {}), lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION };
-  if (question) json.followUp = { question, ...(priorQuestion ? { previousQuestion: priorQuestion } : {}) };
-  else if (!vertical) json.results = searchData.results.slice(0, 12).map(row => ({ url: row.url }));
+  const json = { query: terms, source, privacy, ...(vertical ? { vertical } : {}), lang: (navigator.language || SEARCH_LOCALE).slice(0, 35), region: SEARCH_REGION };
+  if (!vertical) json.results = searchData.results.slice(0, 12).map(row => ({ url: row.url }));
+  let outcome;
   try {
     const response = (await api("/api/search/answer", { json, timeoutMs: 35000, signal: request.signal })) || {};
-    if (!current()) return;
-    // Older servers ignore followUp and return another summary of the seed query.
-    turn.response = response.sources?.some(row => !allowsSearchResult(privacy, row))
-      ? { reason: "The answer used a source excluded by the current search filter." }
-      : question && response.followUp !== true && response.hasAnswer
-      ? { reason: "Follow-up questions are not available on the connected Veyra server yet." } : response;
+    outcome = normalizeOverview(response, scope, privacy);
   } catch (error) {
-    if (!current()) return;
-    turn.response = { reason: String(error?.message || "Veyra could not contact the answer service.").slice(0, 220) };
+    outcome = { message: error.status === 429 ? "Veyra AI is busy. Try again in a moment." : "Veyra AI couldn’t finish the overview.", retry: true };
   }
-  const restoreFocus = activeTab() === t && $("searchAIQuestion") === document.activeElement;
+  if (!current()) return;
   t.searchAnswerRequest = null;
-  t.searchAnswer = { pending: false, turns };
-  if (activeTab() === t) {
-    renderAIAnswer(t);
-    if (restoreFocus) $("searchAIQuestion").focus({ preventScroll: true });
-  }
+  t.searchAnswer = outcome;
+  if (activeTab() === t) renderAIAnswer(t);
 }
 function searchSiteIcon(url) {
   const host = hostOf(url);
@@ -2612,87 +2592,97 @@ function searchSiteIcon(url) {
   const img = !INCOGNITO && valid ? `<img src="https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : "";
   return `<span class="search-site-icon" aria-hidden="true"><span>${esc(fallback)}</span>${img}</span>`;
 }
-function aiTurnHTML(turn, index, query, scope, latest) {
-  const r = turn.response;
-  const sources = Array.isArray(r?.sources) ? r.sources.slice(0, 24) : [];
-  const title = turn.question ? `You: ${turn.question}` : "Source summary";
-  const available = r?.hasAnswer && typeof r.answer === "string" && sources.length && !unsafeAiText(r.answer) &&
-    sources.every(row => resultUrl(row?.url) && scopedUrl(scope, row.url) && (!row.canonicalUrl || scopedUrl(scope, row.canonicalUrl)));
-  if (!available) {
-    const reason = r && !unsafeAiText(r.reason) ? r.reason : "";
-    const status = !r ? "Reading source pages…" : reason || "Veyra could not produce a grounded answer.";
-    return `<article class="ai-chat-turn"><h3>${esc(title)}</h3><p class="ai-chat-note">${esc(status)}</p>${latest && r ? '<button class="btn ghost sm" type="button" id="searchAIRetry">Try again</button>' : ""}</article>`;
+function normalizeOverview(r, scope, privacy) {
+  const unavailable = { message: "Veyra couldn’t verify an answer from the available sources." };
+  if (!r.hasAnswer) {
+    const diagnostic = String(r.diagnosticCode || "");
+    if (/^(?:http_(?:429|5\d\d)|provider_error|timeout)$/.test(diagnostic)) {
+      return { message: "The AI service didn’t complete this overview.", retry: true };
+    }
+    if (r.code === "AI_MODEL_NOT_CONFIGURED" || /^(?:not_configured|model_unavailable|http_40[13])$/.test(diagnostic)) {
+      return { message: "Veyra AI is unavailable right now." };
+    }
+    return unavailable;
   }
+  if (typeof r.answer !== "string" || !r.answer.trim() || unsafeAiText(r.answer) || !Array.isArray(r.sources)) return unavailable;
+  const used = [...new Set([...r.answer.matchAll(/\[(S\d+)\]/g)].map(match => match[1]))];
+  const byId = new Map();
+  for (const row of r.sources) {
+    if (!used.includes(row?.id)) continue;
+    if (byId.has(row.id) || !resultUrl(row.url) || !allowsSearchResult(privacy, row) || !scopedUrl(scope, row.url) ||
+        (row.canonicalUrl && (!resultUrl(row.canonicalUrl) || !scopedUrl(scope, row.canonicalUrl)))) return unavailable;
+    byId.set(row.id, row);
+  }
+  if (!used.length || used.some(id => !byId.has(id))) return unavailable;
+  return { answer: r.answer, sources: used.map(id => byId.get(id)), caveats: r.caveats, observationId: r.observationId };
+}
+function overviewSourceHTML(s) {
+  const title = s.title || displayUrl(s.url);
+  const passage = s.passages?.[0]?.text || s.matched?.[0];
+  const excerpt = typeof passage === "string" && !unsafeAiText(passage) ? passage.slice(0, 220) : "";
+  return `<li><a class="ai-overview-source" href="${esc(s.url)}" data-open="${esc(s.url)}">
+    <span class="ai-source-host">${searchSiteIcon(s.url)}${esc(hostOf(s.url))}</span>
+    <strong>${esc(title)}</strong>${excerpt ? `<span class="ai-source-excerpt">${esc(excerpt)}</span>` : ""}
+    </a></li>`;
+}
+function overviewAnswerHTML(r, query) {
+  const { sources } = r;
   const caveats = (Array.isArray(r.caveats) ? r.caveats : []).filter(p => typeof p === "string" && p && !unsafeAiText(p)).slice(0, 3);
-  const feedbackId = !turn.question && /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
-  return `<article class="ai-chat-turn" data-ai-turn="${index}">
-    <h3>${esc(title)}</h3><p class="ai-chat-note">${sources.length} ${sources.length === 1 ? "source" : "sources"} · ${esc(r.confidenceLabel || "Evidence quality")}</p>
-    <div class="ai-answer-body">${renderAnswerWithSourceLogos(r.answer, turn.question || query, sources)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>
-    <div class="ai-answer-sources" aria-label="Sources">${sources.map(s => `<a class="ai-source-chip" href="${esc(s.url)}" data-open="${esc(s.url)}" title="${esc(s.title || displayUrl(s.url))}" aria-label="Open ${esc(s.title || displayUrl(s.url))}">${searchSiteIcon(s.url)}<span>${esc(hostOf(s.url))}</span></a>`).join("")}</div>
-    ${feedbackId ? `<div class="ai-answer-feedback" data-observation="${esc(feedbackId)}"><span>Was this summary helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful"${turn.feedback ? " disabled" : ""}>Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful"${turn.feedback ? " disabled" : ""}>Not helpful</button><span class="ai-feedback-status" role="status">${turn.feedback ? "Feedback saved." : ""}</span></div>` : ""}
-    </article>`;
+  const feedbackId = /^obs_[A-Za-z0-9_-]{20,40}$/.test(String(r.observationId || "")) ? r.observationId : "";
+  const extra = sources.length - 2;
+  return `<div class="ai-overview-grid">
+    <div class="ai-answer-body">${renderAnswerWithSources(r.answer, query, sources)}${caveats.length ? `<div class="ai-caveats"><b>Keep in mind</b><ul>${caveats.map(p => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}</div>
+    <aside class="ai-overview-sources" aria-label="Sources"><h3>Sources <span>${sources.length}</span></h3><ul>${sources.slice(0, 2).map(overviewSourceHTML).join("")}</ul>${extra > 0 ? `<details><summary>Show ${extra} more ${extra === 1 ? "source" : "sources"}</summary><ul>${sources.slice(2).map(overviewSourceHTML).join("")}</ul></details>` : ""}</aside>
+    </div>
+    ${feedbackId ? `<div class="ai-answer-feedback" data-observation="${esc(feedbackId)}"><span>Was this overview helpful?</span><button class="btn ghost sm" type="button" data-ai-feedback="helpful"${r.feedback ? " disabled" : ""}>Helpful</button><button class="btn ghost sm" type="button" data-ai-feedback="unhelpful"${r.feedback ? " disabled" : ""}>Not helpful</button><span class="ai-feedback-status" role="status">${r.feedback ? "Feedback saved." : ""}</span></div>` : ""}`;
 }
 function renderAIAnswer(t) {
-  const ai = $("aiAnswer"), query = t.searchQuery, chat = t.searchAnswer;
-  if (INCOGNITO || !t.searchData?.results?.length) {
-    ai.classList.add("hidden"); ai.replaceChildren(); paintedAI = null; return;
-  }
-  const access = !auth.user ? "signed-out" : state.session?.ephemeral ? "guest-session" : "ready";
-  ai.classList.remove("hidden");
-  if (paintedAI?.tab === t && paintedAI.chat === chat && paintedAI.query === query && paintedAI.access === access) return;
-  paintedAI = { tab: t, chat, query, access };
-  if (access !== "ready") {
-    const prompt = access === "signed-out"
-      ? '<p class="ai-chat-note">Sign in to get a cited summary or ask about these results.</p><button class="btn ghost sm" type="button" data-auth="login">Sign in to use Veyra AI</button>'
-      : '<p class="ai-chat-note">AI is off in this guest browsing session. Open Veyra in a new browser tab while signed in to use AI.</p>';
-    ai.innerHTML = `<div class="ai-answer-card ai-chat"><div class="ai-chat-head"><h2>Veyra AI</h2></div>${prompt}</div>`;
+  const ai = $("aiAnswer"), query = searchEntry(t.searchQuery).query, answer = t.searchAnswer, scope = siteScope(query);
+  if (INCOGNITO || !t.searchData?.results?.length || !scope.text || scope.invalid || masksSearchScope(currentSearchPrivacy(), query, scope)) {
+    renderAIAnswerReset();
     return;
   }
-  const turns = chat?.turns || [], scope = siteScope(query), last = turns.at(-1);
-  const prompts = ["What are the key facts?", "Where do the sources disagree?", "What details should I verify?"];
-  ai.innerHTML = `<div class="ai-answer-card ai-chat">
-    <div class="ai-chat-head"><h2>Veyra AI</h2>${turns.length ? '<button class="btn ghost sm" type="button" id="searchAIReset">Start over</button>' : ""}</div>
-    ${turns.length ? `<div class="ai-chat-turns">${turns.map((turn, i) => aiTurnHTML(turn, i, query, scope, turn === last)).join("")}</div>` : '<p class="ai-chat-note">Get a cited summary or ask a question about this search.</p><button class="btn ghost sm" type="button" id="searchSummarize">Summarize sources with AI</button>'}
-    ${last && !chat.pending ? `<div class="ai-chat-prompts" aria-label="Suggested follow-ups">${prompts.filter(question => question !== last.question).map(question => `<button class="btn ghost sm" type="button" data-ai-prompt="${esc(question)}">${esc(question)}</button>`).join("")}</div>` : ""}
-    <form id="searchAIForm" class="ai-chat-form">
-      <label class="sr-only" for="searchAIQuestion">Ask Veyra AI</label>
-      <input id="searchAIQuestion" type="text" maxlength="${CHAT_QUESTION_LIMIT}" autocomplete="off" placeholder="${turns.length ? "Ask a follow-up" : "Ask about these results"}" value="${esc(t.searchChatDraft || "")}" ${chat?.pending ? "readonly" : ""} required>
-      <button class="btn ghost sm" type="submit"${chat?.pending ? " disabled" : ""}>Ask</button>
-    </form>
-    <p id="searchAIStatus" class="ai-chat-note" role="status">${chat?.pending ? "Veyra AI is reading source pages." : turns.length >= CHAT_MAX_TURNS ? "Showing the last five turns." : last ? "Veyra AI finished reading." : ""}</p>
-    </div>`;
-  $("searchSummarize")?.addEventListener("click", () => void fetchAIAnswer(t));
-  $("searchAIRetry")?.addEventListener("click", () => void fetchAIAnswer(t, last.question, { retry: true }));
-  $("searchAIReset")?.addEventListener("click", () => { resetSearchChat(t); renderAIAnswer(t); $("searchSummarize")?.focus(); });
-  $("searchAIQuestion").addEventListener("input", event => { t.searchChatDraft = event.target.value; });
-  $("searchAIForm").addEventListener("submit", event => {
-    event.preventDefault(); const question = $("searchAIQuestion").value.trim();
-    if (question) void fetchAIAnswer(t, question);
-  });
-  ai.querySelectorAll("[data-ai-prompt]").forEach(button => button.onclick = () => void fetchAIAnswer(t, button.dataset.aiPrompt));
+  const access = !auth.user ? "signed-out" : state.session?.ephemeral ? "guest-session" : "ready";
+  if (!answer && access === "ready") {
+    void fetchAIAnswer(t);
+    return;
+  }
+  ai.classList.remove("hidden");
+  if (paintedAI?.tab === t && paintedAI.answer === answer && paintedAI.query === query && paintedAI.access === access) return;
+  paintedAI = { tab: t, answer, query, access };
+  const ready = access === "ready" && !!answer?.answer;
+  const content = access === "signed-out"
+    ? '<div class="ai-overview-note"><p>Sign in to see a cited answer above your search results.</p><button class="btn ghost sm" type="button" data-auth="login">Sign in to use Veyra AI</button></div>'
+    : access === "guest-session"
+    ? '<div class="ai-overview-note"><p>AI is off in this guest session. Open Veyra in a new browser tab while signed in.</p></div>'
+    : ready ? overviewAnswerHTML(answer, scope.text)
+    : `<div class="ai-overview-note"><p role="status">${esc(answer.pending ? "Checking sources for an answer…" : answer.message)}</p>${answer.retry ? '<button class="btn ghost sm" id="searchAIRetry" type="button">Retry overview</button>' : ""}</div>`;
+  ai.innerHTML = `<div class="ai-overview${ready ? " ai-overview-ready" : ""}">
+    <header class="ai-overview-head"><span class="ai-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18"><use href="#i-bolt"/></svg></span><h2>Veyra AI overview</h2>${ready ? '<span class="sr-only" role="status">Cited overview ready.</span>' : ""}</header>
+    ${content}</div>`;
+  $("searchAIRetry")?.addEventListener("click", () => void fetchAIAnswer(t));
   wireSearchLinks(ai);
   wireSearchImages(ai);
   ai.querySelectorAll("[data-ai-feedback]").forEach(button => button.addEventListener("click", async () => {
     const block = button.closest("[data-observation]"), status = block.querySelector("[role=status]");
-    const turn = turns[Number(block.closest("[data-ai-turn]").dataset.aiTurn)];
     const buttons = [...block.querySelectorAll("[data-ai-feedback]")];
     buttons.forEach(item => { item.disabled = true; }); status.textContent = "Saving feedback…";
     try {
       await api("/api/search/answer/feedback", { json: { observationId: block.dataset.observation, rating: button.dataset.aiFeedback }, timeoutMs: 8000 });
-      turn.feedback = true; status.textContent = "Feedback saved.";
+      answer.feedback = true; status.textContent = "Feedback saved.";
     } catch (error) {
       buttons.forEach(item => { item.disabled = false; });
       status.textContent = `Feedback was not saved: ${String(error?.message || "please try again").slice(0, 120)}`;
     }
   }));
 }
-function renderAnswerWithSourceLogos(answer, query, sources) {
+function renderAnswerWithSources(answer, query, sources) {
   const byId = new Map(sources.map(s => [`[${s.id}]`, s]));
   return String(answer).split(/\n{2,}/).filter(Boolean).map(paragraph => `<p>${paragraph.split(/(\[S\d+\])/g).map(part => {
     const source = byId.get(part);
     if (!source) return highlightTerms(part, query);
     const label = source.title || displayUrl(source.url);
-    return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}">${searchSiteIcon(source.url)}</a>`;
+    return `<a class="ai-source-cite" href="${esc(source.url)}" data-open="${esc(source.url)}" title="${esc(label)}" aria-label="Source ${esc(label)}">${searchSiteIcon(source.url)}<span>${esc(hostOf(source.url))}</span></a>`;
   }).join("")}</p>`).join("");
 }
 function unsafeAiText(value) {

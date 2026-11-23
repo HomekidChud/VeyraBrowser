@@ -1,9 +1,9 @@
 export function siteScope(query) {
-  const include = [], exclude = [];
+  const include = [], exclude = [], terms = [];
   let invalid = false;
   for (const token of String(query).match(/"[^"]*"|-?site:(?:"[^"]*"(?=\s|$)|[^\s]*)|[^\s]+/gi) || []) {
     const op = /^(-?)site:(.*)$/i.exec(token);
-    if (!op) continue;
+    if (!op) { terms.push(token); continue; }
     const value = op[2].replace(/^"([^"]*)"$/, "$1").replace(/^https?:\/\//i, "").replace(/\/$/, "");
     try {
       if (!/^[\p{L}\p{M}\p{N}.-]+$/u.test(value)) throw new Error();
@@ -12,7 +12,7 @@ export function siteScope(query) {
       (op[1] ? exclude : include).push(domain);
     } catch { invalid = true; }
   }
-  return { include, exclude, invalid, active: invalid || !!(include.length || exclude.length) };
+  return { include, exclude, invalid, active: invalid || !!(include.length || exclude.length), text: terms.join(" ") };
 }
 
 export function scopedUrl(scope, value) {
