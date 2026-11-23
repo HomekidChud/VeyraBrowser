@@ -14,6 +14,12 @@ export const SEARCH_REGION = "IN";
 export const SEARCH_LOCALE = "en-IN";
 export const isVertical = key => Object.hasOwn(CATEGORIES, key) && !["web", "index"].includes(key);
 export const searchCategory = value => Object.hasOwn(CATEGORIES, value) ? value : "web";
+
+export function overviewSearchReady(data, category, canResearchEmpty = false) {
+  if (!Array.isArray(data?.results) || data.status === "filtered") return false;
+  return data.results.length > 0 || (canResearchEmpty && (category === "web" || isVertical(category)));
+}
+
 const GOOGLE_WEB_HOST = /^(?:www\.)?google\.(?:com|co\.uk|co\.in)$/i;
 
 export function searchEntry(value) {
