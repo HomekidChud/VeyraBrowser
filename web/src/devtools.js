@@ -6,8 +6,27 @@ let B, root, openState = false, panel = "elements";
 const PANELS = [["elements", "Elements"], ["console", "Console"], ["sources", "Sources"], ["network", "Network"], ["application", "Application"], ["performance", "Performance"], ["audit", "Audit"], ["memory", "Memory"], ["security", "Security"], ["coverage", "Coverage"]];
 const tab = () => B.activeTab();
 const onPage = t => t?.view === "page" && !!t.url;
+const onInternalView = t => !!t && t.view !== "page";
 const dtState = t => t._dt || (t._dt = { nodes: new Map(), open: new Set(), sel: null, rootIds: [], docLoaded: false, conHistory: [], conHistIdx: -1, conExpanded: new Set(), netSel: null, netFilter: "all", resEntries: [], srcOpen: [], srcActive: null, appSel: "local", netEnabled: false, stylesTab: "styles", forced: new Set() });
-const call = (method, params, ms) => dtCall(tab(), method, params, ms);
+function localNode(t, el, depth = 0) {
+  const s = dtState(t); s.localIds ||= new WeakMap(); s.localNodeIds ||= new Map();
+  let id = s.localIds.get(el); if (!id) { id = (s.localIdSeq || 0) + 1; s.localIdSeq = id; s.localIds.set(el, id); s.localNodeIds.set(id, el); }
+  const type = el.nodeType, node = { id, type, name: el.nodeName.toLowerCase(), text: type === 3 || type === 8 ? el.nodeValue || "" : undefined, attrs: type === 1 ? [...el.attributes].map(a => [a.name, a.value]) : [], childCount: el.childNodes?.length || 0 };
+  if (depth > 0) node.children = [...(el.childNodes || [])].map(n => localNode(t, n, depth - 1));
+  return node;
+}
+function localPath(t, node) { const path = []; for (let n = node; n; n = n.parentNode) path.unshift(localNode(t, n, 0).id); return path; }
+function localCall(t, method, params = {}) {
+  const s = dtState(t), el = id => s.localNodeIds?.get(Number(id));
+  if (method === "dom.document") return Promise.resolve(localNode(t, document, params.depth ?? 3));
+  if (method === "dom.children") { const n = el(params.id); return Promise.resolve({ children: n ? [...n.childNodes].map(x => localNode(t, x, params.depth ?? 1)) : [] }); }
+  if (method === "dom.node") return Promise.resolve(el(params.id) ? localNode(t, el(params.id), 0) : null);
+  if (method === "dom.nodeAt") { const n = document.elementFromPoint(params.x, params.y); return Promise.resolve(n ? { ...localNode(t, n, 0), path: localPath(t, n) } : null); }
+  if (method === "dom.select") return Promise.resolve({ id: params.id, selector: el(params.id)?.nodeName?.toLowerCase() || "" });
+  if (method === "dom.highlight") return Promise.resolve({});
+  return Promise.reject(new Error("Editing the browser interface from DevTools is disabled."));
+}
+const call = (method, params, ms) => onInternalView(tab()) ? localCall(tab(), method, params) : dtCall(tab(), method, params, ms);
 const debounceRaf = fn => { let r = 0; return (...a) => { if (r) return; r = requestAnimationFrame(() => { r = 0; fn(...a); }); }; };
 
 function build() {
@@ -132,7 +151,7 @@ function buildElements() {
 function gutterDrag(g, side) { g.addEventListener("pointerdown", e => { e.preventDefault(); const start = e.clientX, w = side.getBoundingClientRect().width; const mv = ev => { side.style.flex = `0 0 ${Math.max(180, w - (ev.clientX - start))}px`; }; const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); }; addEventListener("pointermove", mv); addEventListener("pointerup", up); }); }
 function storeNodes(s, n, parent) { const prev = s.nodes.get(n.id); s.nodes.set(n.id, { ...prev, ...n, parent: parent ?? prev?.parent ?? null, children: n.children ? n.children.map(c => c.id) : prev?.children ?? null }); if (n.children) n.children.forEach(c => storeNodes(s, c, n.id)); }
 async function loadDocument(force = false) {
-  const t = tab(); if (!onPage(t)) { $("elTree").innerHTML = emptyMsg(); $("stBody").innerHTML = ""; $("elCrumbs").innerHTML = ""; return; }
+  const t = tab(); if (!onPage(t) && !onInternalView(t)) { $("elTree").innerHTML = emptyMsg(); $("stBody").innerHTML = ""; $("elCrumbs").innerHTML = ""; return; }
   const s = dtState(t);
   if (!s.docLoaded || force) {
     $("elTree").innerHTML = `<div class="dt-empty">Loading the DOM…</div>`;
@@ -164,7 +183,7 @@ function nodeLine(s, n, depth) {
   return `<div class="el-node open"><span class="el-line${sel}" data-id="${n.id}" ${pad}><span class="el-tw"></span>${openTag}${dollar}</span>${kids.map(c => nodeLine(s, c, depth + 1)).join("")}${kids.length < n.childCount ? `<span class="el-line" style="padding-left:${(depth + 1) * 14 + 18}px"><span class="t-dim">…loading</span></span>` : ""}<span class="el-line" data-id="${n.id}" style="padding-left:${depth * 14 + 18}px">${closeTag}</span></div>`;
 }
 function renderTree() {
-  const t = tab(); if (!onPage(t)) return; const s = dtState(t); const tree = $("elTree"); const top = tree.scrollTop;
+  const t = tab(); if (!onPage(t) && !onInternalView(t)) return; const s = dtState(t); const tree = $("elTree"); const top = tree.scrollTop;
   tree.innerHTML = s.rootIds.map(id => s.nodes.get(id)).filter(Boolean).map(n => nodeLine(s, n, 0)).join("") || emptyMsg("The document is empty.");
   tree.scrollTop = top; renderCrumbs();
 }
@@ -250,7 +269,7 @@ function declHtml(k, v, imp, over, where) {
 }
 async function renderSide() {
   const t = tab(); const s = t && dtState(t); const body = $("stBody"); if (!body) return;
-  if (!onPage(t) || !s.sel) { body.innerHTML = emptyMsg("Select an element."); return; }
+  if ((!onPage(t) && !onInternalView(t)) || !s.sel) { body.innerHTML = emptyMsg("Select an element."); return; }
   const n = s.nodes.get(s.sel); if (!n || n.type !== 1) { body.innerHTML = emptyMsg(n?.type === 3 ? "Text node" : "Select an element."); return; }
   const id = s.sel; const which = s.stylesTab;
   $("stTabs").querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.st === which));
@@ -308,17 +327,24 @@ function wireStyles(id, r) {
     vEl.onkeydown = async e => { e.stopPropagation(); if (e.key === "Enter" || e.key === ";") { e.preventDefault(); await apply(a.dataset.where, pEl.textContent.trim(), vEl.textContent.trim()); renderSide(); } if (e.key === "Escape") d.remove(); };
   });
 }
-function renderElements() { const t = tab(); if (!onPage(t)) { $("elTree").innerHTML = emptyMsg(); $("stBody").innerHTML = ""; $("elCrumbs").innerHTML = ""; return; } const s = dtState(t); if (!s.docLoaded) loadDocument(); else { renderTree(); renderSide(); } }
-
+function renderElements() { const t = tab(); if (!onPage(t) && !onInternalView(t)) { $("elTree").innerHTML = emptyMsg(); $("stBody").innerHTML = ""; $("elCrumbs").innerHTML = ""; return; } const s = dtState(t); if (!s.docLoaded) loadDocument(); else { renderTree(); renderSide(); } }
 let picking = false;
+function localPick(e) {
+  if (!picking || !onInternalView(tab()) || $("devtools")?.contains(e.target)) return;
+  if (e.type === "pointermove") { document.documentElement.style.cursor = "crosshair"; return; }
+  e.preventDefault(); e.stopImmediatePropagation(); const t = tab(), node = document.elementFromPoint(e.clientX, e.clientY);
+  setPicking(false); if (node) onPicked(t, { path: localPath(t, node) });
+}
 async function setPicking(on) {
   picking = on; $("dtPick")?.classList.toggle("on", on); $("dtPick")?.setAttribute("aria-pressed", on);
-  const t = tab(); if (!onPage(t)) return;
+  const t = tab();
+  if (onInternalView(t)) { document.documentElement.style.cursor = on ? "crosshair" : ""; document.removeEventListener("pointermove", localPick, true); document.removeEventListener("click", localPick, true); if (on) { document.addEventListener("pointermove", localPick, true); document.addEventListener("click", localPick, true); } return; }
+  if (!onPage(t)) return;
   if (isRemote(t)) { $("remoteSurface")?.classList.toggle("picking", on); if ($("remoteImg")) $("remoteImg").style.cursor = on ? "crosshair" : ""; return; }
   try { await call("dom.pick", { enabled: on }); } catch (e) { if (on) toast(e.message, { kind: "warn" }); picking = false; $("dtPick")?.classList.remove("on"); }
 }
-function togglePick() { if (!onPage(tab())) return toast("Open a website to inspect it"); setPicking(!picking); }
-export function inspect() { if (!onPage(tab())) return toast("Open a website to inspect it"); open("elements"); setPicking(true); }
+function togglePick() { if (!onPage(tab()) && !onInternalView(tab())) return toast("Open a page to inspect it"); setPicking(!picking); }
+export function inspect() { if (!onPage(tab()) && !onInternalView(tab())) return toast("Open a page to inspect it"); open("elements"); setPicking(true); }
 async function onPicked(t, data) { if (t !== tab()) return; picking = false; $("dtPick")?.classList.remove("on"); if (!openState) open("elements"); else show("elements"); await revealPath(data.path); }
 
 const LEVEL_ICON = { error: "✕", warn: "!", info: "i", debug: "·", log: "", cmd: "›", res: "‹" };

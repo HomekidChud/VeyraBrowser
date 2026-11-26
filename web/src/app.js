@@ -1622,6 +1622,13 @@ export function classify(input) {
 }
 export async function go(input, { tab = null, push = true, newTab: inNew = false, activate = true } = {}) {
   const r = classify(input); if (!r) return;
+  if (inNew && r.kind === "search") {
+    const target = makeTab();
+    state.tabs.push(target);
+    if (activate) state.activeId = target.id;
+    renderTabs();
+    return showSearch(r.query, { tab: target, push, source: searchEntry(r.query).command ? "web" : "" });
+  }
   if (r.kind === "source") {
     if (inNew) return newTab({ url: r.url, displayUrl: r.uri, background: !activate });
     return navigate(r.url, { tab, push, activate, displayUrl: r.uri });
