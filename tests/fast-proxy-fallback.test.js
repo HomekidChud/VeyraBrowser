@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const appSource = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
+const chromiumSource = fs.readFileSync(new URL("../web/src/chromium-capability.js", import.meta.url), "utf8");
 const swSource = fs.readFileSync(new URL("../web/sw.js", import.meta.url), "utf8");
 assert.match(appSource, /async function serverChromiumAvailable\(\)/, "the client checks the server's advertised Chromium capability");
-assert.match(appSource, /status\?\.chromiumEnabled === true/, "missing or disabled Chromium must be treated as unavailable");
+assert.match(chromiumSource, /status\?\.chromiumEnabled === true/, "missing or disabled Chromium must be treated as unavailable");
+assert.match(chromiumSource, /age < ttl/, "server Chromium capability results must expire instead of remaining stale for a whole tab session");
 assert.match(appSource, /setProxyFrame\(f, proxyUrl\(url, "view", session\.id/, "normal page loads use the upstream page proxy in the browser frame");
 assert.match(appSource, /if \(strategy\.forceBrowserHost && !\(await serverChromiumAvailable\(\)\)\)\s*\{\s*strategy = \{ \.\.\.strategy, key: "proxy", proxy: true, crawler: false, browser: false, race: false/, "special SPA hosts use the full proxy when server Chromium is disabled");
 assert.match(appSource, /async function routeBrowserRequired\(t, url, key, reason\)/, "browser-required events use the capability-aware fallback");

@@ -11,6 +11,7 @@ import { initDevtools } from "./devtools.js?v=8.44.10-diagnostics";
 import { maybeOfferRenew } from "./renew.js?v=8.36.0-workbench";
 import { accountDestination, GOOGLE_SIGN_IN, withGitHubSignupBookmark } from "./account-navigation.js?v=2";
 import { readVpnAvailability } from "./vpn-availability.js?v=1";
+import { createChromiumCapabilityProbe } from "./chromium-capability.js?v=1";
 import { arrangeTabs, GROUP_COLOURS, validColour, paneLayout, paneRatio } from "./workspace.js?v=3";
 import { siteScope, scopedUrl } from "./search-site-scope.js?v=2";
 import { CATEGORIES, SEARCH_REGION, SEARCH_LOCALE, isVertical, searchCategory, overviewSearchReady, searchEntry, isGoogleWebUrl, searchStateKey, readSearchState, searchParams, resultUrl, posterUrl, mediaPageKey, mergeResults, icon as searchIcon, providerLabel, displayPrice, externalSearchLinks, scopedMediaHandoff } from "./search-deck.js?v=16";
@@ -1172,16 +1173,13 @@ function proxyDocLooksBlank(t) {
   return { blank, nodes: s.nodes };
 }
 const browserFallbackAllowed = () => settings.browserFallback !== false && ["auto", "crawler"].includes(String(settings.runtime || "auto"));
+const probeServerChromium = createChromiumCapabilityProbe({
+  request: () => api("/api/acquisition/status", { timeoutMs: 6000 }),
+  ttlMs: 30_000
+});
 async function serverChromiumAvailable() {
-  if (typeof state.server.chromiumEnabled === "boolean") return state.server.chromiumEnabled;
-  try {
-    const status = await api("/api/acquisition/status", { timeoutMs: 6000 });
-    state.server.chromiumEnabled = status?.chromiumEnabled === true;
-    return state.server.chromiumEnabled;
-  } catch {
-    state.server.chromiumEnabled = false;
-    return false;
-  }
+  state.server.chromiumEnabled = await probeServerChromium();
+  return state.server.chromiumEnabled;
 }
 async function routeBrowserRequired(t, url, key, reason) {
   const frame = frameFor(t), load = t.pageLoad;

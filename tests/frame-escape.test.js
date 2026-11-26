@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createChromiumCapabilityProbe } from "../web/src/chromium-capability.js";
 import { originalSiteUrl, proxyStatusNotice, siteLoadErrorMarkup } from "../web/src/site-recovery.js";
 
 const src = fs.readFileSync(new URL("../web/src/app.js", import.meta.url), "utf8");
@@ -46,5 +47,27 @@ const tiktokError = siteLoadErrorMarkup("Couldn't load", {}, "https://www.tiktok
 assert.match(tiktokError, /id="veyra-local-options"/);
 assert.doesNotMatch(tiktokError, /Open original site|<a href=/);
 assert.doesNotMatch(src, /veyra:local-retry/, "untrusted frames cannot request the local error screen's retry action");
+
+let now = 1_000, enabled = false, calls = 0, fail = false;
+const capability = createChromiumCapabilityProbe({ now: () => now, ttlMs: 1_000, request: async () => {
+  calls += 1;
+  if (fail) throw new Error("temporary status failure");
+  return { chromiumEnabled: enabled };
+} });
+assert.equal(await capability(), false);
+enabled = true;
+assert.equal(await capability(), false, "a valid negative capability is cached only for its short TTL");
+assert.equal(calls, 1);
+now += 1_001;
+const [firstProbe, concurrentProbe] = await Promise.all([capability(), capability()]);
+assert.equal(firstProbe, true);
+assert.equal(concurrentProbe, true);
+assert.equal(calls, 2, "concurrent stale-cache checks share one request");
+now += 1_001;
+fail = true;
+assert.equal(await capability(), false, "a failed refresh fails closed for the current decision");
+fail = false;
+assert.equal(await capability(), true, "a failed status request does not poison future recovery checks");
+assert.equal(calls, 4);
 
 console.log("frame escape + address-bar hijack regression checks passed");
