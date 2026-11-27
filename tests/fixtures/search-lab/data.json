@@ -1,0 +1,1426 @@
+{
+  "version": 1,
+  "notice": "All records and venues are synthetic test fixtures; no real business is represented.",
+  "records": [
+    {
+      "id": "web-01",
+      "type": "web",
+      "title": "Web sample 01",
+      "snippet": "Deterministic local fixture record 01 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/01",
+      "canonicalUrl": "https://fixtures.example.test/web/01",
+      "tags": [
+        "web",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-02",
+      "type": "web",
+      "title": "Web sample 02",
+      "snippet": "Deterministic local fixture record 02 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/02",
+      "canonicalUrl": "https://fixtures.example.test/web/02",
+      "tags": [
+        "web",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-03",
+      "type": "web",
+      "title": "Web sample 03",
+      "snippet": "Deterministic local fixture record 03 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/03",
+      "canonicalUrl": "https://fixtures.example.test/web/03",
+      "tags": [
+        "web",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-04",
+      "type": "web",
+      "title": "Web sample 04",
+      "snippet": "Deterministic local fixture record 04 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/04",
+      "canonicalUrl": "https://fixtures.example.test/web/04",
+      "tags": [
+        "web",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-05",
+      "type": "web",
+      "title": "Web sample 05",
+      "snippet": "Deterministic local fixture record 05 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/05",
+      "canonicalUrl": "https://fixtures.example.test/web/05",
+      "tags": [
+        "web",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-06",
+      "type": "web",
+      "title": "Web sample 06",
+      "snippet": "Deterministic local fixture record 06 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/06",
+      "canonicalUrl": "https://fixtures.example.test/web/06",
+      "tags": [
+        "web",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-07",
+      "type": "web",
+      "title": "Web sample 07",
+      "snippet": "Deterministic local fixture record 07 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/07",
+      "canonicalUrl": "https://fixtures.example.test/web/07",
+      "tags": [
+        "web",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-08",
+      "type": "web",
+      "title": "Web sample 08",
+      "snippet": "Deterministic local fixture record 08 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/08",
+      "canonicalUrl": "https://fixtures.example.test/web/08",
+      "tags": [
+        "web",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-09",
+      "type": "web",
+      "title": "Web sample 09",
+      "snippet": "Deterministic local fixture record 09 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/09",
+      "canonicalUrl": "https://fixtures.example.test/web/09",
+      "tags": [
+        "web",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "web-10",
+      "type": "web",
+      "title": "Web sample 10",
+      "snippet": "Deterministic local fixture record 10 for web; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/web/10",
+      "canonicalUrl": "https://fixtures.example.test/web/10",
+      "tags": [
+        "web",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-01",
+      "type": "images",
+      "title": "Images sample 01",
+      "snippet": "Deterministic local fixture record 01 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/01",
+      "canonicalUrl": "https://fixtures.example.test/images/01",
+      "tags": [
+        "images",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-02",
+      "type": "images",
+      "title": "Images sample 02",
+      "snippet": "Deterministic local fixture record 02 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/02",
+      "canonicalUrl": "https://fixtures.example.test/images/02",
+      "tags": [
+        "images",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-03",
+      "type": "images",
+      "title": "Images sample 03",
+      "snippet": "Deterministic local fixture record 03 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/03",
+      "canonicalUrl": "https://fixtures.example.test/images/03",
+      "tags": [
+        "images",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-04",
+      "type": "images",
+      "title": "Images sample 04",
+      "snippet": "Deterministic local fixture record 04 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/04",
+      "canonicalUrl": "https://fixtures.example.test/images/04",
+      "tags": [
+        "images",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-05",
+      "type": "images",
+      "title": "Images sample 05",
+      "snippet": "Deterministic local fixture record 05 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/05",
+      "canonicalUrl": "https://fixtures.example.test/images/05",
+      "tags": [
+        "images",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-06",
+      "type": "images",
+      "title": "Images sample 06",
+      "snippet": "Deterministic local fixture record 06 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/06",
+      "canonicalUrl": "https://fixtures.example.test/images/06",
+      "tags": [
+        "images",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-07",
+      "type": "images",
+      "title": "Images sample 07",
+      "snippet": "Deterministic local fixture record 07 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/07",
+      "canonicalUrl": "https://fixtures.example.test/images/07",
+      "tags": [
+        "images",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-08",
+      "type": "images",
+      "title": "Images sample 08",
+      "snippet": "Deterministic local fixture record 08 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/08",
+      "canonicalUrl": "https://fixtures.example.test/images/08",
+      "tags": [
+        "images",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-09",
+      "type": "images",
+      "title": "Images sample 09",
+      "snippet": "Deterministic local fixture record 09 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/09",
+      "canonicalUrl": "https://fixtures.example.test/images/09",
+      "tags": [
+        "images",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "images-10",
+      "type": "images",
+      "title": "Images sample 10",
+      "snippet": "Deterministic local fixture record 10 for images; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/images/10",
+      "canonicalUrl": "https://fixtures.example.test/images/10",
+      "tags": [
+        "images",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-01",
+      "type": "news",
+      "title": "News sample 01",
+      "snippet": "Deterministic local fixture record 01 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/01",
+      "canonicalUrl": "https://fixtures.example.test/news/01",
+      "tags": [
+        "news",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-02",
+      "type": "news",
+      "title": "News sample 02",
+      "snippet": "Deterministic local fixture record 02 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/02",
+      "canonicalUrl": "https://fixtures.example.test/news/02",
+      "tags": [
+        "news",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-03",
+      "type": "news",
+      "title": "News sample 03",
+      "snippet": "Deterministic local fixture record 03 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/03",
+      "canonicalUrl": "https://fixtures.example.test/news/03",
+      "tags": [
+        "news",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-04",
+      "type": "news",
+      "title": "News sample 04",
+      "snippet": "Deterministic local fixture record 04 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/04",
+      "canonicalUrl": "https://fixtures.example.test/news/04",
+      "tags": [
+        "news",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-05",
+      "type": "news",
+      "title": "News sample 05",
+      "snippet": "Deterministic local fixture record 05 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/05",
+      "canonicalUrl": "https://fixtures.example.test/news/05",
+      "tags": [
+        "news",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-06",
+      "type": "news",
+      "title": "News sample 06",
+      "snippet": "Deterministic local fixture record 06 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/06",
+      "canonicalUrl": "https://fixtures.example.test/news/06",
+      "tags": [
+        "news",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-07",
+      "type": "news",
+      "title": "News sample 07",
+      "snippet": "Deterministic local fixture record 07 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/07",
+      "canonicalUrl": "https://fixtures.example.test/news/07",
+      "tags": [
+        "news",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-08",
+      "type": "news",
+      "title": "News sample 08",
+      "snippet": "Deterministic local fixture record 08 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/08",
+      "canonicalUrl": "https://fixtures.example.test/news/08",
+      "tags": [
+        "news",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-09",
+      "type": "news",
+      "title": "News sample 09",
+      "snippet": "Deterministic local fixture record 09 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/09",
+      "canonicalUrl": "https://fixtures.example.test/news/09",
+      "tags": [
+        "news",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "news-10",
+      "type": "news",
+      "title": "News sample 10",
+      "snippet": "Deterministic local fixture record 10 for news; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/news/10",
+      "canonicalUrl": "https://fixtures.example.test/news/10",
+      "tags": [
+        "news",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-01",
+      "type": "shopping",
+      "title": "Shopping sample 01",
+      "snippet": "Deterministic local fixture record 01 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/01",
+      "canonicalUrl": "https://fixtures.example.test/shopping/01",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-02",
+      "type": "shopping",
+      "title": "Shopping sample 02",
+      "snippet": "Deterministic local fixture record 02 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/02",
+      "canonicalUrl": "https://fixtures.example.test/shopping/02",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-03",
+      "type": "shopping",
+      "title": "Shopping sample 03",
+      "snippet": "Deterministic local fixture record 03 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/03",
+      "canonicalUrl": "https://fixtures.example.test/shopping/03",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-04",
+      "type": "shopping",
+      "title": "Shopping sample 04",
+      "snippet": "Deterministic local fixture record 04 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/04",
+      "canonicalUrl": "https://fixtures.example.test/shopping/04",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-05",
+      "type": "shopping",
+      "title": "Shopping sample 05",
+      "snippet": "Deterministic local fixture record 05 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/05",
+      "canonicalUrl": "https://fixtures.example.test/shopping/05",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-06",
+      "type": "shopping",
+      "title": "Shopping sample 06",
+      "snippet": "Deterministic local fixture record 06 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/06",
+      "canonicalUrl": "https://fixtures.example.test/shopping/06",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-07",
+      "type": "shopping",
+      "title": "Shopping sample 07",
+      "snippet": "Deterministic local fixture record 07 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/07",
+      "canonicalUrl": "https://fixtures.example.test/shopping/07",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-08",
+      "type": "shopping",
+      "title": "Shopping sample 08",
+      "snippet": "Deterministic local fixture record 08 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/08",
+      "canonicalUrl": "https://fixtures.example.test/shopping/08",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-09",
+      "type": "shopping",
+      "title": "Shopping sample 09",
+      "snippet": "Deterministic local fixture record 09 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/09",
+      "canonicalUrl": "https://fixtures.example.test/shopping/09",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "shopping-10",
+      "type": "shopping",
+      "title": "Shopping sample 10",
+      "snippet": "Deterministic local fixture record 10 for shopping; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/shopping/10",
+      "canonicalUrl": "https://fixtures.example.test/shopping/10",
+      "tags": [
+        "shopping",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-01",
+      "type": "research",
+      "title": "Research sample 01",
+      "snippet": "Deterministic local fixture record 01 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/01",
+      "canonicalUrl": "https://fixtures.example.test/research/01",
+      "tags": [
+        "research",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-02",
+      "type": "research",
+      "title": "Research sample 02",
+      "snippet": "Deterministic local fixture record 02 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/02",
+      "canonicalUrl": "https://fixtures.example.test/research/02",
+      "tags": [
+        "research",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-03",
+      "type": "research",
+      "title": "Research sample 03",
+      "snippet": "Deterministic local fixture record 03 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/03",
+      "canonicalUrl": "https://fixtures.example.test/research/03",
+      "tags": [
+        "research",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-04",
+      "type": "research",
+      "title": "Research sample 04",
+      "snippet": "Deterministic local fixture record 04 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/04",
+      "canonicalUrl": "https://fixtures.example.test/research/04",
+      "tags": [
+        "research",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-05",
+      "type": "research",
+      "title": "Research sample 05",
+      "snippet": "Deterministic local fixture record 05 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/05",
+      "canonicalUrl": "https://fixtures.example.test/research/05",
+      "tags": [
+        "research",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-06",
+      "type": "research",
+      "title": "Research sample 06",
+      "snippet": "Deterministic local fixture record 06 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/06",
+      "canonicalUrl": "https://fixtures.example.test/research/06",
+      "tags": [
+        "research",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-07",
+      "type": "research",
+      "title": "Research sample 07",
+      "snippet": "Deterministic local fixture record 07 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/07",
+      "canonicalUrl": "https://fixtures.example.test/research/07",
+      "tags": [
+        "research",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-08",
+      "type": "research",
+      "title": "Research sample 08",
+      "snippet": "Deterministic local fixture record 08 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/08",
+      "canonicalUrl": "https://fixtures.example.test/research/08",
+      "tags": [
+        "research",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-09",
+      "type": "research",
+      "title": "Research sample 09",
+      "snippet": "Deterministic local fixture record 09 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/09",
+      "canonicalUrl": "https://fixtures.example.test/research/09",
+      "tags": [
+        "research",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "research-10",
+      "type": "research",
+      "title": "Research sample 10",
+      "snippet": "Deterministic local fixture record 10 for research; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/research/10",
+      "canonicalUrl": "https://fixtures.example.test/research/10",
+      "tags": [
+        "research",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-01",
+      "type": "discussions",
+      "title": "Discussions sample 01",
+      "snippet": "Deterministic local fixture record 01 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/01",
+      "canonicalUrl": "https://fixtures.example.test/discussions/01",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-02",
+      "type": "discussions",
+      "title": "Discussions sample 02",
+      "snippet": "Deterministic local fixture record 02 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/02",
+      "canonicalUrl": "https://fixtures.example.test/discussions/02",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-03",
+      "type": "discussions",
+      "title": "Discussions sample 03",
+      "snippet": "Deterministic local fixture record 03 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/03",
+      "canonicalUrl": "https://fixtures.example.test/discussions/03",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-04",
+      "type": "discussions",
+      "title": "Discussions sample 04",
+      "snippet": "Deterministic local fixture record 04 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/04",
+      "canonicalUrl": "https://fixtures.example.test/discussions/04",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-05",
+      "type": "discussions",
+      "title": "Discussions sample 05",
+      "snippet": "Deterministic local fixture record 05 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/05",
+      "canonicalUrl": "https://fixtures.example.test/discussions/05",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-06",
+      "type": "discussions",
+      "title": "Discussions sample 06",
+      "snippet": "Deterministic local fixture record 06 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/06",
+      "canonicalUrl": "https://fixtures.example.test/discussions/06",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-07",
+      "type": "discussions",
+      "title": "Discussions sample 07",
+      "snippet": "Deterministic local fixture record 07 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/07",
+      "canonicalUrl": "https://fixtures.example.test/discussions/07",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-08",
+      "type": "discussions",
+      "title": "Discussions sample 08",
+      "snippet": "Deterministic local fixture record 08 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/08",
+      "canonicalUrl": "https://fixtures.example.test/discussions/08",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-09",
+      "type": "discussions",
+      "title": "Discussions sample 09",
+      "snippet": "Deterministic local fixture record 09 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/09",
+      "canonicalUrl": "https://fixtures.example.test/discussions/09",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "discussions-10",
+      "type": "discussions",
+      "title": "Discussions sample 10",
+      "snippet": "Deterministic local fixture record 10 for discussions; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/discussions/10",
+      "canonicalUrl": "https://fixtures.example.test/discussions/10",
+      "tags": [
+        "discussions",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "venues-01",
+      "type": "venues",
+      "title": "Venues sample 01",
+      "snippet": "Deterministic local fixture record 01 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/01",
+      "canonicalUrl": "https://fixtures.example.test/venues/01",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready",
+      "name": "Fictional cafe 01",
+      "category": "cafe",
+      "address": "17 Example Lane, Testville, ZZ 10001",
+      "coordinates": {
+        "lat": 37.712,
+        "lon": -122.491
+      },
+      "hoursStatus": "open",
+      "hoursText": "Open until 18:00",
+      "rating": 3.3,
+      "price": "free",
+      "phone": "+1-555-010-0001",
+      "site": "https://fictional-01.example.test",
+      "osm": {
+        "type": "node",
+        "id": 900001,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-02",
+      "type": "venues",
+      "title": "Venues sample 02",
+      "snippet": "Deterministic local fixture record 02 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/02",
+      "canonicalUrl": "https://fixtures.example.test/venues/02",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready",
+      "name": "Fictional restaurant 02",
+      "category": "restaurant",
+      "address": "34 Example Lane, Testville, ZZ 10002",
+      "coordinates": {
+        "lat": 37.724000000000004,
+        "lon": -122.482
+      },
+      "hoursStatus": "closed",
+      "hoursText": "Closed today",
+      "rating": 3.4,
+      "price": "$",
+      "phone": "+1-555-010-0002",
+      "site": "https://fictional-02.example.test",
+      "osm": {
+        "type": "way",
+        "id": 900002,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-03",
+      "type": "venues",
+      "title": "Venues sample 03",
+      "snippet": "Deterministic local fixture record 03 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/03",
+      "canonicalUrl": "https://fixtures.example.test/venues/03",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready",
+      "name": "Fictional library 03",
+      "category": "library",
+      "address": "51 Example Lane, Testville, ZZ 10003",
+      "coordinates": {
+        "lat": 37.736000000000004,
+        "lon": -122.473
+      },
+      "hoursStatus": "unknown",
+      "hoursText": "Hours not supplied",
+      "rating": 3.5,
+      "price": "$$",
+      "phone": "+1-555-010-0003",
+      "site": "https://fictional-03.example.test",
+      "osm": {
+        "type": "node",
+        "id": 900003,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-04",
+      "type": "venues",
+      "title": "Venues sample 04",
+      "snippet": "Deterministic local fixture record 04 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/04",
+      "canonicalUrl": "https://fixtures.example.test/venues/04",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready",
+      "name": "Fictional park 04",
+      "category": "park",
+      "address": "68 Example Lane, Testville, ZZ 10004",
+      "coordinates": {
+        "lat": 37.748000000000005,
+        "lon": -122.464
+      },
+      "hoursStatus": "open",
+      "hoursText": "Open until 18:00",
+      "rating": 3.6,
+      "price": "$$$",
+      "phone": "+1-555-010-0004",
+      "site": "https://fictional-04.example.test",
+      "osm": {
+        "type": "way",
+        "id": 900004,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-05",
+      "type": "venues",
+      "title": "Venues sample 05",
+      "snippet": "Deterministic local fixture record 05 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/05",
+      "canonicalUrl": "https://fixtures.example.test/venues/05",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready",
+      "name": "Fictional museum 05",
+      "category": "museum",
+      "address": "85 Example Lane, Testville, ZZ 10005",
+      "coordinates": {
+        "lat": 37.760000000000005,
+        "lon": -122.455
+      },
+      "hoursStatus": "closed",
+      "hoursText": "Closed today",
+      "rating": 3.7,
+      "price": "free",
+      "phone": "+1-555-010-0005",
+      "site": "https://fictional-05.example.test",
+      "osm": {
+        "type": "node",
+        "id": 900005,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-06",
+      "type": "venues",
+      "title": "Venues sample 06",
+      "snippet": "Deterministic local fixture record 06 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/06",
+      "canonicalUrl": "https://fixtures.example.test/venues/06",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready",
+      "name": "Fictional market 06",
+      "category": "market",
+      "address": "102 Example Lane, Testville, ZZ 10006",
+      "coordinates": {
+        "lat": 37.772000000000006,
+        "lon": -122.446
+      },
+      "hoursStatus": "unknown",
+      "hoursText": "Hours not supplied",
+      "rating": 3.8,
+      "price": "$",
+      "phone": "+1-555-010-0006",
+      "site": "https://fictional-06.example.test",
+      "osm": {
+        "type": "way",
+        "id": 900006,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-07",
+      "type": "venues",
+      "title": "Venues sample 07",
+      "snippet": "Deterministic local fixture record 07 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/07",
+      "canonicalUrl": "https://fixtures.example.test/venues/07",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready",
+      "name": "Fictional clinic 07",
+      "category": "clinic",
+      "address": "119 Example Lane, Testville, ZZ 10007",
+      "coordinates": {
+        "lat": 37.784000000000006,
+        "lon": -122.437
+      },
+      "hoursStatus": "open",
+      "hoursText": "Open until 18:00",
+      "rating": 3.9,
+      "price": "$$",
+      "phone": "+1-555-010-0007",
+      "site": "https://fictional-07.example.test",
+      "osm": {
+        "type": "node",
+        "id": 900007,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-08",
+      "type": "venues",
+      "title": "Venues sample 08",
+      "snippet": "Deterministic local fixture record 08 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/08",
+      "canonicalUrl": "https://fixtures.example.test/venues/08",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready",
+      "name": "Fictional bookshop 08",
+      "category": "bookshop",
+      "address": "136 Example Lane, Testville, ZZ 10008",
+      "coordinates": {
+        "lat": 37.796,
+        "lon": -122.428
+      },
+      "hoursStatus": "closed",
+      "hoursText": "Closed today",
+      "rating": 4.0,
+      "price": "$$$",
+      "phone": "+1-555-010-0008",
+      "site": "https://fictional-08.example.test",
+      "osm": {
+        "type": "way",
+        "id": 900008,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-09",
+      "type": "venues",
+      "title": "Venues sample 09",
+      "snippet": "Deterministic local fixture record 09 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/09",
+      "canonicalUrl": "https://fixtures.example.test/venues/09",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready",
+      "name": "Fictional community-centre 09",
+      "category": "community-centre",
+      "address": "153 Example Lane, Testville, ZZ 10009",
+      "coordinates": {
+        "lat": 37.808,
+        "lon": -122.419
+      },
+      "hoursStatus": "unknown",
+      "hoursText": "Hours not supplied",
+      "rating": 4.1,
+      "price": "free",
+      "phone": "+1-555-010-0009",
+      "site": "https://fictional-09.example.test",
+      "osm": {
+        "type": "node",
+        "id": 900009,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "venues-10",
+      "type": "venues",
+      "title": "Venues sample 10",
+      "snippet": "Deterministic local fixture record 10 for venues; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/venues/10",
+      "canonicalUrl": "https://fixtures.example.test/venues/10",
+      "tags": [
+        "venues",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready",
+      "name": "Fictional gallery 10",
+      "category": "gallery",
+      "address": "170 Example Lane, Testville, ZZ 10010",
+      "coordinates": {
+        "lat": 37.82,
+        "lon": -122.41
+      },
+      "hoursStatus": "open",
+      "hoursText": "Open until 18:00",
+      "rating": 4.2,
+      "price": "$",
+      "phone": "+1-555-010-0010",
+      "site": "https://fictional-10.example.test",
+      "osm": {
+        "type": "way",
+        "id": 900010,
+        "attribution": "© OpenStreetMap contributors — synthetic fixture ID; not a mapped business"
+      }
+    },
+    {
+      "id": "edge-cases-01",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 01",
+      "snippet": "Deterministic local fixture record 01 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/01",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/01",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-02",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 02",
+      "snippet": "Deterministic local fixture record 02 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/02",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/02",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-03",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 03",
+      "snippet": "Deterministic local fixture record 03 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/03",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/03",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-04",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 04",
+      "snippet": "Deterministic local fixture record 04 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/04",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/04",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-05",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 05",
+      "snippet": "Deterministic local fixture record 05 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/05",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/05",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-1"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-06",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 06",
+      "snippet": "Deterministic local fixture record 06 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/06",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/06",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-07",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 07",
+      "snippet": "Deterministic local fixture record 07 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/07",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/07",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-08",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 08",
+      "snippet": "Deterministic local fixture record 08 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/08",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/08",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-09",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 09",
+      "snippet": "Deterministic local fixture record 09 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/09",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/09",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-cases-10",
+      "type": "edge-cases",
+      "title": "Edge-Cases sample 10",
+      "snippet": "Deterministic local fixture record 10 for edge-cases; useful for search, filtering, and pagination checks.",
+      "url": "https://fixtures.example.test/edge-cases/10",
+      "canonicalUrl": "https://fixtures.example.test/edge-cases/10",
+      "tags": [
+        "edge-cases",
+        "sample",
+        "batch-2"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-long",
+      "type": "edge-cases",
+      "title": "Long text: A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — A deliberately long fixture title — ",
+      "snippet": "Long unbroken token: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; long Unicode passage 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 東京 café naïve مرحبا 🧪 ",
+      "url": "https://fixtures.example.test/edge/long",
+      "canonicalUrl": "https://fixtures.example.test/edge/long",
+      "tags": [
+        "edge",
+        "long"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-unicode",
+      "type": "edge-cases",
+      "title": "Crème brûlée — 東京 / مرحبًا / 🧭",
+      "snippet": "Unicode normalization and diacritic search: café, Sao Paulo, São Paulo, naïve.",
+      "url": "https://fixtures.example.test/edge/unicode",
+      "canonicalUrl": "https://fixtures.example.test/edge/unicode",
+      "tags": [
+        "edge",
+        "unicode"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-duplicate-a",
+      "type": "web",
+      "title": "Canonical duplicate A",
+      "snippet": "URL has tracking parameters.",
+      "url": "https://fixtures.example.test/duplicate?utm_source=lab",
+      "canonicalUrl": "https://fixtures.example.test/duplicate",
+      "tags": [
+        "duplicate"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-duplicate-b",
+      "type": "web",
+      "title": "Canonical duplicate B",
+      "snippet": "Same canonical URL with fragment.",
+      "url": "https://fixtures.example.test/duplicate#part",
+      "canonicalUrl": "https://fixtures.example.test/duplicate",
+      "tags": [
+        "duplicate"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-unsafe-js",
+      "type": "edge-cases",
+      "title": "Unsafe javascript scheme",
+      "snippet": "Link renderer must not activate this URL.",
+      "url": "javascript:alert(1)",
+      "canonicalUrl": "javascript:alert(1)",
+      "tags": [
+        "security"
+      ],
+      "state": "error"
+    },
+    {
+      "id": "edge-host-lookalike",
+      "type": "edge-cases",
+      "title": "Host lookalike",
+      "snippet": "evil.example.test.attacker.invalid is not a trusted fixture host.",
+      "url": "https://fixtures.example.test.attacker.invalid/",
+      "canonicalUrl": "https://fixtures.example.test.attacker.invalid/",
+      "tags": [
+        "security"
+      ],
+      "state": "warning"
+    },
+    {
+      "id": "edge-malformed",
+      "type": "edge-cases",
+      "title": "Malformed or missing fields",
+      "snippet": null,
+      "url": null,
+      "canonicalUrl": null,
+      "tags": [],
+      "state": "unknown"
+    },
+    {
+      "id": "edge-zero",
+      "type": "edge-cases",
+      "title": "Zero-result query marker",
+      "snippet": "Search for no-such-fixture-000 returns no matches.",
+      "url": "https://fixtures.example.test/edge/zero",
+      "canonicalUrl": "https://fixtures.example.test/edge/zero",
+      "tags": [
+        "empty"
+      ],
+      "state": "ready"
+    },
+    {
+      "id": "edge-slow",
+      "type": "edge-cases",
+      "title": "Slow simulation",
+      "snippet": "A deliberate 700 ms delay is applied locally.",
+      "url": "https://fixtures.example.test/edge/slow",
+      "canonicalUrl": "https://fixtures.example.test/edge/slow",
+      "tags": [
+        "slow"
+      ],
+      "state": "slow"
+    },
+    {
+      "id": "edge-error",
+      "type": "edge-cases",
+      "title": "Error simulation",
+      "snippet": "Local simulated provider failure; no network request.",
+      "url": "https://fixtures.example.test/edge/error",
+      "canonicalUrl": "https://fixtures.example.test/edge/error",
+      "tags": [
+        "error"
+      ],
+      "state": "error"
+    }
+  ]
+}
